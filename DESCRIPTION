@@ -1,0 +1,18 @@
+Package: amatrix
+Type: Package
+Title: Backend-Agnostic Matrix Extensions
+Version: 0.0.0.9000
+Authors@R: person("Ben", "Buchsbaum", email = "bbuchsbaum@example.com", role = c("aut", "cre"))
+Description: Matrix-compatible S4 classes with backend-dispatch hooks for
+    accelerated execution and predictable CPU fallback.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Depends:
+    R (>= 4.3)
+Imports:
+    methods,
+    Matrix
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3

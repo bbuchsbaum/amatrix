@@ -1,0 +1,48 @@
+#!/usr/bin/env Rscript
+
+suppressPackageStartupMessages({
+  library(amatrix)
+  library(bench)
+})
+
+if (!requireNamespace("amatrix.mlx", quietly = TRUE)) {
+  stop("amatrix.mlx must be installed before running this benchmark", call. = FALSE)
+}
+
+sizes <- c(256L, 512L, 1024L)
+iterations <- 5L
+
+options(amatrix.mlx.available = TRUE)
+
+run_case <- function(n) {
+  set.seed(n)
+  x_host <- matrix(rnorm(n * n), nrow = n)
+  y_host <- matrix(rnorm(n * n), nrow = n)
+
+  x_cpu <- adgeMatrix(x_host, preferred_backend = "cpu")
+  y_cpu <- adgeMatrix(y_host, preferred_backend = "cpu")
+  x_mlx <- adgeMatrix(x_host, preferred_backend = "mlx")
+  y_mlx <- adgeMatrix(y_host, preferred_backend = "mlx")
+
+  bench::mark(
+    cpu_matmul = { invisible(x_cpu %*% y_cpu) },
+    mlx_matmul = { invisible(x_mlx %*% y_mlx) },
+    cpu_crossprod = { invisible(crossprod(x_cpu)) },
+    mlx_crossprod = { invisible(crossprod(x_mlx)) },
+    cpu_tcrossprod = { invisible(tcrossprod(x_cpu)) },
+    mlx_tcrossprod = { invisible(tcrossprod(x_mlx)) },
+    iterations = iterations,
+    check = FALSE,
+    memory = FALSE,
+    time_unit = "ms"
+  )
+}
+
+results <- lapply(sizes, function(n) {
+  out <- run_case(n)
+  out$size <- n
+  out
+})
+
+summary <- do.call(rbind, results)[, c("size", "expression", "median", "itr/sec")]
+print(summary)

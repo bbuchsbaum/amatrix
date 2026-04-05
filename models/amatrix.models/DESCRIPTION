@@ -1,0 +1,18 @@
+Package: amatrix.models
+Type: Package
+Title: Model-Core Workflows for amatrix
+Version: 0.0.0.9000
+Authors@R: person("Ben", "Buchsbaum", email = "bbuchsbaum@example.com", role = c("aut", "cre"))
+Description: Model-core workflows built on top of amatrix. Provides
+    repeated-response least-squares and ridge interfaces with stable,
+    workload-shaped entry points for downstream users.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Depends:
+    R (>= 4.3)
+Imports:
+    amatrix
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3

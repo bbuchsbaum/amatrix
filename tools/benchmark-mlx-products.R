@@ -1,0 +1,42 @@
+#!/usr/bin/env Rscript
+
+suppressPackageStartupMessages({
+  library(amatrix)
+  library(bench)
+})
+
+if (!requireNamespace("amatrix.mlx", quietly = TRUE)) {
+  stop("amatrix.mlx must be installed", call. = FALSE)
+}
+
+options(amatrix.mlx.available = TRUE)
+
+sizes <- c(512L, 1024L, 1536L)
+iterations <- 5L
+
+run_case <- function(n) {
+  set.seed(n)
+  x_host <- matrix(rnorm(n * n), nrow = n)
+  x_cpu <- adgeMatrix(x_host, preferred_backend = "cpu")
+  x_mlx <- adgeMatrix(x_host, preferred_backend = "mlx")
+
+  bench::mark(
+    cpu_crossprod = invisible(crossprod(x_cpu)),
+    mlx_crossprod = invisible(crossprod(x_mlx)),
+    cpu_tcrossprod = invisible(tcrossprod(x_cpu)),
+    mlx_tcrossprod = invisible(tcrossprod(x_mlx)),
+    iterations = iterations,
+    check = FALSE,
+    memory = FALSE,
+    time_unit = "ms"
+  )
+}
+
+results <- lapply(sizes, function(n) {
+  out <- run_case(n)
+  out$size <- n
+  out
+})
+
+summary <- do.call(rbind, results)[, c("size", "expression", "median", "itr/sec")]
+print(summary)

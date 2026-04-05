@@ -1,0 +1,129 @@
+{
+  "document_type": "ImplementationPlan",
+  "product_name": "amatrix",
+  "milestones": [
+    {
+      "id": "M0",
+      "name": "Bootstrap Core Package",
+      "depends_on": [],
+      "deliverables": [
+        "Create amatrix package skeleton",
+        "Define adgeMatrix and adgCMatrix classes",
+        "Add constructors and coercion helpers",
+        "Add backend registry and policy interfaces",
+        "Implement CPU backend stubs and host realization layer"
+      ],
+      "exit_criteria": [
+        "Package loads on macOS with no accelerated backend installed",
+        "Core objects validate as Matrix-compatible subclasses",
+        "All public methods route through a single backend dispatch layer"
+      ]
+    },
+    {
+      "id": "M1",
+      "name": "CPU Semantic Baseline",
+      "depends_on": [
+        "M0"
+      ],
+      "deliverables": [
+        "Implement %*%, crossprod, tcrossprod, solve, chol, qr, svd, eigen, t, rowSums, colSums, diag",
+        "Implement selected Ops methods",
+        "Add serialization and deserialization behavior",
+        "Document fallback semantics"
+      ],
+      "exit_criteria": [
+        "CPU-only outputs match Matrix/base semantics for covered operations",
+        "Fallback paths are deterministic and tested",
+        "Serialization does not persist stale backend state"
+      ]
+    },
+    {
+      "id": "M2",
+      "name": "Conformance Harness",
+      "depends_on": [
+        "M1"
+      ],
+      "deliverables": [
+        "Randomized dense conformance tests",
+        "Randomized sparse conformance tests",
+        "Fixture coverage for metadata, dimnames, and edge values",
+        "Backend parity test scaffolding"
+      ],
+      "exit_criteria": [
+        "Every covered method has a CPU-reference conformance test",
+        "The suite can run in CPU-only CI",
+        "Backend implementations can be plugged into the same parity harness"
+      ]
+    },
+    {
+      "id": "M3",
+      "name": "Apple Dense Backend",
+      "depends_on": [
+        "M2"
+      ],
+      "deliverables": [
+        "Create amatrix.mlx package",
+        "Implement dense MLX kernels for the initial method surface",
+        "Add backend cache lifecycle management",
+        "Benchmark representative dense workloads on Apple Silicon"
+      ],
+      "exit_criteria": [
+        "MLX-backed methods pass backend parity tests",
+        "Unsupported paths realize host state and complete correctly",
+        "At least one benchmark class shows meaningful speedup versus CPU baseline"
+      ]
+    },
+    {
+      "id": "M4",
+      "name": "Portable Dense Backend",
+      "depends_on": [
+        "M2"
+      ],
+      "deliverables": [
+        "Create amatrix.arrayfire package",
+        "Implement dense ArrayFire kernels for the same backend contract",
+        "Add backend-selection policy tests"
+      ],
+      "exit_criteria": [
+        "ArrayFire backend passes the same parity suite as CPU and MLX for covered dense operations",
+        "No public API changes are required in amatrix",
+        "ArrayFire remains an optional install-time dependency"
+      ]
+    },
+    {
+      "id": "M5",
+      "name": "Selective Sparse Acceleration",
+      "depends_on": [
+        "M3",
+        "M4"
+      ],
+      "deliverables": [
+        "Benchmark-driven sparse kernel shortlist",
+        "Implement sparse matvec and sparse-dense matmul where support is credible",
+        "Add tested internal format conversion pathways"
+      ],
+      "exit_criteria": [
+        "CSC remains the canonical public sparse format",
+        "Sparse acceleration is limited to explicitly supported operations",
+        "Fallback remains correct for all unsupported sparse cases"
+      ]
+    },
+    {
+      "id": "M6",
+      "name": "ALTREP Dense Path",
+      "depends_on": [
+        "M3"
+      ],
+      "deliverables": [
+        "Prototype ALTREP-backed dense payload representation",
+        "Integrate deferred host realization for supported backend chains",
+        "Add serialization and fallback tests specific to ALTREP"
+      ],
+      "exit_criteria": [
+        "User-visible APIs remain unchanged",
+        "Dense host materialization is deferred where expected",
+        "Serialization and fallback remain deterministic"
+      ]
+    }
+  ]
+}

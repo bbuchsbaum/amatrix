@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -eu
+
+src_dir="src"
+makevars="${src_dir}/Makevars"
+prefix=""
+
+if [ -n "${ARRAYFIRE_PREFIX:-}" ] && [ -d "${ARRAYFIRE_PREFIX}" ]; then
+  prefix="${ARRAYFIRE_PREFIX}"
+elif command -v brew >/dev/null 2>&1; then
+  maybe_prefix="$(brew --prefix arrayfire 2>/dev/null || true)"
+  if [ -n "${maybe_prefix}" ] && [ -d "${maybe_prefix}" ]; then
+    prefix="${maybe_prefix}"
+  fi
+fi
+
+if [ -n "${prefix}" ] && [ -f "${prefix}/include/arrayfire.h" ] && [ -f "${prefix}/lib/libaf.dylib" ]; then
+  prefix_escaped="$(printf '%s' "${prefix}" | sed 's/[\/&]/\\&/g')"
+  sed \
+    -e "s|@AF_CPPFLAGS@|-DHAVE_ARRAYFIRE -I${prefix_escaped}/include|g" \
+    -e "s|@AF_LIBS@|-L${prefix_escaped}/lib -Wl,-rpath,${prefix_escaped}/lib -laf|g" \
+    "${src_dir}/Makevars.in" > "${makevars}"
+  echo "configure: using ArrayFire from ${prefix}"
+else
+  sed \
+    -e "s|@AF_CPPFLAGS@||g" \
+    -e "s|@AF_LIBS@||g" \
+    "${src_dir}/Makevars.in" > "${makevars}"
+  echo "configure: ArrayFire not found, building mock bridge only"
+fi

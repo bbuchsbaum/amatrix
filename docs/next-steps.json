@@ -1,0 +1,96 @@
+{
+  "document_type": "ExecutionPlan",
+  "product_name": "amatrix",
+  "created_at": "2026-04-03",
+  "sequence": [
+    {
+      "order": 1,
+      "issue_id": "bd-io8.1",
+      "title": "Document Backend Contract",
+      "parent": "bd-io8",
+      "objective": "Write a backend author specification for amatrix so optional backend packages target one explicit contract.",
+      "scope": [
+        "Document required backend fields and functions",
+        "Define capability semantics and ordering",
+        "Document backend selection precedence across preferred_backend, policy, and cpu",
+        "State v1 rules: dense-first acceleration, Matrix-first sparse semantics, opportunistic sparse GPU only",
+        "Include a minimal backend skeleton and a fallback example"
+      ],
+      "acceptance_criteria": [
+        "A docs file in the repo explains the backend contract and its required functions.",
+        "The document states that sparse is Matrix-first in v1 and GPU sparse is opportunistic.",
+        "The document defines capability ordering/meaning and backend selection precedence clearly enough for a third-party backend package to implement the contract.",
+        "The document includes at least one concrete example backend skeleton and one example of correct CPU fallback behavior."
+      ]
+    },
+    {
+      "order": 2,
+      "issue_id": "bd-u4p.1",
+      "title": "Add Root Backend Integration Harness",
+      "parent": "bd-u4p",
+      "depends_on": [
+        "bd-io8.1"
+      ],
+      "objective": "Exercise installed optional backend packages from the amatrix core package side using a shared smoke/integration harness.",
+      "scope": [
+        "Detect optional backend packages cleanly",
+        "Run common assertions against each installed backend",
+        "Verify backend registration and core capability/status helpers",
+        "Verify dense supported routing and CPU fallback for unsupported/sparse paths",
+        "Verify precedence between preferred_backend and policy"
+      ],
+      "acceptance_criteria": [
+        "The core package has integration tests that exercise installed optional backend packages from amatrix, not only from the backend package repos.",
+        "The harness can skip cleanly when an optional backend package is not installed.",
+        "For each installed backend package, the harness verifies dense supported routing, CPU fallback for unsupported ops, and CPU fallback for sparse ops.",
+        "The harness reuses common assertions so new backends can be added without duplicating the whole test surface."
+      ]
+    },
+    {
+      "order": 3,
+      "issue_id": "bd-2qe.1",
+      "title": "Implement Thin MLX Bridge Boundary",
+      "parent": "bd-2qe",
+      "depends_on": [
+        "bd-u4p.1"
+      ],
+      "objective": "Add the first real native/interface boundary in amatrix.mlx, starting with dense matmul, without changing the public backend contract or host-side object semantics.",
+      "scope": [
+        "Add a minimal compiled or foreign-function boundary in amatrix.mlx",
+        "Keep registration and selection through the existing plugin contract",
+        "Guard unsupported systems cleanly through availability reporting",
+        "Add at least one integration test that proves the bridge path is callable through the mlx backend"
+      ],
+      "acceptance_criteria": [
+        "amatrix.mlx contains a minimal compiled or foreign-function bridge boundary dedicated to MLX-backed dense matmul.",
+        "The backend contract in amatrix remains unchanged and the mlx package still registers through the same plugin interface.",
+        "When MLX support is unavailable, the package reports that cleanly and falls back without changing object semantics.",
+        "At least one integration test proves the bridge path is callable behind the registered mlx backend contract, even if the implementation is initially guarded or mock-backed on non-MLX systems."
+      ]
+    },
+    {
+      "order": 4,
+      "issue_id": "bd-2qe.2",
+      "title": "Implement Compact MLX QR Factor Path",
+      "parent": "bd-2qe",
+      "depends_on": [
+        "bd-2qe.1",
+        "bd-u4p.1"
+      ],
+      "objective": "Replace the current explicit-Q MLX QR hot path with a true compact factor representation for pivot = FALSE so QR-heavy many-RHS workflows stop depending on resident Q materialization.",
+      "scope": [
+        "Add an internal mlx_compact_qr representation under amQR",
+        "Implement a first pivot = FALSE, thin QR compact path for fast mode",
+        "Route qr.qty, qr.qy, qr.coef, qr.solve, and qr.resid through the compact representation",
+        "Keep exact mode and pivoted QR on CPU fallback until the compact MLX path is trustworthy",
+        "Benchmark the compact path against cached base QR and the current resident-Q MLX path on many-RHS workflows"
+      ],
+      "acceptance_criteria": [
+        "am_qr_info() can report a native compact MLX QR representation distinct from bridge_compact and resident explicit-Q paths.",
+        "many_lm(..., method = \"qr\") on MLX fast mode can execute its hot helper path without depending on explicit Q materialization.",
+        "The compact MLX QR path passes parity tests for pivot = FALSE helper operations and CPU fallback remains correct for exact mode.",
+        "Benchmark output shows whether the compact path improves the flagship many-RHS workflow over both cached base QR and the resident-Q MLX bridge path."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -eu
+
+src_dir="src"
+makevars="${src_dir}/Makevars"
+prefix=""
+
+if [ -n "${MLX_C_PREFIX:-}" ] && [ -d "${MLX_C_PREFIX}" ]; then
+  prefix="${MLX_C_PREFIX}"
+elif command -v brew >/dev/null 2>&1; then
+  maybe_prefix="$(brew --prefix mlx-c 2>/dev/null || true)"
+  if [ -n "${maybe_prefix}" ] && [ -d "${maybe_prefix}" ]; then
+    prefix="${maybe_prefix}"
+  fi
+fi
+
+if [ -n "${prefix}" ] && [ -f "${prefix}/include/mlx/c/mlx.h" ] && [ -f "${prefix}/lib/libmlxc.dylib" ]; then
+  mlx_prefix_escaped="$(printf '%s' "${prefix}" | sed 's/[\/&]/\\&/g')"
+  sed \
+    -e "s|@MLX_CPPFLAGS@|-DHAVE_MLXC -I${mlx_prefix_escaped}/include|g" \
+    -e "s|@MLX_LIBS@|-L${mlx_prefix_escaped}/lib -Wl,-rpath,${mlx_prefix_escaped}/lib -L$(brew --prefix mlx)/lib -Wl,-rpath,$(brew --prefix mlx)/lib -lmlxc|g" \
+    "${src_dir}/Makevars.in" > "${makevars}"
+  echo "configure: using mlx-c from ${prefix}"
+else
+  sed \
+    -e "s|@MLX_CPPFLAGS@||g" \
+    -e "s|@MLX_LIBS@||g" \
+    "${src_dir}/Makevars.in" > "${makevars}"
+  echo "configure: mlx-c not found, building mock bridge only"
+fi

@@ -1,0 +1,842 @@
+{
+  "document_type": "PRD",
+  "product_name": "amatrix",
+  "version": "0.3",
+  "mission": "Build an R-native computational substrate that makes GPU acceleration easy to adopt in R through Matrix-compatible objects, backend-pluggable execution, and small, explicit code changes.",
+  "goal": "Maximize practical impact by combining trustworthy Matrix-compatible semantics, backend-neutral kernels, and a small set of flagship model-core fitters so users and package authors can get GPU speed with low-friction adoption rather than generic GPU enablement in the abstract.",
+  "positioning": {
+    "wrong_optimization": "GPU-enable R in the abstract.",
+    "right_optimization": "Build a Matrix-compatible compute substrate with optional accelerator backends, low-friction adoption, and one or two flagship workload wins.",
+    "why_this_is_plausible": [
+      "R already has a strong compatibility surface in Matrix via dense and sparse S4 classes, BLAS/LAPACK/SuiteSparse integration, and factorization-aware matrix objects.",
+      "Recent R versions expose better interception points because %*%, crossprod, and tcrossprod are generic.",
+      "Backend-neutral kernels and model-core fitters give package authors and users an adoption path that does not depend on perfect class transparency.",
+      "Some Matrix-aware code can work with near-zero changes, while other workloads can still adopt the substrate with a small constructor swap, a few kernel swaps, or a fitter swap."
+    ]
+  },
+  "competitive_differentiation": {
+    "primary_competitor": "torch for R (libtorch / torch package)",
+    "why_torch_cannot_win_this_space": [
+      "torch tensors are not Matrix subclasses. Any R code that does methods::is(x, 'dgeMatrix'), uses Matrix::crossprod(), or depends on the S4 sparse hierarchy cannot adopt torch without a full rewrite.",
+      "torch is f32-first by design. Statistical regression requires f64 for numerical stability. torch users must explicitly manage dtype, accept precision drift, or write custom f64 kernels. amatrix defaults to strict double semantics.",
+      "torch has no concept of a cached QR factorization keyed by object identity across many response columns. The shared-X many-Y batched QR path must be implemented manually in torch and does not compose with R's modeling ecosystem.",
+      "torch requires ~1.5 GB install (full PyTorch) and changes the entire computational model of a package. amatrix is a small C extension layered over Matrix with no framework lock-in.",
+      "R's sparse ecosystem (SuiteSparse, CHOLMOD, Matrix) is deeply integrated into statistical computing. amatrix preserves that ecosystem; torch has no path into it.",
+      "torch does not integrate with R's formula/model.matrix/lm()-adjacent infrastructure. amatrix.models composes directly with that infrastructure.",
+      "Apple Silicon unified memory means MLX arrays have zero-copy potential. torch on Apple Silicon still has memory transfer overhead for most user-visible paths."
+    ],
+    "the_moat": "amatrix's moat is that it is an acceleration layer, not a framework. The user's existing Matrix-based R code gets faster. They do not adopt a new computational model. 'Your crossprod(X) call is now 10x faster. You changed one line. You are still in R.' torch cannot say this.",
+    "the_wedge_torch_cannot_close": "Shared-X many-Y batched QR regression over many response columns with a cached factorization keyed by stable R object identity, composing with R's modeling and sparse ecosystems. This is the flagship workload. torch users would need to manually implement factorization caching, manage device memory, handle f64 precision explicitly, and abandon their Matrix-based design. amatrix makes this a one-line change.",
+    "where_torch_wins": [
+      "Deep learning and neural network training — amatrix has no answer here and does not try.",
+      "Cross-platform GPU with CUDA on Linux/Windows — torch is more mature here today.",
+      "Custom autograd, dynamic computation graphs, and model serialization — out of scope for amatrix."
+    ],
+    "the_disruption_scenario": "Apple Silicon R users running statistical workflows (neuroimaging, GWAS, econometric panels, simulation) that are Matrix-based and f64-sensitive. These users cannot adopt torch without rewriting. amatrix gives them a credible GPU path with a one-line change and no numeric risk under strict mode."
+  },
+  "current_state_summary": {
+    "implemented": [
+      "Matrix-compatible dense and sparse classes in amatrix",
+      "CPU reference backend and wrapper-driven execution path",
+      "Explicit strict-vs-fast precision policy in core constructors and backend selection",
+      "Resident backend pinning for live dense objects, with CPU fallback instead of cross-accelerator hopping",
+      "Backend feature vocabulary alongside operation-level capabilities",
+      "Conformance harness and optional-backend integration tests",
+      "Real MLX dense backend with internal dense residency and chained execution support",
+      "Public qr()/am_qr() split with amQR factor objects and QR provenance tracking",
+      "Real ArrayFire dense backend for cold-path dense kernels",
+      "Cold-vs-resident execution introspection helpers",
+      "Model-core fitters via am_lm_fit(X, Y), am_ridge_fit(X, Y), and am_wls_fit(X, Y, weights)",
+      "Repeated-response workflow helpers via am_many_lm(X, Y) and am_array_lm(X, Y)",
+      "Similarity helpers via am_covariance(X) and am_correlation(X)",
+      "Internal shared-X cache for repeated least-squares fits keyed by stable amatrix identity",
+      "Public model-oriented extension package via amatrix.models"
+    ],
+    "not_yet_frozen": [
+      "Primary user-facing execution mode surface via amatrix(x, mode = ...), layered over the current strict/fast internals",
+      "Package-author-facing migration guidance with explicit before/after adoption examples",
+      "A broader blockwise large-matrix strategy for the second flagship workload",
+      "A true compact MLX QR factor path for pivot = FALSE, replacing the current resident-Q explicit path as the premium QR implementation"
+    ],
+    "known_correctness_gaps": [
+      "GC finalizer missing for resident dense state: adgeMatrix and adgCMatrix objects have no reg.finalizer. Backend-side allocations (MLX arrays, ArrayFire buffers) leak for the process lifetime when objects are collected. Fix template exists at R/qr.R:18-51. Tracked: bd-bsh.",
+      "Object ID collision in parallel workers: object_id is 'am:N' from a per-process counter. fork-based parallelism (parallel::mclapply, future) produces colliding IDs across workers, binding resident state to wrong objects silently. Fix: prepend a session UUID set at .onLoad. Tracked: bd-of8.",
+      "Cold-path materialization tax on resident objects: amatrix_dispatch_op() calls amatrix_materialize_host(x) unconditionally on the cold path, paying a full device->host copy even when the object is already resident. One unsupported op (e.g. rowSums, which has no rowSums_resident) collapses the entire chain benefit. Tracked: bd-2fm.",
+      "am_many_lm iterates per Y column instead of batching: the flagship many-Y fitter loops via am_wls_fit per column (R/models-lm.R:809). The TSQR bridge already supports batched qty across multiple RHS columns. The batched path must be wired through. Tracked: bd-x60."
+    ],
+    "main_gap": "The repo has a real substrate, two flagship workload surfaces, and a public model package. Four correctness and performance gaps must close before M3 ships publicly: (1) GC finalizer for resident dense state, (2) fork-safe object IDs for parallel workers, (3) cold-path resident materialization tax, (4) batched Y columns in am_many_lm. After those close, the remaining gaps are freezing the mode= API surface, publishing the flagship benchmark, and making the adoption path obvious for package authors."
+  },
+  "decision_summary": {
+    "start_on_macos_first": true,
+    "matrix_sparse_backend_first": true,
+    "strict_precision_default": true,
+    "mlx_is_not_semantic_center": true,
+    "shared_x_many_y_is_flagship": true,
+    "small_explicit_code_changes_are_primary_adoption_path": true,
+    "zero_adaptation_is_opportunistic_not_promised": true,
+    "reasoning": [
+      "The development environment is macOS, so Apple-first remains the shortest path to a real accelerator backend.",
+      "MLX is valuable because it provides Apple Silicon dense acceleration, shared-memory arrays, and a bridgeable C API, but it is not an acceptable semantic center because GPU float64 is not the default path.",
+      "R is double-first, so no backend that silently downcasts should define default semantics.",
+      "Matrix should remain the official sparse substrate; GPU sparse should be opportunistic and narrowly scoped.",
+      "The highest-impact workload is not isolated matrix multiply, but shared-X, many-Y regression and related batched linear algebra.",
+      "The project should optimize for meaningful speedups with small, explicit, trustworthy code changes; zero-adaptation wins are valuable where they arise naturally, but they are not the universal contract."
+    ],
+    "non_goals": [
+      "Do not make MLX the architecture.",
+      "Do not optimize for universal drop-in compatibility with every package that inspects slots or exact class names.",
+      "Do not promise full sparse GPU support in v1.",
+      "Do not expose backend-specific laziness or device semantics as part of the user contract in early versions."
+    ]
+  },
+  "product_principles": [
+    "User-visible objects are Matrix-compatible S4 classes first.",
+    "Backends are plugins, not the user model.",
+    "CPU is the correctness oracle and the sparse default.",
+    "Precision policy is explicit; no silent numeric downgrades under the default contract.",
+    "Once a dense object becomes resident, it is backend-pinned; unsupported operations fall back to CPU rather than hopping to another accelerator backend.",
+    "Factor objects are first-class performance surfaces; do not eagerly materialize Q, U, V, or explicit inverses in hot paths unless requested.",
+    "Objects and installation should be boring; performance should come from dispatch and internal execution, not from exotic user-visible semantics.",
+    "Package authors need an incremental adoption path through backend-neutral kernels and flagship fitters.",
+    "Small, explicit code changes are the primary adoption path; zero-adaptation is pursued aggressively where it is real but is not the default promise.",
+    "One or two high-value workloads matter more than broad but shallow method counts.",
+    "Sparse is CPU-native first; GPU sparse is opportunistic."
+  ],
+  "compatibility_surface": {
+    "dense_anchor": "dgeMatrix / adgeMatrix",
+    "sparse_anchor": "dgCMatrix / adgCMatrix",
+    "matrix_features_used": [
+      "Dense and sparse S4 hierarchy",
+      "BLAS/LAPACK/SuiteSparse-backed computations",
+      "factorization caching via factors slot",
+      "generic %*%, crossprod, and tcrossprod interception points"
+    ],
+    "compatibility_target": "Matrix-compatible and matrix-coercible for Matrix-aware R code, with graceful fallback at unsupported boundaries."
+  },
+  "product_layers": {
+    "object_layer": {
+      "purpose": "User-facing Matrix-compatible objects and ordinary object semantics.",
+      "scope": [
+        "amatrix(x, mode = ...)",
+        "adgeMatrix",
+        "adgCMatrix",
+        "constructors and coercions",
+        "printing, subsetting, serialization"
+      ]
+    },
+    "kernel_layer": {
+      "purpose": "Backend-neutral computational entry points for package authors and for amatrix internals.",
+      "scope": [
+        "am_matmul()",
+        "am_crossprod()",
+        "am_tcrossprod()",
+        "am_qr_factor()",
+        "am_chol_factor()",
+        "am_lu_factor()",
+        "am_solve()",
+        "am_chol()",
+        "am_rowSums()",
+        "am_colSums()",
+        "am_ewise()"
+      ]
+    },
+    "model_core_layer": {
+      "purpose": "High-value fitters and helpers that sit on top of the object and kernel layers.",
+      "scope": [
+        "am_lm_fit(X, Y)",
+        "am_ridge_fit(X, Y)",
+        "am_wls_fit(X, Y, weights)",
+        "am_many_lm(X, Y)",
+        "am_array_lm(X, Y)",
+        "batched crossprod(X, Y)",
+        "covariance and correlation helpers",
+        "cached factorization plus repeated solves"
+      ]
+    }
+  },
+  "api_surface_strategy": {
+    "public_vs_internal": [
+      "Use ordinary public generics where they fit the Matrix/R surface, for example qr(x) as the public entry point.",
+      "Use internal am_* wrappers for package implementation paths, for example am_qr(x), so amatrix internals do not depend on ambient dispatch behaving perfectly.",
+      "When specialized factorization objects are needed, prefer amatrix-specific classes such as amDenseQR with explicit methods rather than trying to fake base objects too early."
+    ],
+    "reasoning": "This preserves a natural user-facing API while keeping internal execution deterministic and backend-aware."
+  },
+  "package_ecosystem_strategy": {
+    "default_rule": "Organize expansion by substrate plus domain extension packages, not by cloning upstream CRAN packages.",
+    "preferred_layout": [
+      "amatrix for classes, coercions, backend registry, kernels, dispatch, and foundational factorization helpers",
+      "amatrix.models for shared-X many-Y fitters, ridge, weighted least squares, and later GLM core pieces",
+      "amatrix.algorithms for randomized SVD, truncated eigensolvers, PCA helpers, and projection methods",
+      "amatrix.image later for neuroimaging and image-domain kernels if warranted"
+    ],
+    "avoid": [
+      "Do not create a trail of am_* package clones such as am.rsvd unless API-fidelity pressure is unusually high.",
+      "Do not let branding produce am_rsvd::am_rsvd()-style naming when a normal namespace like amatrix.algorithms::rsvd() would be clearer."
+    ],
+    "exception_rule": "A dedicated package fork is only justified when upstream compatibility is strategically important, the implementation diverges substantially, and a domain extension package would be awkward."
+  },
+  "adoption_surfaces": {
+    "adoption_gradients": [
+      {
+        "level": 0,
+        "name": "near_zero_change",
+        "shape": "Constructor swap or Matrix-aware code that works directly with amatrix objects and public generics.",
+        "status": "opportunistic and desirable where the Matrix compatibility surface reaches naturally"
+      },
+      {
+        "level": 1,
+        "name": "hot_kernel_swap",
+        "shape": "Replace a small number of bottleneck calls with am_* kernels such as am_crossprod(), am_matmul(), am_solve(), or am_qr().",
+        "status": "primary package-author adoption path"
+      },
+      {
+        "level": 2,
+        "name": "workflow_swap",
+        "shape": "Replace a repeated-fit loop or similar hot workflow with a flagship helper such as many_lm() or array_lm().",
+        "status": "primary end-user adoption path for memorable speedups"
+      }
+    ],
+    "algebraic_surface": {
+      "what_it_is": "R code that uses matrix algebra reasonably idiomatically.",
+      "tactic": "Matrix-compatible classes plus method dispatch on %*%, crossprod, tcrossprod, and related methods.",
+      "priority": "highest and fastest path to impact"
+    },
+    "modeling_surface": {
+      "what_it_is": "Formula parsing, design matrix construction, and fitter cores.",
+      "tactic": "Build model-core fitters rather than trying to hijack stats::lm() globally.",
+      "priority": "where practical statistical and neuroimaging impact will come from"
+    },
+    "compiled_package_internal_surface": {
+      "what_it_is": "Code that does exact-class checks, slot inspection, or compiled dispatch.",
+      "tactic": "Selective rewrites, thin adapters, and kernel-level APIs for hot paths.",
+      "priority": "important, but not reachable through inheritance alone"
+    }
+  },
+  "package_layout": {
+    "core": "amatrix",
+    "backend_packages": [
+      "amatrix.mlx",
+      "amatrix.arrayfire"
+    ],
+    "model_core_package": "amatrix.models",
+    "deferred_or_optional_packages": [
+      "amatrix.torch",
+      "amatrix.cuda",
+      "amatrix.rocm"
+    ],
+    "notes": [
+      "Keep the core package installable with no heavy backend dependency.",
+      "Do not rename amatrix.mlx to amatrix.apple until there is a broader Apple backend than MLX alone."
+    ]
+  },
+  "object_model": {
+    "initial_classes": [
+      "aMatrix as a virtual marker class",
+      "adgeMatrix extends dgeMatrix",
+      "adgCMatrix extends dgCMatrix"
+    ],
+    "required_user_visible_state": [
+      "preferred_backend",
+      "policy",
+      "object_id"
+    ],
+    "internal_state": [
+      "backend registry",
+      "internal dense residency registry keyed by stable object identity"
+    ],
+    "source_of_truth_rule": "An amatrix object is always a valid Matrix object first; backend residency and execution caches are internal-only and never required for copying or serialization."
+  },
+  "precision_policy": {
+    "primary_user_surface": "Expose execution mode primarily as amatrix(x, mode = c(\"exact\", \"balanced\", \"fast\")); helper aliases may exist later, but the constructor-level mode argument is the main user story.",
+    "implementation_note": "The current core still routes execution mainly through strict/fast precision and backend policy. exact maps to strict semantics, fast maps to fast semantics, and balanced remains a higher-level execution mode to freeze after more per-operation policy hardening.",
+    "planned_user_modes": [
+      "exact",
+      "balanced",
+      "fast"
+    ],
+    "modes": [
+      "strict",
+      "fast"
+    ],
+    "default": "strict",
+    "strict_semantics": [
+      "Preserve R/Matrix-style double semantics.",
+      "No silent downcasting.",
+      "On Apple this may force CPU execution even when GPU hardware exists."
+    ],
+    "fast_semantics": [
+      "Permit float32 execution when the backend requires it and the user opts in.",
+      "Backend use becomes more available on MLX and potentially on other accelerator paths."
+    ],
+    "design_rule": "Backend policy must consider both operation capability and precision mode. Precision is not a backend implementation detail.",
+    "acceptance_criteria": [
+      "The user can select strict or fast explicitly.",
+      "Strict is the default for all user-facing constructors and helpers.",
+      "MLX and ArrayFire cannot execute float32-backed GPU paths under strict unless numerically equivalent double execution is genuinely supported.",
+      "Tests cover strict fallback to CPU and fast opt-in backend execution."
+    ]
+  },
+  "execution_model": {
+    "cold_execution": "A fresh host-side object is evaluated for one operation using ordinary backend supports(op, x, y) checks.",
+    "resident_execution": "A dense object with live internal backend residency may reuse that backend through resident hooks even when the cold path would not be chosen.",
+    "user_contract": "User-visible objects remain boring and eager-feeling; cold vs resident execution is internal, inspectable, and not required for correctness.",
+    "backend_pinning_rule": "Once a dense object has live residency, its execution backend is pinned to that resident backend for dispatch purposes. If that backend cannot serve an operation, the fallback path is CPU host execution, not switching to a different accelerator backend per operation.",
+    "introspection": [
+      "amatrix_backend_plan()",
+      "amatrix_backend_matrix()",
+      "amatrix_residency_info()",
+      "amatrix_execution_info()"
+    ],
+    "current_backend_posture": [
+      "MLX is the first resident dense backend path.",
+      "ArrayFire is currently a cold-path backend and is not yet part of the transparent residency story.",
+      "Resident objects are backend-pinned once live."
+    ]
+  },
+  "backend_contract": {
+    "required_functions": [
+      "available()",
+      "supports(op, x, y = NULL)",
+      "capabilities()",
+      "matmul(x, y)",
+      "crossprod(x, y = NULL)",
+      "tcrossprod(x, y = NULL)",
+      "ewise(op, x, y = NULL)",
+      "rowSums(x)",
+      "colSums(x)"
+    ],
+    "optional_resident_hooks": [
+      "resident_has(key)",
+      "resident_store(key, x)",
+      "resident_drop(key)",
+      "resident_materialize(key)",
+      "matmul_resident(...)",
+      "crossprod_resident(...)",
+      "tcrossprod_resident(...)",
+      "ewise_resident(...)"
+    ],
+    "optional_functions": [
+      "solve(x, b = NULL)",
+      "chol(x)",
+      "qr(x)",
+      "svd(x, nu = 0L, nv = 0L)"
+    ],
+    "capability_vocabulary": [
+      "dense_f64",
+      "dense_f32",
+      "resident_dense",
+      "unified_memory",
+      "solve",
+      "chol",
+      "svd",
+      "sparse_spmm",
+      "custom_ops"
+    ],
+    "dispatch_rule": "Dispatch should be capability-based and precision-aware. Avoid backend-name conditionals spread throughout the codebase."
+  },
+  "backend_roles": {
+    "cpu": {
+      "role": "Correctness oracle and default sparse backend",
+      "strengths": [
+        "dense and sparse semantics",
+        "double precision",
+        "factorization-friendly behavior",
+        "always present"
+      ]
+    },
+    "mlx": {
+      "role": "Apple dense optimization backend",
+      "strengths": [
+        "Apple Silicon dense acceleration",
+        "internal dense residency",
+        "unified-memory-aware execution",
+        "custom extension path through MLX and Metal"
+      ],
+      "limits": [
+        "not a universal float64 GPU backend",
+        "must not define default numeric semantics"
+      ]
+    },
+    "arrayfire": {
+      "role": "Portable dense optimization backend",
+      "strengths": [
+        "cross-platform dense backend",
+        "runtime backend switching",
+        "real native dense kernels"
+      ],
+      "limits": [
+        "sparse support is narrow",
+        "current product role is cold-path dense acceleration, not transparent residency"
+      ]
+    }
+  },
+  "sparse_strategy": {
+    "public_contract": [
+      "Public sparse semantics are Matrix-native.",
+      "CSC / dgCMatrix remains the canonical host representation.",
+      "No silent densification for convenience."
+    ],
+    "v1_position": [
+      "Sparse objects exist.",
+      "Sparse behavior is Matrix behavior.",
+      "Sparse acceleration is effectively none in v1 except possibly selected sparse-dense products later."
+    ],
+    "why": [
+      "This aligns with Matrix and the wider R sparse ecosystem.",
+      "ArrayFire sparse support is too narrow to be a sparse foundation."
+    ]
+  },
+  "flagship_workloads": {
+    "highest_value_wedge": "shared-X, many-Y linear algebra",
+    "examples": [
+      "one design matrix X with many response columns Y",
+      "repeated-response OLS",
+      "ridge-like repeated solves",
+      "batched nuisance regression",
+      "correlation and covariance workflows",
+      "repeated projections and simulation kernels"
+    ],
+    "first_flagship": "am_lm_fit(X, Y)",
+    "follow_on_flagships": [
+      "am_ridge_fit(X, Y)",
+      "covariance and correlation helpers",
+      "batched crossprod(X, Y)"
+    ]
+  },
+  "factorization_cache_strategy": {
+    "axiom": "Any factorization where expensive_step(X) costs O(n²p) and cheap_step(factor, Y_k) costs O(np) per column is a candidate for amortized caching. Disruption magnitude scales with k (number of RHS columns). At k=2000, the factorization cost disappears into the noise.",
+    "derivation_filters": [
+      "R ecosystem gravity: only intercept patterns where R users already write code that does this — or would if it were fast enough.",
+      "GPU acceleration is real: prefer operations where MLX/CUDA give 5-50x, not 1.2x. Dense factorizations of moderate-to-large matrices fit GPU well.",
+      "Strict f64 semantics are preservable: statistical users compare outputs to lm(). If strict mode produces numerically different results, that is a trust problem, not a speed problem."
+    ],
+    "tier1": {
+      "description": "Must ship with model-core gate. Highest amortization, broadest R audience, clear GPU fit.",
+      "entries": [
+        {
+          "name": "QR",
+          "factor_fn": "am_qr_factor(X)",
+          "factor_class": "amQR",
+          "apply_fn": "am_qr_coef(factor, Y)",
+          "apply_step": "Q'Y then triangular solve for coefficients",
+          "k_repeatable_workflow": "many-Y OLS, GLM, permutation testing, bootstrap over Y",
+          "r_ecosystem_anchor": "lm(), glm(), qr.default(), qr.qty(), qr.coef()",
+          "domain_examples": ["mass-univariate GLM in neuroimaging (QR across voxels)", "per-SNP regression in GWAS (QR across millions of variants)", "bootstrap regression (QR once, permute Y many times)"],
+          "status": "in progress — am_qr_factor exists, batched am_qr_coef not yet wired (bd-x60)"
+        },
+        {
+          "name": "Cholesky",
+          "factor_fn": "am_chol_factor(X)",
+          "factor_class": "amChol",
+          "apply_fn": "am_chol_solve(factor, B)",
+          "apply_step": "forward/backward substitution across B columns",
+          "k_repeatable_workflow": "ridge regression (many lambda), Gaussian process regression, mixed model solves, batched Mahalanobis distance, log-determinant for likelihoods",
+          "r_ecosystem_anchor": "chol(), chol2inv(), lme4, mgcv, MASS::mvrnorm()",
+          "domain_examples": ["random effects solves in lme4 (Cholesky of precision matrix, many PIRLS iterations)", "GP posterior across many test points (Cholesky once, solve many)", "spatial smoothing (Cholesky of Laplacian, apply to many signals)"],
+          "status": "planned — am_chol_factor listed in kernel layer, not yet implemented as cached object"
+        },
+        {
+          "name": "Truncated SVD",
+          "factor_fn": "am_svd_factor(X, k)",
+          "factor_class": "amSVD",
+          "apply_fn": "am_svd_project(factor, Y)",
+          "apply_step": "U'Y (projection into latent space), V diag(1/d) U'Y (back-projection for PCR coef)",
+          "k_repeatable_workflow": "PCA regression, reduced-rank regression, regularization path (vary lambda with fixed SVD), image denoising across many images, CCA",
+          "r_ecosystem_anchor": "prcomp(), irlba::irlba(), rsvd::rsvd(), RSpectra",
+          "domain_examples": ["fMRI component analysis (SVD of data matrix, project many condition contrasts)", "GWAS LD-adjusted regression via SVD of genotype matrix", "regularization path without refactoring (vary lambda, same SVD)"],
+          "status": "planned — svd() method exists, no cached factor object or batched project"
+        }
+      ],
+      "competitive_note": "Each Tier 1 entry is a concrete capability torch cannot replicate without manual caching, device lifetime management, explicit dtype handling, and abandoning Matrix compatibility. The moat deepens with each entry shipped."
+    },
+    "tier2": {
+      "description": "Ship after Tier 1 is solid and benchmarked. High value in specific domains.",
+      "entries": [
+        {
+          "name": "Eigen decomposition",
+          "factor_fn": "am_eigen_factor(X)",
+          "apply_fn": "am_eigen_project(factor, x)",
+          "apply_step": "V'x batched, V diag(lambda^k) V'x for matrix functions",
+          "workflows": "spectral methods, graph Laplacian (fMRI connectivity, social networks), LDA, functional PCA, repeated quadratic forms Q(x) = x'Ax",
+          "r_anchor": "eigen(), RSpectra::eigs_sym()"
+        },
+        {
+          "name": "LU decomposition",
+          "factor_fn": "am_lu_factor(X)",
+          "apply_fn": "am_lu_solve(factor, B)",
+          "apply_step": "batched forward/backward substitution",
+          "workflows": "simulation with fixed coefficient matrix and many RHS, finite element repeated solves, Kalman filter updates",
+          "r_anchor": "solve(), Matrix::lu()"
+        },
+        {
+          "name": "Woodbury update",
+          "factor_fn": "am_woodbury(factor, U, V)",
+          "apply_fn": "am_woodbury_solve(woodbury, b)",
+          "apply_step": "rank-k update to existing Cholesky/LU without full refactoring",
+          "workflows": "leave-one-out CV, online learning, ridge path without refactoring full Cholesky",
+          "r_anchor": "no existing R primitive — this is a gap amatrix fills"
+        }
+      ]
+    },
+    "tier3": {
+      "description": "Domain extensions, likely in amatrix.algorithms.",
+      "entries": [
+        "Randomized SVD with fixed sketch — fast approximate PCA with reusable random projection",
+        "Streaming covariance — blockwise X'X accumulation for data that does not fit in memory",
+        "Schur decomposition — control theory, Lyapunov equations, repeated matrix functions"
+      ]
+    },
+    "public_api_shape": {
+      "description": "Each Tier 1 factorization follows the same two-function pattern: factor once, apply many times.",
+      "pattern": [
+        "am_qr_factor(X)       -> amQR    ;  am_qr_coef(factor, Y)      # batched coef",
+        "am_chol_factor(X)     -> amChol  ;  am_chol_solve(factor, B)   # batched substitution",
+        "am_svd_factor(X, k)   -> amSVD   ;  am_svd_project(factor, Y)  # batched projection"
+      ],
+      "cache_key_rule": "Factors are keyed by stable amatrix object_id. Re-factorizing the same X object reuses the cached factor automatically. Cache invalidation occurs on object replacement or explicit eviction.",
+      "strict_mode_rule": "All factor objects carry the precision mode of the source matrix. Strict factors use f64 throughout. Fast factors may use f32 internally but must document the numerical contract."
+    },
+    "high_value_adoption_targets": {
+      "description": "Concrete CRAN packages and functions whose hot paths match the Tier 1 factorization cache pattern. These are the adoption anchors — not packages amatrix overrides or patches, but packages where either passive S4 dispatch or explicit kernel-swap adoption would yield meaningful speedups. Used to focus documentation, worked examples, and adoption outreach.",
+      "adoption_mechanisms": {
+        "passive_s4_dispatch": "If the user wraps their input in adgeMatrix(), calls to S4 generics (%*%, crossprod, tcrossprod) anywhere in downstream code automatically route through amatrix backends. Works only for R-level S4 generics — compiled C paths, as.matrix() calls, and direct LAPACK calls are not reached. Zero package-author changes required; only a user-side constructor swap.",
+        "kernel_swap": "Package author replaces N inner-loop calls (e.g., repeated qr(X) + qr.coef()) with one am_*_factor(X) call outside the loop and one batched am_*_apply(factor, Y) call. Requires explicit author adoption. This is where the largest speedups come from and what the worked examples should demonstrate.",
+        "what_intercept_does_not_mean": "amatrix does not monkey-patch, override, or wrap these packages without consent. There is no global hook on lm() or crossprod(). The word 'intercept' in earlier drafts referred only to S4 dispatch — it has been replaced with 'adoption target' to avoid confusion."
+      },
+      "qr_targets": {
+        "passive_viable": ["any R-level code calling crossprod(X) or X %*% Y where X is adgeMatrix"],
+        "kernel_swap_viable": ["lm.fit() repeated with same X and many y vectors", "glm() iterative reweighted least squares (same X, many PIRLS iterations)", "mgcv::gam() QR in penalty estimation", "mass-univariate neuroimaging pipelines (one design matrix, thousands of voxel Y vectors)"]
+      },
+      "cholesky_targets": {
+        "passive_viable": ["any R-level crossprod(X) + solve() chain where X is adgeMatrix"],
+        "kernel_swap_viable": ["lme4 (Cholesky of random effects precision matrix, many PIRLS solves)", "mgcv (Cholesky for smoothing parameter estimation across many lambda values)", "MASS::mvrnorm() (Cholesky of covariance, many samples)", "GP packages: GPfit, kergp, DiceKriging (Cholesky once, predict many test points)"]
+      },
+      "svd_targets": {
+        "passive_viable": ["limited — svd() is not a generic in the same way; user must call am_svd_factor explicitly"],
+        "kernel_swap_viable": ["prcomp() / princomp() followed by repeated score projections", "irlba::irlba() for repeated low-rank projections with same X", "rsvd::rsvd() for approximate PCA with fixed sketch", "reduced-rank regression and CCA packages that call svd(X) then project many Y"]
+      }
+    }
+  },
+  "phases": [
+    {
+      "phase": 0,
+      "name": "Architecture Skeleton",
+      "objective": "Create the Matrix-compatible class model, backend registry, and backend-neutral wrapper layer.",
+      "scope": [
+        "Define aMatrix, adgeMatrix, and adgCMatrix in amatrix",
+        "Implement constructors, coercions, printing, subsetting, dimnames, and serialization",
+        "Implement backend registry and policy selection",
+        "Introduce internal am_* wrappers so package code does not rely solely on ambient S4 dispatch",
+        "Keep user-visible objects free of persistent backend/device state"
+      ],
+      "acceptance_criteria": [
+        "Creating adgeMatrix and adgCMatrix objects works with valid Matrix semantics.",
+        "Objects can round-trip through serialize/unserialize without any backend-state dependency.",
+        "Backend selection can be changed by policy without changing user-visible classes.",
+        "No backend package is required for amatrix to load and pass tests."
+      ]
+    },
+    {
+      "phase": 1,
+      "name": "CPU Semantic Baseline",
+      "objective": "Ship a useful core substrate with correctness-first behavior and predictable fallback.",
+      "scope": [
+        "Implement S4 methods and internal wrappers for %*%, crossprod, tcrossprod, t, rowSums, colSums, diag, solve, chol, qr, svd, and eigen",
+        "Treat Matrix as the official sparse backend for indexing, coercion, factorization, solve, and structural sparse behavior",
+        "Stabilize the backend-neutral kernel layer so package code can call am_* wrappers directly"
+      ],
+      "acceptance_criteria": [
+        "CPU-only outputs match Matrix/base semantics for covered operations.",
+        "Sparse inputs use Matrix as their default execution path.",
+        "Fallback paths are deterministic and tested.",
+        "Serialization does not depend on backend state."
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Conformance And Contract Freeze",
+      "objective": "Define semantic compatibility before expanding backend promises.",
+      "scope": [
+        "Randomized dense and sparse conformance tests",
+        "Backend parity scaffolding",
+        "Freeze the precision policy and capability vocabulary for v1",
+        "Freeze the v1 contract around one dense class, one sparse host-backed class, one backend registry, and one flagship fitter target"
+      ],
+      "acceptance_criteria": [
+        "Every covered method has a CPU-reference conformance test.",
+        "The suite runs in CPU-only CI.",
+        "Strict and fast precision modes are explicit and tested.",
+        "Backends can advertise capability and precision truthfully under one stable contract."
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Apple Dense Backend",
+      "objective": "Use MLX as the first dense optimization backend on Apple Silicon without letting it define semantics.",
+      "scope": [
+        "Implement MLX-backed dense kernels for the initial accelerated surface",
+        "Support internal dense residency and chained execution where beneficial",
+        "Respect strict-vs-fast precision policy",
+        "Keep sparse execution on Matrix/CPU initially"
+      ],
+      "acceptance_criteria": [
+        "MLX-backed dense methods pass backend parity tests.",
+        "Strict mode preserves default R semantics, including CPU fallback where MLX cannot satisfy double semantics.",
+        "Fast mode enables real MLX acceleration when numerically allowed.",
+        "At least one chained dense benchmark class shows material improvement over CPU."
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "Portable Dense Backend",
+      "objective": "Add ArrayFire as a portable dense optimization backend under the same contract.",
+      "scope": [
+        "Implement ArrayFire dense kernels for the same backend contract",
+        "Keep ArrayFire optional and cold-path focused unless residency becomes clearly justified",
+        "Do not change the public object model"
+      ],
+      "acceptance_criteria": [
+        "ArrayFire passes the same parity suite as CPU and MLX for covered dense operations.",
+        "No public API changes are required in amatrix.",
+        "ArrayFire remains an optional install-time dependency.",
+        "Its product role is documented honestly as portable dense acceleration rather than transparent residency."
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "Selective Sparse Acceleration",
+      "objective": "Add only the sparse GPU kernels that are truly warranted without changing Matrix's role as the sparse substrate.",
+      "scope": [
+        "Benchmark and identify top-value sparse kernels",
+        "Add sparse-dense matmul and sparse matvec only where backend support is explicit and credible",
+        "Maintain CSC as canonical public form and convert internally when needed"
+      ],
+      "acceptance_criteria": [
+        "Public sparse classes remain Matrix-compatible CSC-based objects.",
+        "Sparse acceleration is limited to explicitly supported kernels with tested conversions.",
+        "Unsupported sparse operations still route to Matrix correctly and predictably.",
+        "No silent densification is introduced."
+      ]
+    },
+    {
+      "phase": 6,
+      "name": "ALTREP Dense Path",
+      "objective": "Add deferred host materialization only after semantics, precision, and flagship workloads are already solid.",
+      "scope": [
+        "Prototype ALTREP-backed dense payload realization",
+        "Preserve existing user-visible class API",
+        "Materialize host data only at unsupported or host-required boundaries"
+      ],
+      "acceptance_criteria": [
+        "User-facing APIs remain unchanged.",
+        "Dense host materialization is deferred where expected.",
+        "Serialization and fallback remain deterministic."
+      ]
+    }
+  ],
+  "parallel_tracks": [
+    {
+      "name": "Model-Core Layer",
+      "start_after_phase": 2,
+      "priority": "before broad sparse acceleration and before ALTREP",
+      "objective": "Deliver one or two flagship APIs that users and package authors will actually feel, with a first public package boundary in amatrix.models.",
+      "scope": [
+        "am_lm_fit(X, Y)",
+        "shared-X many-Y least squares implementation",
+        "internal factorization/work caching in an internal registry rather than user-visible slots",
+        "amatrix.models as the preferred user-facing namespace for model-core workflows",
+        "later am_ridge_fit(X, Y), weighted least squares, covariance/correlation helpers, and batched projections"
+      ],
+      "acceptance_criteria": [
+        "am_lm_fit(X, Y) works on Matrix-compatible inputs and amatrix objects.",
+        "The implementation reuses backend-neutral kernels rather than backend-specific glue in the public API.",
+        "Strict mode preserves default R semantics.",
+        "At least one shared-X many-Y benchmark shows a meaningful improvement versus a naive repeated-fit baseline.",
+        "A public model-oriented namespace exists without forcing immediate implementation migration out of amatrix."
+      ]
+    }
+  ],
+  "ordering_rationale": {
+    "recommended_sequence": [
+      "Phase 0",
+      "Phase 1",
+      "Phase 2",
+      "Phase 3",
+      "Parallel Model-Core Track",
+      "Phase 4",
+      "Phase 6 (ALTREP — promoted above sparse)",
+      "Phase 5 (Selective Sparse — deferred)"
+    ],
+    "key_rule": "Backend expansion is blocked on semantic and precision contract freeze. Model-core fitters should begin before broad sparse or ALTREP work. ALTREP is now promoted above sparse because it is the adoption multiplier: without deferred host materialization, any downstream package that calls as.matrix() defensively defeats residency and makes zero-change adoption impossible.",
+    "phase_reorder_rationale": "Sparse acceleration is explicitly opportunistic and Matrix-first in the product contract. ALTREP enables the 'near-zero-change' adoption level (Level 0) for downstream packages that use Matrix idiomatically — every as.matrix(x) or x[i,j] call in third-party code forces a device->host materialization without ALTREP, which defeats the transparency promise. ALTREP resolves this at the substrate level before we invest in sparse GPU kernels that have a narrower audience."
+  },
+  "initial_method_surface": [
+    "%*%",
+    "crossprod",
+    "tcrossprod",
+    "Ops",
+    "rowSums",
+    "colSums",
+    "t"
+  ],
+  "kernel_surface": [
+    "am_matmul",
+    "am_crossprod",
+    "am_tcrossprod",
+    "am_ewise",
+    "am_rowSums",
+    "am_colSums",
+    "am_solve",
+    "am_chol"
+  ],
+  "flagship_api_surface": [
+    "am_lm_fit(X, Y)",
+    "am_ridge_fit(X, Y)",
+    "am_many_lm(X, Y)",
+    "am_array_lm(X, Y)",
+    "am_wls_fit(X, Y, weights)",
+    "am_covariance(X)",
+    "am_correlation(X)"
+  ],
+  "adoption_strategy": {
+    "primary_promise": "GPU acceleration should be pretty easy to adopt with small, explicit changes and a trustworthy fallback story.",
+    "not_the_contract": "Universal zero-change drop-in behavior across all R code.",
+    "developer_message": "You do not need to rewrite your package; swap in the constructor where helpful, replace 3 to 10 hot kernels first, or adopt one flagship fitter.",
+    "user_message": "If your code is already Matrix-aware, some workflows may work with almost no changes. When they do not, the substrate should still be easy to adopt through a small number of explicit edits."
+  },
+  "compatibility_target": {
+    "statement": "Works cleanly for Matrix-aware R code, backend-neutral kernels, and selected high-value model-core APIs; pursues near-zero-change adoption where feasible, but does not promise universal transparency across brittle compiled/package-internal code.",
+    "known_limits": [
+      "Exact-class checks in external packages may bypass intended compatibility.",
+      "Namespace-qualified calls or low-level C code may force host realization or bypass methods.",
+      "Direct slot mutation by external packages is not a supported optimization boundary.",
+      "Strict-vs-fast precision behavior must be explicit because some accelerator paths are inherently float32-oriented."
+    ]
+  },
+  "release_gates": {
+    "substrate_gate": [
+      "Core classes and CPU backend are stable.",
+      "Kernel wrappers exist and are usable directly.",
+      "Serialization is correct and backend-independent.",
+      "Fallback behavior is predictable."
+    ],
+    "contract_gate": [
+      "Conformance harness passes for covered operations.",
+      "Precision policy is explicit and tested.",
+      "Capability vocabulary is frozen for v1."
+    ],
+    "apple_backend_gate": [
+      "MLX-backed dense kernels pass parity tests under the current contract.",
+      "Strict mode falls back correctly where MLX cannot preserve default semantics.",
+      "Fast mode provides at least one compelling dense chained benchmark win on Apple Silicon."
+    ],
+    "model_core_gate": [
+      "am_lm_fit(X, Y) is implemented and tested against CPU references.",
+      "The implementation uses the kernel layer rather than backend-specific public glue.",
+      "At least one shared-X many-Y benchmark shows practical value.",
+      "A public model-facing namespace exists for the flagship workflows."
+    ],
+    "portable_backend_gate": [
+      "ArrayFire integration requires no public API changes.",
+      "Parity tests pass across cpu, mlx, and arrayfire for covered dense operations.",
+      "ArrayFire's product role is documented honestly."
+    ]
+  },
+  "major_risks": [
+    {
+      "risk": "Resident dense state leaks memory — no GC finalizer on adgeMatrix/adgCMatrix objects.",
+      "mitigation": "Add reg.finalizer in constructors modeled on R/qr.R:18-51 before M3 ships. Long-running many-model sessions will OOM without this fix.",
+      "severity": "critical",
+      "tracked": "bd-bsh"
+    },
+    {
+      "risk": "Object ID collision in fork-based parallel workers corrupts residency table.",
+      "mitigation": "Prefix object_id with a session UUID generated at .onLoad. Required before any parallel workflow documentation is published.",
+      "severity": "critical",
+      "tracked": "bd-of8"
+    },
+    {
+      "risk": "Cold-path resident objects pay full device->host copy, eliminating chaining benefit.",
+      "mitigation": "Rework amatrix_dispatch_op() to consult live residency before materializing. Add rowSums_resident, colSums_resident, solve_resident, chol_resident to MLX.",
+      "severity": "high",
+      "tracked": "bd-2fm, bd-u34"
+    },
+    {
+      "risk": "am_many_lm loops per Y column — flagship workload is not actually batched.",
+      "mitigation": "Wire the existing TSQR batched-qty bridge through am_many_lm for a true batched coef path. Required before the flagship benchmark is publishable.",
+      "severity": "high",
+      "tracked": "bd-x60"
+    },
+    {
+      "risk": "f32 numeric drift under MLX breaks trust for statistical users on strict mode.",
+      "mitigation": "Strict mode must never silently route to MLX f32. Conformance tests must verify strict falls back to CPU. Precision drift on fast mode must be explicitly documented and tested.",
+      "severity": "high"
+    },
+    {
+      "risk": "torch for R claims the R GPU narrative before amatrix publishes a benchmark win.",
+      "mitigation": "Publish the flagship many-Y QR benchmark before M3 closes. The benchmark must beat torch on the shared-X many-Y workload that torch cannot address naturally.",
+      "severity": "high",
+      "tracked": "bd-us9"
+    },
+    {
+      "risk": "User API not frozen before M3 ships, forcing a deprecation cycle.",
+      "mitigation": "Decide on amatrix(x, mode=) surface before any public release. Lock and document.",
+      "severity": "high",
+      "tracked": "bd-o5m"
+    },
+    {
+      "risk": "Matrix subclass compatibility is weaker than expected in some packages.",
+      "mitigation": "Define success as Matrix-aware compatibility plus kernel/model-core adoption, not universal transparency.",
+      "severity": "medium"
+    },
+    {
+      "risk": "MLX API instability breaks builds between minor versions.",
+      "mitigation": "Pin MLX version in Makevars.in. Add a CI check that reports the MLX version used. Monitor MLX changelog for breaking changes.",
+      "severity": "medium"
+    },
+    {
+      "risk": "ALTREP complexity destabilizes semantics too early.",
+      "mitigation": "Delay ALTREP until after precision, backend contract, and flagship model-core APIs are already solid. But promote ALTREP above sparse in the roadmap — it is the adoption multiplier for downstream packages.",
+      "severity": "medium",
+      "tracked": "bd-z67"
+    },
+    {
+      "risk": "Sparse acceleration complexity consumes roadmap attention before flagship workloads land.",
+      "mitigation": "Keep Matrix as the official sparse backend and defer most sparse GPU work until after ALTREP.",
+      "severity": "low"
+    },
+    {
+      "risk": "Infrastructure outruns product value.",
+      "mitigation": "Prioritize batched am_many_lm and the flagship benchmark before expanding generic method coverage further.",
+      "severity": "low"
+    }
+  ],
+  "success_definition": {
+    "technical": [
+      "amatrix objects behave like Matrix-compatible objects at the R level.",
+      "Backend execution is opportunistic and explicit in its precision policy.",
+      "Sparse behavior is CPU-native and Matrix-backed by default.",
+      "Backends can be added without redesigning the public object model.",
+      "GC finalizers prevent resident state leaks for the process lifetime.",
+      "Object IDs are fork-safe and do not collide across parallel workers."
+    ],
+    "adoption": [
+      "Package authors can adopt backend-neutral kernels without rewriting their entire class story.",
+      "Users can adopt one or two flagship APIs without learning backend internals.",
+      "Some Matrix-aware workloads can run with near-zero changes, but the dependable promise is meaningful speedups with a small number of explicit edits.",
+      "The user-facing API is frozen at amatrix(x, mode=) before any public backend release."
+    ],
+    "practical": [
+      "Users on Apple Silicon get credible dense acceleration where numerically appropriate.",
+      "Users on other platforms retain a correct CPU path immediately and a portable dense backend later.",
+      "The project has at least one undeniable workload win: batched shared-X many-Y QR fitting that beats torch for R on the same workload.",
+      "The benchmark is published in the README and reproducible by any Apple Silicon R user."
+    ],
+    "competitive": [
+      "amatrix can be described honestly as 'Matrix acceleration, not a framework' — users do not adopt a new computational model.",
+      "The shared-X many-Y batched QR path with cached factorization keyed by object identity is a concrete capability torch cannot replicate without a full user rewrite.",
+      "Strict mode never silently downcasts — R's f64-first statistical culture is preserved and trusted."
+    ]
+  }
+}

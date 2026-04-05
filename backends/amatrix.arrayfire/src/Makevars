@@ -1,0 +1,2 @@
+PKG_CPPFLAGS = -DHAVE_ARRAYFIRE -I/opt/homebrew/opt/arrayfire/include
+PKG_LIBS = -L/opt/homebrew/opt/arrayfire/lib -Wl,-rpath,/opt/homebrew/opt/arrayfire/lib -laf
