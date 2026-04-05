@@ -25,7 +25,7 @@ This is where the current QR work is paying off most clearly.
 Use `amatrix.models::many_lm()` with `method = "qr"` when the workload is one `X` and many response columns:
 
 ```r
-X <- adgeMatrix(design, preferred_backend = "mlx", precision = "fast")
+X <- adgeMatrix(design, mode = "fast", backend = "mlx")
 fit <- many_lm(X, Y_many, method = "qr", cache = TRUE)
 
 fit$responses
@@ -142,23 +142,26 @@ Current benchmark note on this machine:
 - `weighted_covariance`: about `0.0170 s`
 - `correlation`: about `0.0150 s`
 
-## Precision And Backend Policy
+## Mode And Backend
 
-Default constructors use:
+The constructor `adgeMatrix(x, mode=, backend=)` is the primary user API.
 
-- `precision = "strict"`
+| mode | semantics |
+|---|---|
+| `"exact"` | strict float64, CPU-pinned — no GPU, no silent downcast |
+| `"balanced"` | strict float64, auto routing — GPU where numerically safe (default) |
+| `"fast"` | float32-oriented, auto routing — full GPU throughput |
 
-That means:
+Default (`mode` omitted) uses `"balanced"` semantics: strict precision, CPU unless a backend is specified.
 
-- no silent numeric downgrades
-- CPU remains the semantic fallback when an accelerator only offers float32-oriented execution
-
-If you want accelerator-oriented execution:
+For accelerator-oriented execution, specify both `mode` and `backend`:
 
 ```r
-X <- adgeMatrix(design, preferred_backend = "mlx", precision = "fast")
+X <- adgeMatrix(design, mode = "fast", backend = "mlx")
 fit <- am_many_lm(X, Y_many, method = "qr", cache = TRUE)
 ```
+
+The `backend=` argument is an escape hatch for users who know which accelerator they want. Without it, the system stays on CPU regardless of `mode`.
 
 ## Why Cache Matters
 

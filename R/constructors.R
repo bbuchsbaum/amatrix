@@ -95,38 +95,54 @@ new_adgCMatrix <- function(
 
 adgeMatrix <- function(
   x,
-  preferred_backend = "cpu",
-  policy = amatrix_default_policy(),
-  precision = amatrix_default_precision()
+  mode             = NULL,
+  backend          = NULL,
+  preferred_backend = NULL,
+  policy           = NULL,
+  precision        = NULL
 ) {
-  new_adgeMatrix(x, preferred_backend = preferred_backend, policy = policy, precision = precision)
+  params <- .amatrix_resolve_mode(mode, backend, preferred_backend, policy, precision)
+  new_adgeMatrix(x, preferred_backend = params$preferred_backend,
+                 policy = params$policy, precision = params$precision)
 }
 
 adgCMatrix <- function(
   x,
-  preferred_backend = "cpu",
-  policy = amatrix_default_policy(),
-  precision = amatrix_default_precision()
+  mode             = NULL,
+  backend          = NULL,
+  preferred_backend = NULL,
+  policy           = NULL,
+  precision        = NULL
 ) {
-  new_adgCMatrix(x, preferred_backend = preferred_backend, policy = policy, precision = precision)
+  params <- .amatrix_resolve_mode(mode, backend, preferred_backend, policy, precision)
+  new_adgCMatrix(x, preferred_backend = params$preferred_backend,
+                 policy = params$policy, precision = params$precision)
 }
 
 as_adgeMatrix <- function(
   x,
-  preferred_backend = "cpu",
-  policy = amatrix_default_policy(),
-  precision = amatrix_default_precision()
+  mode             = NULL,
+  backend          = NULL,
+  preferred_backend = NULL,
+  policy           = NULL,
+  precision        = NULL
 ) {
-  new_adgeMatrix(x, preferred_backend = preferred_backend, policy = policy, precision = precision)
+  params <- .amatrix_resolve_mode(mode, backend, preferred_backend, policy, precision)
+  new_adgeMatrix(x, preferred_backend = params$preferred_backend,
+                 policy = params$policy, precision = params$precision)
 }
 
 as_adgCMatrix <- function(
   x,
-  preferred_backend = "cpu",
-  policy = amatrix_default_policy(),
-  precision = amatrix_default_precision()
+  mode             = NULL,
+  backend          = NULL,
+  preferred_backend = NULL,
+  policy           = NULL,
+  precision        = NULL
 ) {
-  new_adgCMatrix(x, preferred_backend = preferred_backend, policy = policy, precision = precision)
+  params <- .amatrix_resolve_mode(mode, backend, preferred_backend, policy, precision)
+  new_adgCMatrix(x, preferred_backend = params$preferred_backend,
+                 policy = params$policy, precision = params$precision)
 }
 
 setAs("matrix", "adgeMatrix", function(from) new_adgeMatrix(from))
