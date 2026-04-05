@@ -623,10 +623,17 @@ amatrix_mlx_colSums_resident <- function(x_key, na.rm = FALSE, dims = 1L) {
 amatrix_mlx_solve_resident <- function(a_key, b_key = NULL, out_key) {
   a_host <- amatrix_mlx_resident_materialize(a_key)
   result <- if (is.null(b_key)) {
+    # Matrix inverse (small p×p): keep on CPU — result is also small.
     base::solve(a_host)
   } else {
     b_host <- amatrix_mlx_resident_materialize(b_key)
-    base::solve(a_host, b_host)
+    # A x = B solve: use GPU Cholesky when mlx-c is available (vectorised over
+    # all columns of B — critical for large q in am_lm_fit / am_ridge_fit).
+    tryCatch(
+      .Call("amatrix_mlx_chol_solve_bridge", a_host, b_host,
+            PACKAGE = "amatrix.mlx"),
+      error = function(e) base::solve(a_host, b_host)
+    )
   }
   amatrix_mlx_resident_store(out_key, result)
   result
