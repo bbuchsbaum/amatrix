@@ -1,9 +1,9 @@
 amatrix_mlx_capabilities <- function() {
-  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "qr")
+  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "qr", "rsvd")
 }
 
 amatrix_mlx_features <- function() {
-  c("dense_f32", "resident_dense", "unified_memory", "custom_ops", "qr")
+  c("dense_f32", "resident_dense", "unified_memory", "custom_ops", "qr", "rsvd")
 }
 
 amatrix_mlx_precision_modes <- function() {
@@ -670,6 +670,15 @@ amatrix_mlx_ewise_resident <- function(lhs_key, rhs, op, out_key) {
   !is.null(dims) && length(dims) == 2L && max(dims) >= threshold
 }
 
+amatrix_mlx_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L) {
+  mat <- if (is(x, "adgeMatrix")) as.matrix(x) else x
+  .Call("amatrix_mlx_rsvd_bridge",
+        mat,
+        as.integer(k),
+        as.integer(n_oversamples),
+        as.integer(n_iter))
+}
+
 amatrix_mlx_backend <- function() {
   cpu <- amatrix:::.amatrix_cpu_backend()
   capabilities <- amatrix_mlx_capabilities()
@@ -783,6 +792,9 @@ amatrix_mlx_backend <- function() {
     },
     chol_resident = function(x_key, out_key) {
       amatrix_mlx_chol_resident(x_key, out_key = out_key)
+    },
+    rsvd = function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
+      amatrix_mlx_rsvd(x, k = k, n_oversamples = n_oversamples, n_iter = n_iter)
     }
   )
 }

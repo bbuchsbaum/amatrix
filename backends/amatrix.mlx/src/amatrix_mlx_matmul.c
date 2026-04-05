@@ -2155,3 +2155,377 @@ SEXP amatrix_mlx_tsqr_build_bridge(SEXP x, SEXP block_rows, SEXP q_keys, SEXP to
   error("mlx tsqr build bridge requires mlx-c");
 #endif
 }
+
+/* -----------------------------------------------------------------------
+ * GPU-native randomized SVD (Halko, Martinsson, Tropp 2011)
+ *
+ * All QR, matmul, and SVD ops stay on device. Single mlx_eval at the end.
+ * Signature: am_rsvd_bridge(A, k, n_oversamples, n_iter)
+ * Returns:   list(u = m×k, d = k, v = n×k)
+ * ----------------------------------------------------------------------- */
+
+#ifdef HAVE_MLXC
+static SEXP amatrix_mlx_rsvd_real(SEXP x_r, SEXP k_r, SEXP n_oversamples_r, SEXP n_iter_r) {
+  SEXP dim = getAttrib(x_r, R_DimSymbol);
+  int m = INTEGER(dim)[0];
+  int n = INTEGER(dim)[1];
+  int k = asInteger(k_r);
+  int n_oversamples = asInteger(n_oversamples_r);
+  int n_iter = asInteger(n_iter_r);
+  int p = k + n_oversamples;
+
+  /* clamp p so we don't exceed matrix dimensions */
+  if (p > m) p = m;
+  if (p > n) p = n;
+  if (k > p) k = p;
+
+  /* all intermediate device arrays */
+  mlx_array A       = mlx_array_new();
+  mlx_array Omega   = mlx_array_new();
+  mlx_array Y       = mlx_array_new();
+  mlx_array Q       = mlx_array_new();
+  mlx_array R_tmp   = mlx_array_new();
+  mlx_array At      = mlx_array_new();
+  mlx_array Z       = mlx_array_new();
+  mlx_array Qt      = mlx_array_new();
+  mlx_array B       = mlx_array_new();
+  mlx_array U_B     = mlx_array_new();
+  mlx_array S_full  = mlx_array_new();
+  mlx_array U_B_k    = mlx_array_new();
+  mlx_array S_k      = mlx_array_new();
+  mlx_array V_unnorm = mlx_array_new();
+  mlx_array inv_S_arr = mlx_array_new();
+  mlx_array U_out    = mlx_array_new();
+  mlx_array V_out    = mlx_array_new();
+  mlx_vector_array svd_res;
+  mlx_stream gpu_stream;
+  mlx_stream cpu_stream;
+  SEXP result = R_NilValue;
+
+  amatrix_mlx_install_error_handler();
+
+  if (!amatrix_mlx_gpu_stream_ok(&gpu_stream)) {
+    error("rsvd: mlx GPU stream unavailable");
+  }
+  cpu_stream = mlx_default_cpu_stream_new();
+  if (cpu_stream.ctx == NULL) {
+    mlx_stream_free(gpu_stream);
+    error("rsvd: mlx CPU stream unavailable");
+  }
+
+  /* --- Step 1: upload A to device --- */
+  A = amatrix_mlx_matrix_from_r(x_r);
+
+  /* --- Step 2: Omega = randn(n, p) --- */
+  {
+    int shape[2] = {n, p};
+    mlx_array no_key = mlx_array_new();  /* null ctx → default RNG key */
+    if (mlx_random_normal(&Omega, shape, 2, MLX_FLOAT32, 0.0f, 1.0f, no_key, gpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A);
+      error("rsvd: mlx_random_normal failed");
+    }
+    /* no_key has null ctx — nothing to free */
+  }
+
+  /* --- Step 3: Y = A @ Omega  [m,n] @ [n,p] = [m,p] --- */
+  if (mlx_matmul(&Y, A, Omega, gpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Omega);
+    error("rsvd: A @ Omega failed");
+  }
+  amatrix_mlx_free_array_if_needed(Omega);
+  if (mlx_synchronize(gpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Y);
+    error("rsvd: sync after A @ Omega failed");
+  }
+
+  /* --- Step 4: Q, _ = qr(Y)  [m,p] --- */
+  if (mlx_linalg_qr(&Q, &R_tmp, Y, cpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Y);
+    error("rsvd: QR(Y) failed");
+  }
+  amatrix_mlx_free_array_if_needed(Y);
+  amatrix_mlx_free_array_if_needed(R_tmp);
+  R_tmp = mlx_array_new();
+  if (mlx_synchronize(cpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+    error("rsvd: sync after QR(Y) failed");
+  }
+
+  /* --- Power iteration --- */
+  for (int iter = 0; iter < n_iter; ++iter) {
+    /* Z = A^T @ Q  [n,m] @ [m,p] = [n,p] */
+    if (mlx_transpose(&At, A, gpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+      error("rsvd: transpose A failed in power iter %d", iter);
+    }
+    if (mlx_matmul(&Z, At, Q, gpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+      amatrix_mlx_free_array_if_needed(At);
+      error("rsvd: A^T @ Q failed in power iter %d", iter);
+    }
+    amatrix_mlx_free_array_if_needed(At);
+    At = mlx_array_new();
+    amatrix_mlx_free_array_if_needed(Q);
+    Q = mlx_array_new();
+    if (mlx_synchronize(gpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Z);
+      error("rsvd: sync after A^T @ Q failed");
+    }
+
+    /* Q, _ = qr(Z)  [n,p] */
+    if (mlx_linalg_qr(&Q, &R_tmp, Z, cpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Z);
+      error("rsvd: QR(Z) failed in power iter %d", iter);
+    }
+    amatrix_mlx_free_array_if_needed(Z);
+    Z = mlx_array_new();
+    amatrix_mlx_free_array_if_needed(R_tmp);
+    R_tmp = mlx_array_new();
+    if (mlx_synchronize(cpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+      error("rsvd: sync after QR(Z) failed");
+    }
+
+    /* Z = A @ Q  [m,n] @ [n,p] = [m,p] */
+    if (mlx_matmul(&Z, A, Q, gpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+      error("rsvd: A @ Q failed in power iter %d", iter);
+    }
+    amatrix_mlx_free_array_if_needed(Q);
+    Q = mlx_array_new();
+    if (mlx_synchronize(gpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Z);
+      error("rsvd: sync after A @ Q failed");
+    }
+
+    /* Q, _ = qr(Z)  [m,p] */
+    if (mlx_linalg_qr(&Q, &R_tmp, Z, cpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Z);
+      error("rsvd: QR(Z2) failed in power iter %d", iter);
+    }
+    amatrix_mlx_free_array_if_needed(Z);
+    Z = mlx_array_new();
+    amatrix_mlx_free_array_if_needed(R_tmp);
+    R_tmp = mlx_array_new();
+    if (mlx_synchronize(cpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+      error("rsvd: sync after QR(Z2) failed");
+    }
+  }
+
+  /* --- Step 5: B = Q^T @ A  [p,m] @ [m,n] = [p,n] --- */
+  if (mlx_transpose(&Qt, Q, gpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+    error("rsvd: transpose Q failed");
+  }
+  if (mlx_matmul(&B, Qt, A, gpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+    amatrix_mlx_free_array_if_needed(Qt);
+    error("rsvd: Q^T @ A failed");
+  }
+  amatrix_mlx_free_array_if_needed(Qt);
+  if (mlx_synchronize(gpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+    amatrix_mlx_free_array_if_needed(B);
+    error("rsvd: sync after Q^T @ A failed");
+  }
+
+  /* --- Step 6: [U_B, S, Vt] = svd(B)  B=[p,n] ---
+   * Economy SVD: U_B=[p,p], S=[p], Vt=[p,n]  (when p <= n)
+   */
+  svd_res = mlx_vector_array_new();
+  if (mlx_linalg_svd(&svd_res, B, true, cpu_stream) != 0) {
+    mlx_vector_array_free(svd_res);
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+    amatrix_mlx_free_array_if_needed(B);
+    error("rsvd: SVD(B) failed");
+  }
+  amatrix_mlx_free_array_if_needed(B);
+  if (mlx_synchronize(cpu_stream) != 0) {
+    mlx_vector_array_free(svd_res);
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+    error("rsvd: sync after SVD(B) failed");
+  }
+
+  mlx_vector_array_get(&U_B,    svd_res, 0);
+  mlx_vector_array_get(&S_full, svd_res, 1);
+  mlx_vector_array_free(svd_res);  /* Vt not needed — V computed as A^T@U/sigma */
+
+  /* --- Step 7: slice outputs to k components --- */
+  /* U_B_k = U_B[:, :k]  [p, k] */
+  {
+    int start[2] = {0, 0};
+    int stop[2]  = {p, k};
+    int strd[2]  = {1, 1};
+    if (mlx_slice(&U_B_k, U_B, start, 2, stop, 2, strd, 2, cpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+      amatrix_mlx_free_array_if_needed(U_B); amatrix_mlx_free_array_if_needed(S_full);
+      error("rsvd: slice U_B failed");
+    }
+  }
+  amatrix_mlx_free_array_if_needed(U_B);
+
+  /* S_k = S[:k]  [k] */
+  {
+    int start[1] = {0};
+    int stop[1]  = {k};
+    int strd[1]  = {1};
+    if (mlx_slice(&S_k, S_full, start, 1, stop, 1, strd, 1, cpu_stream) != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+      amatrix_mlx_free_array_if_needed(U_B_k); amatrix_mlx_free_array_if_needed(S_full);
+      error("rsvd: slice S failed");
+    }
+  }
+  amatrix_mlx_free_array_if_needed(S_full);
+
+  /* --- Step 8: U_out = Q @ U_B_k  [m,p] @ [p,k] = [m,k] --- */
+  if (mlx_matmul(&U_out, Q, U_B_k, gpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(Q);
+    amatrix_mlx_free_array_if_needed(U_B_k); amatrix_mlx_free_array_if_needed(S_k);
+    error("rsvd: Q @ U_B_k failed");
+  }
+  amatrix_mlx_free_array_if_needed(Q);
+  amatrix_mlx_free_array_if_needed(U_B_k);
+
+  /* --- Step 9: V_out = A^T @ U_out @ inv(diag(S_k))  [n, k]
+   *   Avoids direct Vt extraction from SVD of B (which had numeric issues).
+   *   Since A ≈ U @ diag(S) @ V^T, we have V ≈ A^T @ U / sigma.
+   */
+  /* 9a: evaluate S_k so we can read float data on CPU */
+  if (mlx_array_eval(S_k) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(U_out);
+    amatrix_mlx_free_array_if_needed(S_k);
+    error("rsvd: eval S_k (for V) failed");
+  }
+  /* 9b: build [1, k] inv-sigma array for broadcast column-scaling */
+  {
+    const float *s_data = mlx_array_data_float32(S_k);
+    float *inv_s = (float *)R_alloc(k, sizeof(float));
+    for (int j = 0; j < k; j++)
+      inv_s[j] = (s_data[j] > 0.0f) ? 1.0f / s_data[j] : 0.0f;
+    int inv_shape[2] = {1, k};
+    inv_S_arr = mlx_array_new_data(inv_s, inv_shape, 2, MLX_FLOAT32);
+  }
+  /* 9c: At = A^T  [n, m] (reuse At variable, null after power-iter loop) */
+  if (mlx_transpose(&At, A, gpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(A); amatrix_mlx_free_array_if_needed(U_out);
+    amatrix_mlx_free_array_if_needed(S_k); amatrix_mlx_free_array_if_needed(inv_S_arr);
+    error("rsvd: transpose A (for V) failed");
+  }
+  amatrix_mlx_free_array_if_needed(A);
+  /* 9d: V_unnorm = At @ U_out  [n, k] */
+  if (mlx_matmul(&V_unnorm, At, U_out, gpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(At); amatrix_mlx_free_array_if_needed(U_out);
+    amatrix_mlx_free_array_if_needed(S_k); amatrix_mlx_free_array_if_needed(inv_S_arr);
+    error("rsvd: A^T @ U_out (for V) failed");
+  }
+  amatrix_mlx_free_array_if_needed(At);
+  /* 9e: V_out = V_unnorm * inv_S_arr  [n,k] * [1,k] → [n,k] (broadcast) */
+  if (mlx_multiply(&V_out, V_unnorm, inv_S_arr, gpu_stream) != 0) {
+    mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(U_out); amatrix_mlx_free_array_if_needed(V_unnorm);
+    amatrix_mlx_free_array_if_needed(S_k); amatrix_mlx_free_array_if_needed(inv_S_arr);
+    error("rsvd: V_unnorm * inv_S (for V) failed");
+  }
+  amatrix_mlx_free_array_if_needed(V_unnorm);
+  amatrix_mlx_free_array_if_needed(inv_S_arr);
+
+  /* --- Single eval: fuse and execute entire computation graph --- */
+  {
+    mlx_vector_array outputs = mlx_vector_array_new();
+    mlx_vector_array_append_value(outputs, U_out);
+    mlx_vector_array_append_value(outputs, S_k);
+    mlx_vector_array_append_value(outputs, V_out);
+    int eval_status = mlx_eval(outputs);
+    mlx_vector_array_free(outputs);
+    if (eval_status != 0) {
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(U_out);
+      amatrix_mlx_free_array_if_needed(S_k); amatrix_mlx_free_array_if_needed(V_out);
+      error("rsvd: final mlx_eval failed");
+    }
+  }
+
+  /* --- Materialize to R: U [m×k], d [k], V [n×k] --- */
+  {
+    /* U_out and V_out are already evaluated; result_to_r_matrix re-evals (no-op) */
+    SEXP u_r = PROTECT(amatrix_mlx_result_to_r_matrix(U_out));
+
+    /* S_k is 1-D [k]: already evaluated in step 9a; eval is a no-op */
+    if (mlx_array_eval(S_k) != 0) {
+      UNPROTECT(1);
+      mlx_stream_free(gpu_stream); mlx_stream_free(cpu_stream);
+      amatrix_mlx_free_array_if_needed(U_out);
+      amatrix_mlx_free_array_if_needed(S_k); amatrix_mlx_free_array_if_needed(V_out);
+      error("rsvd: eval S_k failed");
+    }
+    SEXP d_r = PROTECT(make_r_numeric_vector_from_float(
+        mlx_array_data_float32(S_k), (int)mlx_array_size(S_k)));
+
+    SEXP v_r = PROTECT(amatrix_mlx_result_to_r_matrix(V_out));
+
+    result = amatrix_named_list3("u", u_r, "d", d_r, "v", v_r);
+    UNPROTECT(3);
+  }
+
+  mlx_stream_free(gpu_stream);
+  mlx_stream_free(cpu_stream);
+  /* A freed in step 9c; At freed in step 9d */
+  amatrix_mlx_free_array_if_needed(U_out);
+  amatrix_mlx_free_array_if_needed(S_k);
+  amatrix_mlx_free_array_if_needed(V_out);
+  return result;
+}
+#endif /* HAVE_MLXC (rsvd_real) */
+
+SEXP amatrix_mlx_rsvd_bridge(SEXP x_r, SEXP k_r, SEXP n_oversamples_r, SEXP n_iter_r) {
+  if (!isReal(x_r) || !isMatrix(x_r)) {
+    error("am_rsvd: x must be a numeric matrix");
+  }
+  SEXP dim = getAttrib(x_r, R_DimSymbol);
+  int m = INTEGER(dim)[0];
+  int n = INTEGER(dim)[1];
+  if (!isInteger(k_r) || XLENGTH(k_r) != 1 || asInteger(k_r) < 1) {
+    error("am_rsvd: k must be a positive integer");
+  }
+  if (asInteger(k_r) > m || asInteger(k_r) > n) {
+    error("am_rsvd: k (%d) exceeds matrix dimension (%d x %d)", asInteger(k_r), m, n);
+  }
+  if (!isInteger(n_oversamples_r) || XLENGTH(n_oversamples_r) != 1 || asInteger(n_oversamples_r) < 0) {
+    error("am_rsvd: n_oversamples must be a non-negative integer");
+  }
+  if (!isInteger(n_iter_r) || XLENGTH(n_iter_r) != 1 || asInteger(n_iter_r) < 0) {
+    error("am_rsvd: n_iter must be a non-negative integer");
+  }
+#ifdef HAVE_MLXC
+  return amatrix_mlx_rsvd_real(x_r, k_r, n_oversamples_r, n_iter_r);
+#else
+  error("am_rsvd requires mlx-c (HAVE_MLXC not defined)");
+  return R_NilValue;
+#endif
+}
