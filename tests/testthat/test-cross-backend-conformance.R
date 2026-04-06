@@ -24,7 +24,8 @@
   Z   <- matrix(rnorm(p * p), p, p)
   S_r <- crossprod(Z) + diag(p) * 2
 
-  rhs_r <- matrix(rnorm(p * 3L), p, 3L)  # RHS for solve
+  rhs_r  <- matrix(rnorm(p * 3L), p, 3L)  # RHS for solve (p×3)
+  rhs_lm <- matrix(rnorm(n * 3L), n, 3L)  # RHS for am_many_lm (n×3)
 
   # Near-rank-3 matrix for rsvd (true reconstruction error should be ~0)
   U3 <- qr.Q(qr(matrix(rnorm(n * 3L), n, 3L)))
@@ -34,7 +35,7 @@
 
   list(n = n, p = p,
        A_r = A_r, C_r = C_r, sq_r = sq_r,
-       S_r = S_r, rhs_r = rhs_r, low_rank_r = low_rank_r)
+       S_r = S_r, rhs_r = rhs_r, rhs_lm = rhs_lm, low_rank_r = low_rank_r)
 })
 
 # -- Core conformance checker -------------------------------------------------
@@ -99,6 +100,44 @@
   # solve: A x = B  (p×3 RHS)
   expect_equal(as.matrix(solve(S, rhs)), base::solve(d$S_r, d$rhs_r),
                tolerance = tol, label = tag("solve_rhs"))
+
+  # am_covariance vs cov()
+  ref_cov <- cov(d$A_r)
+  am_cov  <- as.matrix(am_covariance(make(d$A_r)))
+  expect_equal(am_cov, ref_cov, tolerance = tol, label = tag("am_covariance"))
+
+  # am_eigen: eigenvalues (sorted) + sign-invariant residual ||A·V - V·Λ||_F / ||A||_F
+  ref_ev <- eigen(d$S_r, symmetric = TRUE)
+  am_ev  <- am_eigen(make(d$S_r), symmetric = TRUE)
+  expect_equal(sort(am_ev$values, decreasing = TRUE),
+               ref_ev$values, tolerance = tol, label = tag("eigen_values"))
+  resid_eigen <- norm(d$S_r %*% am_ev$vectors -
+                        am_ev$vectors %*% diag(am_ev$values, nrow = length(am_ev$values)), "F") /
+                 norm(d$S_r, "F")
+  expect_lt(resid_eigen, sqrt(tol), label = tag("eigen_residual"))
+
+  # svd() S4 dispatch: singular values only (vectors sign-invariant)
+  ref_sv <- base::svd(d$A_r)$d
+  am_sv  <- svd(make(d$A_r))$d
+  expect_equal(am_sv, ref_sv, tolerance = tol, label = tag("svd_values"))
+
+  # am_many_lm vs lm.fit() loop (n×3 RHS)
+  ref_coef <- do.call(cbind, lapply(seq_len(3L), function(j)
+    lm.fit(d$A_r, d$rhs_lm[, j])$coefficients))
+  dimnames(ref_coef) <- NULL   # am_many_lm does not set dimnames
+  am_coef  <- as.matrix(am_many_lm(make(d$A_r), d$rhs_lm,
+                                    method = "qr", cache = FALSE)$coefficients)
+  expect_equal(am_coef, ref_coef, tolerance = tol, label = tag("am_many_lm"))
+
+  # am_dist vs as.matrix(dist())
+  # am_dist uses the GEMM identity (||x||² + ||y||² − 2x·y); dist() uses direct
+  # element-wise sum. The two are mathematically equal but differ by ~1e-6 in
+  # float64, so we floor the tolerance at 1e-6 even for the CPU backend.
+  ref_dist <- as.matrix(dist(d$A_r, method = "euclidean"))
+  dimnames(ref_dist) <- NULL   # am_dist does not set dimnames
+  am_d     <- am_dist(d$A_r, method = "euclidean")
+  expect_equal(am_d, ref_dist, tolerance = max(tol, 1e-6),
+               label = tag("am_dist_euclidean"))
 }
 
 # -- am_rsvd conformance (reconstruction + orthonormality) --------------------

@@ -1,0 +1,8 @@
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+
+# Machine-local benchmark baseline (regenerate with: Rscript tools/benchmark-regression.R --update)
+tools/baseline.csv
