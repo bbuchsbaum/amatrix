@@ -1002,6 +1002,26 @@ kernel_matrix <- function(X, Y = NULL,
 }
 
 # ---------------------------------------------------------------------------
+# Kronecker product
+# ---------------------------------------------------------------------------
+
+#' Kronecker product
+#'
+#' Compute the Kronecker product A \eqn{\otimes} B.  For an \eqn{m \times n}
+#' matrix A and a \eqn{p \times q} matrix B the result is \eqn{mp \times nq}.
+#'
+#' @param A Numeric matrix, \code{adgeMatrix}, or \code{adgCMatrix}.
+#' @param B Numeric matrix, \code{adgeMatrix}, or \code{adgCMatrix}.
+#' @return An \code{adgeMatrix} of dimension \eqn{mp \times nq}.
+#' @export
+kron <- function(A, B) {
+  A_mat <- .am_as_double_matrix(A)
+  B_mat <- .am_as_double_matrix(B)
+  result <- base::kronecker(A_mat, B_mat)
+  adgeMatrix(result)
+}
+
+# ---------------------------------------------------------------------------
 # Batch factorization helpers
 # ---------------------------------------------------------------------------
 

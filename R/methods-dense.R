@@ -198,3 +198,27 @@ setMethod("Ops", signature(e1 = "matrix", e2 = "adgeMatrix"), function(e1, e2) {
 setMethod("Ops", signature(e1 = "Matrix", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
+
+# ---------------------------------------------------------------------------
+# norm()  — matrix / vector norms dispatched on adgeMatrix
+# ---------------------------------------------------------------------------
+if (!isGeneric("norm")) {
+  setGeneric("norm", function(x, type = "F", ...) standardGeneric("norm"))
+}
+
+setMethod("norm", "adgeMatrix", function(x, type = "F", ...) {
+  type <- match.arg(toupper(substr(type, 1L, 1L)),
+                    c("F", "1", "O", "I", "M", "2"))
+  X_mat <- as.matrix(amatrix_materialize_host(x))
+  switch(type,
+    "F" = sqrt(sum(X_mat * X_mat)),
+    "1" = ,
+    "O" = max(colSums(abs(X_mat))),
+    "I" = max(rowSums(abs(X_mat))),
+    "M" = max(abs(X_mat)),
+    "2" = {
+      sv <- rsvd(x, k = 1L)
+      sv$d[[1L]]
+    }
+  )
+})

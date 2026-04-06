@@ -515,3 +515,93 @@ test_that("batch_crossprod returns list of p x p matrices", {
     expect_equal(XtXs[[b]], crossprod(mats[[b]]), tolerance = 1e-12)
   }
 })
+
+# ---------------------------------------------------------------------------
+# norm()
+# ---------------------------------------------------------------------------
+test_that("norm Frobenius matches base::norm", {
+  set.seed(10)
+  A <- matrix(rnorm(20), 4, 5)
+  X <- adgeMatrix(A)
+  expect_equal(norm(X, "F"), base::norm(A, "F"), tolerance = 1e-12)
+})
+
+test_that("norm 1-norm (max col sum) matches base::norm", {
+  set.seed(11)
+  A <- matrix(rnorm(20), 4, 5)
+  X <- adgeMatrix(A)
+  expect_equal(norm(X, "1"), base::norm(A, "1"), tolerance = 1e-12)
+  expect_equal(norm(X, "O"), base::norm(A, "O"), tolerance = 1e-12)
+})
+
+test_that("norm infinity norm (max row sum) matches base::norm", {
+  set.seed(12)
+  A <- matrix(rnorm(20), 4, 5)
+  X <- adgeMatrix(A)
+  expect_equal(norm(X, "I"), base::norm(A, "I"), tolerance = 1e-12)
+})
+
+test_that("norm max modulus matches base::norm", {
+  set.seed(13)
+  A <- matrix(rnorm(20), 4, 5)
+  X <- adgeMatrix(A)
+  expect_equal(norm(X, "M"), base::norm(A, "M"), tolerance = 1e-12)
+})
+
+# ---------------------------------------------------------------------------
+# kron()
+# ---------------------------------------------------------------------------
+test_that("kron matches base::kronecker", {
+  A <- matrix(1:4, 2, 2)
+  B <- matrix(1:9, 3, 3)
+  K <- kron(adgeMatrix(A + 0.0), adgeMatrix(B + 0.0))
+  expect_equal(as.matrix(K), base::kronecker(A + 0.0, B + 0.0), tolerance = 1e-12)
+  expect_equal(dim(K), c(6L, 6L))
+})
+
+test_that("kron(I_m, A) gives block diagonal identity", {
+  n <- 3L; m <- 2L
+  Im <- diag(m)
+  A  <- matrix(rnorm(n * n), n, n)
+  K  <- kron(adgeMatrix(Im), adgeMatrix(A))
+  expect_equal(dim(K), c(m * n, m * n))
+  # top-left block should equal A
+  expect_equal(as.matrix(K)[seq_len(n), seq_len(n)], A, tolerance = 1e-12)
+})
+
+# ---------------------------------------------------------------------------
+# lu_factor / lu_solve
+# ---------------------------------------------------------------------------
+test_that("lu_solve recovers RHS", {
+  set.seed(20)
+  n <- 6L
+  A <- matrix(rnorm(n * n), n, n)
+  X <- adgeMatrix(A)
+  b <- rnorm(n)
+  fac <- lu_factor(X)
+  expect_s4_class(fac, "amLU")
+  expect_equal(lu_solve(fac, b), base::solve(A, b), tolerance = 1e-10)
+})
+
+test_that("lu_solve works with multiple RHS columns", {
+  set.seed(21)
+  n <- 5L; k <- 3L
+  A <- matrix(rnorm(n * n), n, n)
+  B <- matrix(rnorm(n * k), n, k)
+  fac <- lu_factor(adgeMatrix(A))
+  expect_equal(lu_solve(fac, B), base::solve(A, B), tolerance = 1e-10)
+})
+
+test_that("lu_factor rejects non-square matrix", {
+  expect_error(lu_factor(adgeMatrix(matrix(1:6, 2, 3))), "square")
+})
+
+test_that("lu_solve drops to vector for single-column RHS", {
+  set.seed(22)
+  n <- 4L
+  A <- matrix(rnorm(n * n), n, n); b <- rnorm(n)
+  fac <- lu_factor(adgeMatrix(A))
+  x <- lu_solve(fac, b)
+  expect_null(dim(x))
+  expect_length(x, n)
+})
