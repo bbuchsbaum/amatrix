@@ -1131,6 +1131,23 @@ batch_solve <- function(Ls, B) {
   Map(chol_solve, Ls, rhs_list)
 }
 
+#' Eager Kronecker product
+#'
+#' Computes \code{A ⊗ B} and returns the result as an \code{adgeMatrix}.
+#' Accepts plain matrices or any \code{aMatrix} subclass.
+#' For a lazy variant that avoids forming the full product see
+#' \code{\link{kron_matrix}}.
+#'
+#' @param A,B Matrices or \code{aMatrix} objects.
+#' @return An \code{adgeMatrix} of dimension \code{(nrow(A)*nrow(B)) x (ncol(A)*ncol(B))}.
+#' @seealso \code{\link{kron_matrix}}
+#' @export
+kron <- function(A, B) {
+  A_mat <- .am_as_double_matrix(A)
+  B_mat <- .am_as_double_matrix(B)
+  adgeMatrix(base::kronecker(A_mat, B_mat))
+}
+
 #' Batch crossproduct
 #'
 #' Compute \code{t(A_b) \%*\% A_b} for each matrix in a batch.
