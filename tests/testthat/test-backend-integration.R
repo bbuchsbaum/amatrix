@@ -103,4 +103,36 @@ for (spec in optional_backend_specs()) {
     expect_true(exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE))
     expect_identical(status$name, spec$backend)
   })
+
+  test_that(sprintf("optional backend %s respects disabled auto-registration", spec$backend), {
+    skip_if_backend_package_missing(spec)
+
+    old_opt <- getOption("amatrix.optional_backends")
+    options(amatrix.optional_backends = FALSE)
+    on.exit(options(amatrix.optional_backends = old_opt), add = TRUE)
+
+    had_backend <- exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE)
+    saved_backend <- if (had_backend) {
+      get(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE)
+    } else {
+      NULL
+    }
+
+    if (had_backend) {
+      rm(list = spec$backend, envir = amatrix:::.amatrix_state$backends)
+    }
+
+    on.exit({
+      if (exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE)) {
+        rm(list = spec$backend, envir = amatrix:::.amatrix_state$backends)
+      }
+      if (!is.null(saved_backend)) {
+        amatrix_register_backend(spec$backend, saved_backend, overwrite = TRUE)
+      }
+    }, add = TRUE)
+
+    expect_false(amatrix:::.amatrix_try_register_optional_backend(spec$backend))
+    expect_false(spec$backend %in% amatrix_backend_names())
+    expect_error(amatrix:::.amatrix_get_backend(spec$backend), "not registered")
+  })
 }

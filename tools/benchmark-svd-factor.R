@@ -1,10 +1,51 @@
 #!/usr/bin/env Rscript
 
+r_string <- function(x) {
+  paste0("\"", gsub("([\"\\\\])", "\\\\\\1", x), "\"")
+}
+
 bench_lib <- Sys.getenv("AMATRIX_BENCH_LIB", "")
 if (nzchar(bench_lib)) {
   .libPaths(c(normalizePath(bench_lib), .libPaths()))
 }
-repo_root <- normalizePath(".")
+
+script_args <- commandArgs(trailingOnly = FALSE)
+script_arg <- grep("^--file=", script_args, value = TRUE)
+direct_file_entry <- length(script_arg) > 0L
+script_path <- if (direct_file_entry) {
+  normalizePath(sub("^--file=", "", script_arg[[1L]]), mustWork = TRUE)
+} else {
+  normalizePath(file.path("tools", "benchmark-svd-factor.R"), mustWork = FALSE)
+}
+repo_root <- normalizePath(
+  if (direct_file_entry) dirname(dirname(script_path)) else ".",
+  mustWork = TRUE
+)
+safe_mlx_command <- sprintf(
+  "Rscript -e 'Sys.setenv(AMATRIX_SVD_FACTOR_ALLOW_NESTED_MLX = \"true\", AMATRIX_SVD_FACTOR_MLX_MAIN = \"true\"); setwd(%s); source(\"tools/benchmark-svd-factor.R\")'",
+  r_string(repo_root)
+)
+
+allow_nested_mlx <- identical(
+  tolower(Sys.getenv("AMATRIX_SVD_FACTOR_ALLOW_NESTED_MLX", "false")),
+  "true"
+)
+mlx_main_process <- identical(
+  tolower(Sys.getenv("AMATRIX_SVD_FACTOR_MLX_MAIN", "false")),
+  "true"
+)
+
+if (allow_nested_mlx && direct_file_entry && !mlx_main_process) {
+  stop(
+    paste0(
+      "Direct file-entry MLX launch is unstable on this machine.\nUse:\n  ",
+      safe_mlx_command
+    ),
+    call. = FALSE
+  )
+}
+
+benchmark_mlx_in_process <- allow_nested_mlx && (mlx_main_process || !direct_file_entry)
 
 suppressPackageStartupMessages({
   if (requireNamespace("pkgload", quietly = TRUE) && file.exists("DESCRIPTION")) {
@@ -29,19 +70,25 @@ load_optional_backend <- function(pkg) {
   FALSE
 }
 
-allow_nested_mlx <- identical(
-  tolower(Sys.getenv("AMATRIX_SVD_FACTOR_ALLOW_NESTED_MLX", "false")),
-  "true"
-)
-have_mlx <- if (allow_nested_mlx) load_optional_backend("amatrix.mlx") else FALSE
+mlx_source_dir <- file.path(repo_root, "backends", "amatrix.mlx")
+have_mlx <- if (benchmark_mlx_in_process) {
+  dir.exists(mlx_source_dir) || requireNamespace("amatrix.mlx", quietly = TRUE)
+} else {
+  FALSE
+}
 
 if (!requireNamespace("irlba", quietly = TRUE)) {
   stop("Package 'irlba' is required for this benchmark", call. = FALSE)
 }
 
 options(
+  amatrix.optional_backends = FALSE,
   amatrix.mlx.available = have_mlx
 )
+
+if (have_mlx) {
+  load_optional_backend("amatrix.mlx")
+}
 
 clear_factor_cache <- function() {
   cache <- amatrix:::.amatrix_state$model_cache
@@ -69,87 +116,27 @@ relative_sv_error <- function(actual, expected) {
   max(abs(actual - expected) / pmax(abs(expected), 1e-12))
 }
 
-r_string <- function(x) {
-  paste0("\"", gsub("([\"\\\\])", "\\\\\\1", x), "\"")
-}
-
-run_rscript_expr <- function(code, args = character()) {
-  out <- suppressWarnings(system2(
-    command = file.path(R.home("bin"), "Rscript"),
-    # Launch MLX workers through `Rscript -e`; quote the expression payload so
-    # the shell does not split it.
-    args = c("-e", shQuote(code), shQuote(args)),
-    stdout = TRUE,
-    stderr = TRUE
-  ))
-  list(
-    output = out,
-    status = attr(out, "status", exact = TRUE)
-  )
-}
-
-write_worker_payload <- function(payload) {
-  path <- tempfile("amatrix-svd-bench-", fileext = ".rds")
-  saveRDS(payload, path)
-  path
-}
-
-parse_worker_result <- function(output) {
-  line <- grep("^RESULT\t", output, value = TRUE)
-  if (length(line) == 0L) {
-    return(NULL)
-  }
-  fields <- strsplit(tail(line, 1L), "\t", fixed = TRUE)[[1L]]
-  fields[-1L]
-}
-
-mlx_worker_preamble <- function() {
-  setup <- character()
-  if (nzchar(bench_lib)) {
-    setup <- c(
-      setup,
-      sprintf(".libPaths(c(%s, .libPaths()));", r_string(normalizePath(bench_lib)))
-    )
-  }
-
-  setup <- c(
-    setup,
-    sprintf("pkgload::load_all(%s, quiet = TRUE);", r_string(repo_root)),
-    sprintf(
-      "if (requireNamespace(\"pkgload\", quietly = TRUE) && dir.exists(%s)) { pkgload::load_all(%s, quiet = TRUE); } else { invisible(loadNamespace(\"amatrix.mlx\")); };",
-      r_string(file.path(repo_root, "backends", "amatrix.mlx")),
-      r_string(file.path(repo_root, "backends", "amatrix.mlx"))
-    ),
-    "options(amatrix.mlx.available = TRUE);",
-    "payload <- readRDS(commandArgs(trailingOnly = TRUE)[1L]);"
-  )
-
-  paste(setup, collapse = " ")
-}
-
 measure_mlx_warmup <- function() {
   if (!have_mlx) {
     return(NA_real_)
   }
 
-  payload_path <- write_worker_payload(list(
-    x = matrix(rnorm(32L * 16L), nrow = 32L, ncol = 16L)
-  ))
-  on.exit(unlink(payload_path), add = TRUE)
-
-  code <- paste(
-    mlx_worker_preamble(),
-    "elapsed <- system.time(invisible(amatrix.mlx:::amatrix_mlx_rsvd(payload$x, k = 5L, n_oversamples = 4L, n_iter = 1L)))[[\"elapsed\"]];",
-    "cat(sprintf(\"RESULT\\t%.6f\\n\", unname(elapsed)));"
+  x <- adgeMatrix(
+    matrix(rnorm(32L * 16L), nrow = 32L, ncol = 16L),
+    preferred_backend = "mlx",
+    precision = "fast"
   )
-
-  res <- run_rscript_expr(code, args = payload_path)
-  parsed <- parse_worker_result(res$output)
-  if (!is.null(res$status) || is.null(parsed)) {
-    warning("MLX warm-up worker failed; steady-state timings may be unavailable.", call. = FALSE)
-    return(NA_real_)
-  }
-  as.numeric(parsed[[1L]])
+  clear_factor_cache()
+  gc()
+  system.time(
+    invisible(amatrix:::svd_factor(
+      x,
+      k = 5L,
+      method = "rsvd",
+      n_oversamples = 4L,
+      n_iter = 1L
+    ))
+  )[["elapsed"]]
 }
 
 benchmark_factor_path <- function(host,
@@ -167,12 +154,12 @@ benchmark_factor_path <- function(host,
 
   elapsed <- benchmark_elapsed(
     fn = function() {
-      x <- amatrix::adgeMatrix(
+      x <- adgeMatrix(
         host,
         preferred_backend = preferred_backend,
         precision = precision
       )
-      result <<- amatrix::svd_factor(
+      result <<- amatrix:::svd_factor(
         x,
         k = k,
         method = method,
@@ -193,95 +180,6 @@ benchmark_factor_path <- function(host,
     selected_backend = result@backend,
     elapsed = elapsed,
     rel_sv_err = relative_sv_error(result@d, reference_d),
-    stringsAsFactors = FALSE
-  )
-}
-
-benchmark_mlx_factor_path <- function(host,
-                                      k,
-                                      n_oversamples,
-                                      n_iter,
-                                      method,
-                                      reference_d,
-                                      reps = 3L) {
-  if (!have_mlx) {
-    return(NULL)
-  }
-
-  payload_path <- write_worker_payload(list(
-    host = host,
-    k = as.integer(k),
-    n_oversamples = as.integer(n_oversamples),
-    n_iter = as.integer(n_iter),
-    method = method,
-    reference_d = reference_d,
-    reps = as.integer(reps)
-  ))
-  on.exit(unlink(payload_path), add = TRUE)
-
-  code <- paste(
-    mlx_worker_preamble(),
-    "set.seed(20260405L);",
-    "warm <- matrix(rnorm(32L * 16L), nrow = 32L, ncol = 16L);",
-    "invisible(amatrix.mlx:::amatrix_mlx_rsvd(warm, k = 5L, n_oversamples = 4L, n_iter = 1L));",
-    "clear_cache <- function() {",
-    "  cache <- amatrix:::.amatrix_state$model_cache;",
-    "  keys <- ls(envir = cache, all.names = TRUE);",
-    "  if (length(keys) > 0L) rm(list = keys, envir = cache);",
-    "  invisible(NULL)",
-    "};",
-    "timings <- numeric(payload$reps);",
-    "err <- NA_real_;",
-    "for (idx in seq_len(payload$reps)) {",
-    "  clear_cache(); gc();",
-    "  timings[[idx]] <- system.time({",
-    "    x <- adgeMatrix(payload$host, preferred_backend = \"mlx\", precision = \"fast\");",
-    "    fac <- svd_factor(",
-    "      x,",
-    "      k = payload$k,",
-    "      method = payload$method,",
-    "      n_oversamples = payload$n_oversamples,",
-    "      n_iter = payload$n_iter",
-    "    );",
-    "    err <- max(abs(fac@d - payload$reference_d) / pmax(abs(payload$reference_d), 1e-12));",
-    "  })[[\"elapsed\"]];",
-    "};",
-    "cat(sprintf(\"RESULT\\t%s\\t%s\\t%s\\t%.6f\\t%.6f\\n\", fac@method, fac@engine, fac@backend, median(timings), err));"
-  )
-
-  res <- run_rscript_expr(code, args = payload_path)
-  parsed <- parse_worker_result(res$output)
-  if (!is.null(res$status) || is.null(parsed)) {
-    warning(
-      sprintf(
-        "MLX worker failed for %s; last output: %s",
-        method,
-        paste(tail(res$output, 4L), collapse = " | ")
-      ),
-      call. = FALSE
-    )
-    return(data.frame(
-      implementation = sprintf("svd_factor(%s)", method),
-      preferred_backend = "mlx",
-      phase = "steady_state",
-      selected_method = "unavailable",
-      selected_engine = "unavailable",
-      selected_backend = "unavailable",
-      elapsed = NA_real_,
-      rel_sv_err = NA_real_,
-      stringsAsFactors = FALSE
-    ))
-  }
-
-  data.frame(
-    implementation = sprintf("svd_factor(%s)", method),
-    preferred_backend = "mlx",
-    phase = "steady_state",
-    selected_method = parsed[[1L]],
-    selected_engine = parsed[[2L]],
-    selected_backend = parsed[[3L]],
-    elapsed = as.numeric(parsed[[4L]]),
-    rel_sv_err = as.numeric(parsed[[5L]]),
     stringsAsFactors = FALSE
   )
 }
@@ -344,20 +242,24 @@ benchmark_case <- function(n, p, k = 20L, n_oversamples = 10L, n_iter = 2L) {
   )
 
   if (have_mlx) {
-    rows[[length(rows) + 1L]] <- benchmark_mlx_factor_path(
+    rows[[length(rows) + 1L]] <- benchmark_factor_path(
       host = host,
       k = k,
       n_oversamples = n_oversamples,
       n_iter = n_iter,
+      preferred_backend = "mlx",
       method = "rsvd",
+      phase = "steady_state",
       reference_d = reference_d
     )
-    rows[[length(rows) + 1L]] <- benchmark_mlx_factor_path(
+    rows[[length(rows) + 1L]] <- benchmark_factor_path(
       host = host,
       k = k,
       n_oversamples = n_oversamples,
       n_iter = n_iter,
+      preferred_backend = "mlx",
       method = "auto",
+      phase = "steady_state",
       reference_d = reference_d
     )
   }
@@ -411,11 +313,12 @@ if (have_mlx) {
   cat(sprintf("- One-time MLX warm-up on this run: %.3f s\n", mlx_warmup_elapsed))
 } else if (
   !allow_nested_mlx &&
-    (dir.exists(file.path(repo_root, "backends", "amatrix.mlx")) ||
+    (dir.exists(mlx_source_dir) ||
        nzchar(system.file(package = "amatrix.mlx")))
 ) {
-  cat("- MLX rows are skipped here by default because nested/file-entry MLX benchmarking is unstable on this machine.\n")
-  cat("- Use the direct `Rscript -e` spot-benchmark commands documented in `docs/gpu-svd-analysis.md` for MLX steady-state numbers.\n")
+  cat("- MLX rows are skipped here by default to keep direct file-entry benchmarking stable on this machine.\n")
+  cat("- Re-run with the direct command below to benchmark MLX through the stable `Rscript -e 'source(...)'` launch path.\n")
+  cat(sprintf("  %s\n", safe_mlx_command))
 }
 if (nzchar(bench_lib)) {
   cat(sprintf("- Prepended library path from AMATRIX_BENCH_LIB=%s\n", bench_lib))
