@@ -144,14 +144,33 @@ setMethod("svd", "adgeMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), L
 })
 
 setMethod("eigen", "adgeMatrix", function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
-  am_eigen(x, symmetric = symmetric, only.values = only.values, EISPACK = EISPACK)
+  sym <- if (missing(symmetric)) NULL else symmetric
+  am_eigen(x, symmetric = sym, only.values = only.values, EISPACK = EISPACK)
 })
 
 setMethod("diag", "adgeMatrix", function(x = 1, nrow, ncol, names = TRUE) {
-  am_diag(x, nrow = nrow, ncol = ncol, names = names)
+  if (missing(nrow) && missing(ncol)) am_diag(x, names = names)
+  else if (missing(ncol))             am_diag(x, nrow = nrow, names = names)
+  else                                am_diag(x, nrow = nrow, ncol = ncol, names = names)
 })
 
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "ANY"), function(e1, e2) {
+  ewise(.Generic, e1, e2)
+})
+
+# Explicit same-class and mixed-amatrix signatures prevent S4 from preferring
+# Matrix's Ops(dgeMatrix, dgeMatrix) method (adgeMatrix extends dgeMatrix, so
+# the inherited method has distance 1+1=2 which beats (adgeMatrix, ANY) when
+# ANY has distance > 2 for the second slot).
+setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "adgeMatrix"), function(e1, e2) {
+  ewise(.Generic, e1, e2)
+})
+
+setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "adgCMatrix"), function(e1, e2) {
+  ewise(.Generic, e1, e2)
+})
+
+setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 

@@ -66,14 +66,23 @@ setMethod("svd", "adgCMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), L
 })
 
 setMethod("eigen", "adgCMatrix", function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
-  am_eigen(x, symmetric = symmetric, only.values = only.values, EISPACK = EISPACK)
+  sym <- if (missing(symmetric)) NULL else symmetric
+  am_eigen(x, symmetric = sym, only.values = only.values, EISPACK = EISPACK)
 })
 
 setMethod("diag", "adgCMatrix", function(x = 1, nrow, ncol, names = TRUE) {
-  am_diag(x, nrow = nrow, ncol = ncol, names = names)
+  if (missing(nrow) && missing(ncol)) am_diag(x, names = names)
+  else if (missing(ncol))             am_diag(x, nrow = nrow, names = names)
+  else                                am_diag(x, nrow = nrow, ncol = ncol, names = names)
 })
 
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "ANY"), function(e1, e2) {
+  ewise(.Generic, e1, e2)
+})
+
+# Explicit same-class signature: adgCMatrix extends dgCMatrix, so without this
+# Matrix's Ops(dgCMatrix, dgCMatrix) would win by distance 1+1 vs (adgCMatrix, ANY).
+setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 

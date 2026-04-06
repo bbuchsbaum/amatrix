@@ -462,9 +462,11 @@ am_solve <- function(a, b = NULL, ...) {
     if (is.null(b_arg)) return(base::solve(a, ...))
     return(base::solve(a, b = b_arg, ...))
   }
+  b_was_vector <- !is.null(b_arg) && is.numeric(b_arg) && is.null(dim(b_arg))
   choice <- .amatrix_backend_for(a, "solve", y = b_arg)
   resident <- .amatrix_try_resident_solve(a, b_arg, choice$name)
   if (!is.null(resident)) {
+    if (b_was_vector) return(as.vector(resident$value))
     value <- .amatrix_rewrap_value(a, resident$value)
     return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
   }
@@ -482,17 +484,17 @@ am_solve <- function(a, b = NULL, ...) {
     ))
   }
 
-  .amatrix_rewrap_value(
-    a,
-    amatrix_dispatch_op(
-      x = a,
-      op = "solve",
-      method = "solve",
-      y = b_arg,
-      args = list(b = .amatrix_host_arg(b_arg), ...),
-      fallback = function() base::solve(as.matrix(amatrix_materialize_host(a)), as.matrix(.amatrix_host_arg(b_arg)), ...)
-    )
+  result <- amatrix_dispatch_op(
+    x = a,
+    op = "solve",
+    method = "solve",
+    y = b_arg,
+    args = list(b = .amatrix_host_arg(b_arg), ...),
+    fallback = function() base::solve(as.matrix(amatrix_materialize_host(a)), as.matrix(.amatrix_host_arg(b_arg)), ...)
   )
+  # When b was a plain vector, base::solve() returns a named numeric vector.
+  # Preserve that contract: don't wrap back to adgeMatrix.
+  if (b_was_vector) as.vector(result) else .amatrix_rewrap_value(a, result)
 }
 
 am_chol <- function(x, ...) {
@@ -541,7 +543,13 @@ am_svd <- function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) 
   )
 }
 
-am_eigen <- function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
+am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) {
+  # Mirror base::eigen behaviour: if symmetric is not supplied, auto-detect
+  # from the host matrix so callers don't have to know the structure.
+  if (is.null(symmetric)) {
+    x_host <- as.matrix(amatrix_materialize_host(x))
+    symmetric <- isSymmetric(x_host)
+  }
   amatrix_dispatch_op(
     x = x,
     op = "eigen",
@@ -629,12 +637,27 @@ colscale <- function(X, d) {
 }
 
 am_diag <- function(x, nrow, ncol, names = TRUE) {
+  # Extract mode: diag(matrix_x) → numeric vector of diagonal elements
+  extract_mode <- (missing(nrow) && missing(ncol)) &&
+                  (is.matrix(x) || inherits(x, "aMatrix"))
+  if (extract_mode) {
+    x_host <- as.matrix(amatrix_materialize_host(x))
+    return(base::diag(x_host, names = names))
+  }
+  # Create mode: diag(d) → diagonal adgeMatrix; nrow/ncol set the size
+  nrow <- if (missing(nrow)) NULL else nrow
+  ncol <- if (missing(ncol)) NULL else ncol
   amatrix_dispatch_op(
     x = x,
     op = "diag",
     method = "diag",
     args = list(nrow = nrow, ncol = ncol, names = names),
-    fallback = function() base::diag(as.matrix(amatrix_materialize_host(x)), nrow = nrow, ncol = ncol, names = names)
+    fallback = function() {
+      args <- list(as.matrix(amatrix_materialize_host(x)), names = names)
+      if (!is.null(nrow)) args$nrow <- nrow
+      if (!is.null(ncol)) args$ncol <- ncol
+      do.call(base::diag, args)
+    }
   )
 }
 
