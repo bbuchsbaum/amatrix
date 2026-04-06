@@ -1021,6 +1021,56 @@ kron <- function(A, B) {
   adgeMatrix(result)
 }
 
+# norm: matrix and vector norms.
+#
+# Supported types (matching base::norm):
+#   "1" - max absolute column sum (1-norm)
+#   "I" - max absolute row sum (infinity-norm)
+#   "F" - Frobenius norm  (default for matrices; Euclidean for vectors)
+#   "M" - max absolute entry
+#   "2" - spectral norm (largest singular value); uses rsvd for large matrices
+#
+# For numeric vector inputs, "2" and "F" return Euclidean norm,
+# "1" returns sum(|x|), "I"/"M" return max(|x|).
+#
+# Implementation uses S4 methods to override Matrix package's ANY dispatch.
+
+.norm_type <- function(type) {
+  toupper(match.arg(type, c("1", "I", "F", "f", "M", "m", "2")))
+}
+
+# S4 method for adgeMatrix (primary dispatch)
+setMethod("norm", "adgeMatrix", function(x, type = "F", ...) {
+  type <- .norm_type(type)
+  if (type == "2") {
+    sv <- rsvd(x, k = 1L)
+    return(sv$d[[1L]])
+  }
+  base::norm(.am_as_double_matrix(x), type = type)
+})
+
+# S4 method for plain base R matrix
+setMethod("norm", "matrix", function(x, type = "F", ...) {
+  type <- .norm_type(type)
+  if (type == "2") {
+    sv <- rsvd(as_adgeMatrix(x), k = 1L)
+    return(sv$d[[1L]])
+  }
+  base::norm(x, type = type)
+})
+
+# S4 method for numeric vector: vector norms
+setMethod("norm", "numeric", function(x, type = "F", ...) {
+  type <- .norm_type(type)
+  switch(type,
+    "2" = ,
+    "F" = sqrt(sum(x^2)),
+    "1" = sum(abs(x)),
+    "I" = ,
+    "M" = max(abs(x))
+  )
+})
+
 # ---------------------------------------------------------------------------
 # Batch factorization helpers
 # ---------------------------------------------------------------------------
