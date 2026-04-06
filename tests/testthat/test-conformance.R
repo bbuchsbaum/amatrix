@@ -192,8 +192,8 @@ test_that("backend matrix summarizes chosen backends across operations", {
     expect_identical(summary$chosen_path, c("cold", "cold", "cold"))
     expect_identical(summary$resident_reuse, c(FALSE, FALSE, FALSE))
     expect_identical(summary$cpu_fallback, c(FALSE, FALSE, TRUE))
-    expect_true(grepl("recording_matrix\\[RAP-C-SC\\]", summary$candidate_summary[[1]]))
-    expect_true(grepl("cpu\\[RAP-C-SC\\]", summary$candidate_summary[[3]]))
+    expect_true(grepl("recording_matrix\\[RAP-C-KSX\\]", summary$candidate_summary[[1]]))
+    expect_true(grepl("cpu\\[RAP-C-KSX\\]", summary$candidate_summary[[3]]))
   })
 })
 

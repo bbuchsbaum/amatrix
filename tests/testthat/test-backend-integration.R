@@ -65,4 +65,42 @@ for (spec in optional_backend_specs()) {
       expect_equal(as.matrix(sparse %*% diag(2)), as.matrix(as(sparse, "dgCMatrix") %*% diag(2)), tolerance = 1e-10)
     })
   })
+
+  test_that(sprintf("optional backend %s auto-registers on demand", spec$backend), {
+    skip_if_backend_package_missing(spec)
+
+    ns <- optional_backend_namespace(spec$package)
+    register_backend <- get(spec$register_fun, envir = ns, inherits = FALSE)
+
+    had_backend <- exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE)
+    saved_backend <- if (had_backend) {
+      get(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE)
+    } else {
+      NULL
+    }
+
+    if (had_backend) {
+      rm(list = spec$backend, envir = amatrix:::.amatrix_state$backends)
+    }
+
+    on.exit({
+      if (exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE)) {
+        rm(list = spec$backend, envir = amatrix:::.amatrix_state$backends)
+      }
+      if (!is.null(saved_backend)) {
+        amatrix_register_backend(spec$backend, saved_backend, overwrite = TRUE)
+      } else {
+        register_backend(overwrite = TRUE)
+      }
+    }, add = TRUE)
+
+    expect_false(exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE))
+
+    backend <- amatrix:::.amatrix_get_backend(spec$backend)
+    status <- amatrix_backend_status(spec$backend)
+
+    expect_true(is.list(backend))
+    expect_true(exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE))
+    expect_identical(status$name, spec$backend)
+  })
 }

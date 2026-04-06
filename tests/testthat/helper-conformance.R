@@ -199,6 +199,7 @@ optional_backend_specs <- function() {
       package = "amatrix.mlx",
       backend = "mlx",
       option = "amatrix.mlx.available",
+      register_fun = "amatrix_mlx_register",
       capabilities_fun = "amatrix_mlx_capabilities",
       available_fun = "amatrix_mlx_is_available"
     ),
@@ -206,6 +207,7 @@ optional_backend_specs <- function() {
       package = "amatrix.arrayfire",
       backend = "arrayfire",
       option = "amatrix.arrayfire.available",
+      register_fun = "amatrix_arrayfire_register",
       capabilities_fun = "amatrix_arrayfire_capabilities",
       available_fun = "amatrix_arrayfire_is_available"
     )

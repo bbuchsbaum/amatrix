@@ -47,15 +47,15 @@ benchmark_case <- function(n, p, k, block_size, n_steps, seed) {
   })
   compat_bench <- benchmark_elapsed(
     function() {
-      am_irlba(x_mlx, nv = k, nu = k, work = max(3L * k, k + 20L))
+      irlba(x_mlx, nv = k, nu = k, work = max(3L * k, k + 20L))
     },
     warmup = function() {
-      invisible(am_irlba(x_mlx, nv = k, nu = k, work = max(3L * k, k + 20L)))
+      invisible(irlba(x_mlx, nv = k, nu = k, work = max(3L * k, k + 20L)))
     }
   )
   block_bench <- benchmark_elapsed(
     function() {
-      am_block_lanczos(
+      block_lanczos(
         x_mlx,
         nv = k,
         nu = k,
@@ -64,7 +64,7 @@ benchmark_case <- function(n, p, k, block_size, n_steps, seed) {
       )
     },
     warmup = function() {
-      invisible(am_block_lanczos(
+      invisible(block_lanczos(
         x_mlx,
         nv = k,
         nu = k,
@@ -83,7 +83,7 @@ benchmark_case <- function(n, p, k, block_size, n_steps, seed) {
     k = k,
     block_size = block_size_used,
     n_steps = n_steps,
-    implementation = c("irlba::irlba", "am_irlba", "am_block_lanczos"),
+    implementation = c("irlba::irlba", "irlba", "block_lanczos"),
     elapsed = c(cpu_bench$elapsed, compat_bench$elapsed, block_bench$elapsed),
     max_rel_sv_err = c(
       max(abs(cpu$d - ref_d) / pmax(abs(ref_d), 1e-12)),
@@ -126,8 +126,8 @@ benchmark_block_lanczos_cases <- function(cases = NULL) {
 print_block_lanczos_benchmark <- function(cases = NULL) {
   rows <- benchmark_block_lanczos_cases(cases = cases)
   cat("Notes:\n")
-  cat("- `am_irlba` is the compatibility wrapper around `irlba::irlba(..., fastpath = FALSE)`.\n")
-  cat("- `am_block_lanczos` is the GEMM-oriented block Krylov surface; the default cases here use the current mildly oversampled block heuristic.\n")
+  cat("- `irlba()` is the compatibility wrapper around `irlba::irlba(..., fastpath = FALSE)`.\n")
+  cat("- `block_lanczos()` is the GEMM-oriented block Krylov surface; the default cases here use the current mildly oversampled block heuristic.\n")
   cat("- `max_rel_sv_err` is measured against `La.svd()` on the same host matrix.\n\n")
   print(rows, row.names = FALSE)
   invisible(rows)

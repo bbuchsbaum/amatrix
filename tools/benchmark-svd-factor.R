@@ -14,14 +14,26 @@ suppressPackageStartupMessages({
   }
 })
 
-have_mlx <- requireNamespace("amatrix.mlx", quietly = TRUE)
+load_optional_backend <- function(pkg) {
+  source_dir <- file.path(repo_root, "backends", pkg)
+  if (requireNamespace("pkgload", quietly = TRUE) && dir.exists(source_dir)) {
+    pkgload::load_all(source_dir, quiet = TRUE)
+    return(TRUE)
+  }
+
+  if (requireNamespace(pkg, quietly = TRUE)) {
+    invisible(loadNamespace(pkg))
+    return(TRUE)
+  }
+
+  FALSE
+}
+
 allow_nested_mlx <- identical(
   tolower(Sys.getenv("AMATRIX_SVD_FACTOR_ALLOW_NESTED_MLX", "false")),
   "true"
 )
-if (have_mlx && !allow_nested_mlx) {
-  have_mlx <- FALSE
-}
+have_mlx <- if (allow_nested_mlx) load_optional_backend("amatrix.mlx") else FALSE
 
 if (!requireNamespace("irlba", quietly = TRUE)) {
   stop("Package 'irlba' is required for this benchmark", call. = FALSE)
@@ -64,9 +76,8 @@ r_string <- function(x) {
 run_rscript_expr <- function(code, args = character()) {
   out <- suppressWarnings(system2(
     command = file.path(R.home("bin"), "Rscript"),
-    # system2() routes through the shell here, so quote the -e payload
-    # explicitly; launching MLX child workers via Rscript file entrypoints
-    # aborts on this machine, while `Rscript -e` is stable.
+    # Launch MLX workers through `Rscript -e`; quote the expression payload so
+    # the shell does not split it.
     args = c("-e", shQuote(code), shQuote(args)),
     stdout = TRUE,
     stderr = TRUE
@@ -104,7 +115,11 @@ mlx_worker_preamble <- function() {
   setup <- c(
     setup,
     sprintf("pkgload::load_all(%s, quiet = TRUE);", r_string(repo_root)),
-    "invisible(loadNamespace(\"amatrix.mlx\"));",
+    sprintf(
+      "if (requireNamespace(\"pkgload\", quietly = TRUE) && dir.exists(%s)) { pkgload::load_all(%s, quiet = TRUE); } else { invisible(loadNamespace(\"amatrix.mlx\")); };",
+      r_string(file.path(repo_root, "backends", "amatrix.mlx")),
+      r_string(file.path(repo_root, "backends", "amatrix.mlx"))
+    ),
     "options(amatrix.mlx.available = TRUE);",
     "payload <- readRDS(commandArgs(trailingOnly = TRUE)[1L]);"
   )
@@ -157,7 +172,7 @@ benchmark_factor_path <- function(host,
         preferred_backend = preferred_backend,
         precision = precision
       )
-      result <<- amatrix::am_svd_factor(
+      result <<- amatrix::svd_factor(
         x,
         k = k,
         method = method,
@@ -169,25 +184,13 @@ benchmark_factor_path <- function(host,
     warmup = warmup
   )
 
-  plan_x <- amatrix::adgeMatrix(
-    host,
-    preferred_backend = preferred_backend,
-    precision = precision
-  )
-  plan <- amatrix:::.amatrix_svd_factor_plan(
-    plan_x,
-    k = k,
-    method = method,
-    n_oversamples = n_oversamples,
-    n_iter = n_iter
-  )
-
   data.frame(
-    implementation = sprintf("am_svd_factor(%s)", method),
+    implementation = sprintf("svd_factor(%s)", method),
     preferred_backend = preferred_backend,
     phase = phase,
-    selected_method = plan$method,
-    selected_backend = plan$factor_backend,
+    selected_method = result@method,
+    selected_engine = result@engine,
+    selected_backend = result@backend,
     elapsed = elapsed,
     rel_sv_err = relative_sv_error(result@d, reference_d),
     stringsAsFactors = FALSE
@@ -221,13 +224,6 @@ benchmark_mlx_factor_path <- function(host,
     "set.seed(20260405L);",
     "warm <- matrix(rnorm(32L * 16L), nrow = 32L, ncol = 16L);",
     "invisible(amatrix.mlx:::amatrix_mlx_rsvd(warm, k = 5L, n_oversamples = 4L, n_iter = 1L));",
-    "plan <- amatrix:::.amatrix_svd_factor_plan(",
-    "  adgeMatrix(payload$host, preferred_backend = \"mlx\", precision = \"fast\"),",
-    "  payload$k,",
-    "  payload$method,",
-    "  payload$n_oversamples,",
-    "  payload$n_iter",
-    ");",
     "clear_cache <- function() {",
     "  cache <- amatrix:::.amatrix_state$model_cache;",
     "  keys <- ls(envir = cache, all.names = TRUE);",
@@ -240,7 +236,7 @@ benchmark_mlx_factor_path <- function(host,
     "  clear_cache(); gc();",
     "  timings[[idx]] <- system.time({",
     "    x <- adgeMatrix(payload$host, preferred_backend = \"mlx\", precision = \"fast\");",
-    "    fac <- am_svd_factor(",
+    "    fac <- svd_factor(",
     "      x,",
     "      k = payload$k,",
     "      method = payload$method,",
@@ -249,8 +245,8 @@ benchmark_mlx_factor_path <- function(host,
     "    );",
     "    err <- max(abs(fac@d - payload$reference_d) / pmax(abs(payload$reference_d), 1e-12));",
     "  })[[\"elapsed\"]];",
-    "}",
-    "cat(sprintf(\"RESULT\\t%s\\t%s\\t%.6f\\t%.6f\\n\", plan$method, plan$factor_backend, median(timings), err));"
+    "};",
+    "cat(sprintf(\"RESULT\\t%s\\t%s\\t%s\\t%.6f\\t%.6f\\n\", fac@method, fac@engine, fac@backend, median(timings), err));"
   )
 
   res <- run_rscript_expr(code, args = payload_path)
@@ -265,10 +261,11 @@ benchmark_mlx_factor_path <- function(host,
       call. = FALSE
     )
     return(data.frame(
-      implementation = sprintf("am_svd_factor(%s)", method),
+      implementation = sprintf("svd_factor(%s)", method),
       preferred_backend = "mlx",
       phase = "steady_state",
       selected_method = "unavailable",
+      selected_engine = "unavailable",
       selected_backend = "unavailable",
       elapsed = NA_real_,
       rel_sv_err = NA_real_,
@@ -277,13 +274,14 @@ benchmark_mlx_factor_path <- function(host,
   }
 
   data.frame(
-    implementation = sprintf("am_svd_factor(%s)", method),
+    implementation = sprintf("svd_factor(%s)", method),
     preferred_backend = "mlx",
     phase = "steady_state",
     selected_method = parsed[[1L]],
-    selected_backend = parsed[[2L]],
-    elapsed = as.numeric(parsed[[3L]]),
-    rel_sv_err = as.numeric(parsed[[4L]]),
+    selected_engine = parsed[[2L]],
+    selected_backend = parsed[[3L]],
+    elapsed = as.numeric(parsed[[4L]]),
+    rel_sv_err = as.numeric(parsed[[5L]]),
     stringsAsFactors = FALSE
   )
 }
@@ -316,6 +314,7 @@ benchmark_case <- function(n, p, k = 20L, n_oversamples = 10L, n_iter = 2L) {
       preferred_backend = "cpu",
       phase = "reference",
       selected_method = "exact",
+      selected_engine = "exact_svd",
       selected_backend = "cpu",
       elapsed = exact_elapsed,
       rel_sv_err = 0,
@@ -326,6 +325,7 @@ benchmark_case <- function(n, p, k = 20L, n_oversamples = 10L, n_iter = 2L) {
       preferred_backend = "cpu",
       phase = "reference",
       selected_method = "rsvd",
+      selected_engine = "irlba_svdr",
       selected_backend = "cpu",
       elapsed = svdr_elapsed,
       rel_sv_err = relative_sv_error(svdr_result$d[seq_len(k)], reference_d),
@@ -376,6 +376,7 @@ benchmark_case <- function(n, p, k = 20L, n_oversamples = 10L, n_iter = 2L) {
     "preferred_backend",
     "phase",
     "selected_method",
+    "selected_engine",
     "selected_backend",
     "elapsed",
     "rel_sv_err"
@@ -401,13 +402,18 @@ rows$rel_sv_err <- sprintf("%.4f", rows$rel_sv_err)
 
 cat("Notes:\n")
 cat("- This harness benchmarks rank-k factorization, not downstream projection/reconstruction.\n")
+cat("- `selected_method` is the public factorization mode; `selected_engine` is the concrete implementation path.\n")
 cat("- `steady_state` means the MLX backend was warmed once before timing to avoid first-call compile cost.\n")
 cat(sprintf("- Current auto policy uses `min(dim) >= %d` and `k / min(dim) <= %.2f` before selecting rsvd.\n",
             amatrix:::.amatrix_svd_factor_rsvd_min_dim(),
             amatrix:::.amatrix_svd_factor_rsvd_max_rank_ratio()))
 if (have_mlx) {
   cat(sprintf("- One-time MLX warm-up on this run: %.3f s\n", mlx_warmup_elapsed))
-} else if (requireNamespace("amatrix.mlx", quietly = TRUE) && !allow_nested_mlx) {
+} else if (
+  !allow_nested_mlx &&
+    (dir.exists(file.path(repo_root, "backends", "amatrix.mlx")) ||
+       nzchar(system.file(package = "amatrix.mlx")))
+) {
   cat("- MLX rows are skipped here by default because nested/file-entry MLX benchmarking is unstable on this machine.\n")
   cat("- Use the direct `Rscript -e` spot-benchmark commands documented in `docs/gpu-svd-analysis.md` for MLX steady-state numbers.\n")
 }

@@ -77,12 +77,16 @@ profile_block_lanczos_case <- function(n,
   set.seed(seed)
   host <- matrix(rnorm(n * p), nrow = n, ncol = p)
   x <- adgeMatrix(host, preferred_backend = backend, precision = "fast")
-  reorth <- get(".amatrix_block_reorth", envir = asNamespace("amatrix"), inherits = FALSE)
+  reorth_prefix <- get(".amatrix_block_reorth_prefix", envir = asNamespace("amatrix"), inherits = FALSE)
+  thin_qr <- get(".amatrix_block_thin_qr", envir = asNamespace("amatrix"), inherits = FALSE)
   needs_final_qr <- get(".amatrix_block_basis_needs_final_qr", envir = asNamespace("amatrix"), inherits = FALSE)
   left_product <- get(".amatrix_block_lanczos_left_product", envir = asNamespace("amatrix"), inherits = FALSE)
-  right_operator <- get(".amatrix_block_lanczos_right_operator", envir = asNamespace("amatrix"), inherits = FALSE)(x)
+  left_operator <- get(".amatrix_block_lanczos_source_operator", envir = asNamespace("amatrix"), inherits = FALSE)(x)
+  right_operator <- get(".amatrix_block_lanczos_right_operator", envir = asNamespace("amatrix"), inherits = FALSE)(x, source_operator = left_operator)
+  drop_left <- get(".amatrix_block_lanczos_drop_source_operator", envir = asNamespace("amatrix"), inherits = FALSE)
   right_product <- get(".amatrix_block_lanczos_right_product", envir = asNamespace("amatrix"), inherits = FALSE)
   right_drop <- get(".amatrix_block_lanczos_drop_right_operator", envir = asNamespace("amatrix"), inherits = FALSE)
+  on.exit(drop_left(left_operator), add = TRUE)
   on.exit(right_drop(right_operator), add = TRUE)
 
   b <- min(as.integer(block_size), n, p)
@@ -95,38 +99,21 @@ profile_block_lanczos_case <- function(n,
       totals,
       counts,
       "init_random_qr",
-      qr(matrix(rnorm(p * b), nrow = p, ncol = b))
+      thin_qr(matrix(rnorm(p * b), nrow = p, ncol = b))
     )
-    Q_cur <- qr.Q(prof$value)
+    Q_cur <- prof$value$q
     totals <- prof$totals
     counts <- prof$counts
 
-    Q_left_blocks <- vector("list", J)
-    Q_right_blocks <- vector("list", J)
+    Q_left_basis <- matrix(0, nrow = n, ncol = J * b)
+    Q_right_basis <- matrix(0, nrow = p, ncol = J * b)
     B_proj <- matrix(0, nrow = J * b, ncol = J * b)
 
     for (j in seq_len(J)) {
-      prof <- .profile_stage(
-        totals,
-        counts,
-        "bind_prev_left_basis",
-        if (j > 1L) do.call(cbind, Q_left_blocks[seq_len(j - 1L)]) else NULL
-      )
-      QL_prev <- prof$value
-      totals <- prof$totals
-      counts <- prof$counts
+      prev_cols <- (j - 1L) * b
+      cur_cols <- ((j - 1L) * b + 1L):(j * b)
 
-      prof <- .profile_stage(
-        totals,
-        counts,
-        "bind_prev_right_basis",
-        if (j > 1L) do.call(cbind, Q_right_blocks[seq_len(j - 1L)]) else NULL
-      )
-      QR_prev <- prof$value
-      totals <- prof$totals
-      counts <- prof$counts
-
-      prof <- .profile_stage(totals, counts, "left_matmul_dispatch", left_product(x, Q_cur))
+      prof <- .profile_stage(totals, counts, "left_matmul_dispatch", left_product(x, Q_cur, operator = left_operator))
       Z_left_raw <- prof$value
       totals <- prof$totals
       counts <- prof$counts
@@ -135,43 +122,30 @@ profile_block_lanczos_case <- function(n,
         totals,
         counts,
         "left_reorth",
-        reorth(Z_left_raw, QL_prev, return_projection = TRUE)
+        reorth_prefix(Z_left_raw, Q_left_basis, prev_cols, return_projection = TRUE)
       )
       left_reorth <- prof$value
       Z_left <- left_reorth$z
       totals <- prof$totals
       counts <- prof$counts
 
-      prof <- .profile_stage(totals, counts, "left_qr", qr(Z_left))
-      left_qr <- prof$value
+      prof <- .profile_stage(totals, counts, "left_thin_qr", thin_qr(Z_left))
+      left_factor <- prof$value
       totals <- prof$totals
       counts <- prof$counts
 
-      prof <- .profile_stage(totals, counts, "left_q_extract", qr.Q(left_qr))
-      QL_j <- prof$value
-      totals <- prof$totals
-      counts <- prof$counts
-
-      prof <- .profile_stage(
-        totals,
-        counts,
-        "left_r_extract",
-        qr.R(left_qr, complete = FALSE)
-      )
-      R_left_j <- prof$value
-      totals <- prof$totals
-      counts <- prof$counts
-
+      QL_j <- left_factor$q
+      R_left_j <- left_factor$r
       storage.mode(QL_j) <- "double"
       storage.mode(R_left_j) <- "double"
-      Q_left_blocks[[j]] <- QL_j
+      Q_left_basis[, cur_cols] <- QL_j
 
       if (j > 1L) {
-        col_idx <- ((j - 2L) * b + 1L):((j - 1L) * b)
+        col_idx <- (prev_cols - b + 1L):prev_cols
         if (!is.null(left_reorth$coeff) && nrow(left_reorth$coeff) > 0L) {
           B_proj[seq_len(nrow(left_reorth$coeff)), col_idx] <- left_reorth$coeff
         }
-        row_idx <- ((j - 1L) * b + 1L):(j * b)
+        row_idx <- cur_cols
         B_proj[row_idx, col_idx] <- R_left_j[seq_len(b), seq_len(b), drop = FALSE]
       }
 
@@ -186,35 +160,23 @@ profile_block_lanczos_case <- function(n,
       totals <- prof$totals
       counts <- prof$counts
 
-      prof <- .profile_stage(totals, counts, "right_reorth", reorth(right_prod, QR_prev))
+      prof <- .profile_stage(totals, counts, "right_reorth", reorth_prefix(right_prod, Q_right_basis, prev_cols))
       Z_right <- prof$value
       totals <- prof$totals
       counts <- prof$counts
 
-      prof <- .profile_stage(totals, counts, "right_qr", qr(Z_right))
-      right_qr <- prof$value
-      totals <- prof$totals
-      counts <- prof$counts
-
-      prof <- .profile_stage(totals, counts, "right_q_extract", qr.Q(right_qr))
-      QR_j <- prof$value
+      prof <- .profile_stage(totals, counts, "right_thin_qr", thin_qr(Z_right))
+      QR_j <- prof$value$q
       totals <- prof$totals
       counts <- prof$counts
 
       storage.mode(QR_j) <- "double"
-      Q_right_blocks[[j]] <- QR_j
+      Q_right_basis[, cur_cols] <- QR_j
       Q_cur <- QR_j
     }
 
-    prof <- .profile_stage(totals, counts, "bind_full_left_basis", do.call(cbind, Q_left_blocks))
-    Q_L <- prof$value
-    totals <- prof$totals
-    counts <- prof$counts
-
-    prof <- .profile_stage(totals, counts, "bind_full_right_basis", do.call(cbind, Q_right_blocks))
-    Q_R <- prof$value
-    totals <- prof$totals
-    counts <- prof$counts
+    Q_L <- Q_left_basis
+    Q_R <- Q_right_basis
 
     needs_final_left_qr <- J > 1L && needs_final_qr(Q_L)
     if (needs_final_left_qr) {
@@ -243,17 +205,17 @@ profile_block_lanczos_case <- function(n,
       totals <- prof$totals
       counts <- prof$counts
 
-      prof <- .profile_stage(totals, counts, "projected_crossprod", crossprod(Q_L, AQ_R))
+      prof <- .profile_stage(totals, counts, "projected_crossprod", base::crossprod(Q_L, AQ_R))
       B <- prof$value
       totals <- prof$totals
       counts <- prof$counts
     } else {
-      prof <- .profile_stage(totals, counts, "last_block_dispatch", left_product(x, Q_cur))
+      prof <- .profile_stage(totals, counts, "last_block_dispatch", left_product(x, Q_cur, operator = left_operator))
       AQ_last <- prof$value
       totals <- prof$totals
       counts <- prof$counts
 
-      prof <- .profile_stage(totals, counts, "last_block_crossprod", crossprod(Q_L, AQ_last))
+      prof <- .profile_stage(totals, counts, "last_block_crossprod", base::crossprod(Q_L, AQ_last))
       last_col <- prof$value
       totals <- prof$totals
       counts <- prof$counts

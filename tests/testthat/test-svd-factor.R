@@ -50,6 +50,8 @@ test_that("svd_factor singular values match base::svd", {
   expect_s4_class(fac, "amSVD")
   expect_equal(fac@d, base_svd$d[seq_len(k)], tolerance = 1e-10)
   expect_identical(fac@k, k)
+  expect_identical(fac@method, "exact")
+  expect_identical(fac@engine, "exact_svd")
   expect_identical(fac@source_id, dat$am@object_id)
   expect_equal(ncol(fac@u), k)
   expect_equal(ncol(fac@v), k)
@@ -66,9 +68,41 @@ test_that("svd_factor subspace method recovers full-rank small problems", {
   base_svd <- base::svd(dat$host)
 
   expect_s4_class(fac, "amSVD")
+  expect_identical(fac@method, "subspace")
+  expect_identical(fac@engine, "gram")
   expect_equal(fac@d, base_svd$d[seq_len(k)], tolerance = 1e-8)
   expect_equal(base::crossprod(fac@u), diag(k), tolerance = 1e-8)
   expect_equal(base::crossprod(fac@v), diag(k), tolerance = 1e-8)
+})
+
+test_that("svd_factor subspace uses backend-native randomized SVD when available", {
+  calls <- new.env(parent = emptyenv())
+  calls$rsvd <- 0L
+
+  register_mock_rsvd_backend(
+    name = "mocksubspace",
+    rsvd_fun = function(x, k, n_oversamples = 10L, n_iter = 4L) {
+      calls$rsvd <- calls$rsvd + 1L
+      exact <- base::svd(as.matrix(x), nu = k, nv = k)
+      list(
+        u = exact$u[, seq_len(k), drop = FALSE],
+        d = exact$d[seq_len(k)],
+        v = exact$v[, seq_len(k), drop = FALSE]
+      )
+    }
+  )
+  on.exit(drop_mock_backend("mocksubspace"), add = TRUE)
+
+  dat <- make_dense(60L, 24L, seed = 12L)
+  X <- adgeMatrix(dat$host, preferred_backend = "mocksubspace", precision = "fast")
+
+  fac <- svd_factor(X, k = 8L, method = "subspace", n_oversamples = 6L, n_iter = 1L)
+
+  expect_identical(calls$rsvd, 1L)
+  expect_identical(fac@method, "subspace")
+  expect_identical(fac@engine, "backend_rsvd")
+  expect_identical(fac@backend, "mocksubspace")
+  expect_equal(fac@d, base::svd(dat$host)$d[seq_len(8L)], tolerance = 1e-10)
 })
 
 test_that("svd_project matches t(U) %*% Y", {
@@ -169,6 +203,9 @@ test_that("svd_factor auto keeps the exact path in strict precision", {
   fac <- svd_factor(X, k = 5L)
 
   expect_identical(calls$exact, 1L)
+  expect_identical(fac@method, "exact")
+  expect_identical(fac@engine, "exact_svd")
+  expect_identical(fac@backend, "cpu")
   expect_equal(fac@d, base::svd(dat$host)$d[seq_len(5L)], tolerance = 1e-10)
 })
 
@@ -261,6 +298,8 @@ test_that("svd_factor auto uses rsvd for fast low-rank GPU factors", {
   expect_identical(calls$rsvd, 1L)
   expect_identical(calls$n_oversamples, 7L)
   expect_identical(calls$n_iter, 1L)
+  expect_identical(fac@method, "rsvd")
+  expect_identical(fac@engine, "backend_rsvd")
   expect_identical(fac@backend, "mockgpu")
   expect_equal(fac@d, base::svd(dat$host)$d[seq_len(6L)], tolerance = 1e-10)
 })
@@ -338,6 +377,8 @@ test_that("svd_factor auto chooses subspace for fast moderate-rank GPU factors",
   fac <- svd_factor(X, k = 80L, n_oversamples = 6L, n_iter = 1L)
 
   expect_identical(calls$subspace, 1L)
+  expect_identical(fac@method, "subspace")
+  expect_identical(fac@engine, "gram")
   expect_identical(fac@backend, "mockgpu")
   expect_equal(fac@d, base::svd(dat$host)$d[seq_len(80L)], tolerance = 1e-10)
 })
@@ -384,6 +425,9 @@ test_that("svd_factor cache key distinguishes exact, rsvd, and subspace factors"
   expect_equal(fac_exact@d, rep(11, 4L))
   expect_equal(fac_rsvd@d, rep(7, 4L))
   expect_equal(fac_subspace@d, rep(5, 4L))
+  expect_identical(fac_exact@engine, "exact_svd")
+  expect_identical(fac_rsvd@engine, "backend_rsvd")
+  expect_identical(fac_subspace@engine, "gram")
   expect_false(identical(fac_exact, fac_rsvd))
   expect_false(identical(fac_exact, fac_subspace))
   expect_false(identical(fac_rsvd, fac_subspace))
