@@ -560,16 +560,6 @@ am_covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block
   X_arg <- .amatrix_model_dense_arg(X)
   weights <- .amatrix_validate_weights(weights, nrow(X_arg))
 
-  X_centered <- .amatrix_centered_design(X_arg, center = center, weights = weights)
-  gram_arg <- .amatrix_covariance_blockwise(X_centered, block_size = block_size, weights = weights)
-  if (is.null(gram_arg)) {
-    gram_arg <- if (is.null(weights)) {
-      am_crossprod(X_centered)
-    } else {
-      am_crossprod(.amatrix_apply_row_weights(X_centered, weights))
-    }
-  }
-
   denom <- if (is.null(weights)) {
     if (isTRUE(sample)) nrow(X_arg) - 1 else nrow(X_arg)
   } else {
@@ -578,6 +568,36 @@ am_covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block
 
   if (denom <= 0) {
     stop("effective denominator must be positive")
+  }
+
+  # Fused GPU path: center + XtX + scale in one MLX lazy graph.
+  # Only available when weights and block_size are NULL (unweighted, non-blockwise).
+  if (is.null(weights) && is.null(block_size)) {
+    bk_name <- X_arg@preferred_backend
+    if (bk_name %in% amatrix_backend_names()) {
+      bk <- .amatrix_get_backend(bk_name)
+      if (is.function(bk[["covariance"]]) && isTRUE(bk$supports("covariance", X_arg))) {
+        x_mat <- as.matrix(amatrix_materialize_host(X_arg))
+        cov_mat <- bk$covariance(x_mat, center = center, denom = denom)
+        return(adgeMatrix(
+          cov_mat,
+          preferred_backend = X_arg@preferred_backend,
+          policy = X_arg@policy,
+          precision = X_arg@precision
+        ))
+      }
+    }
+  }
+
+  # Fallback: CPU centering + GPU XtX + CPU scaling.
+  X_centered <- .amatrix_centered_design(X_arg, center = center, weights = weights)
+  gram_arg <- .amatrix_covariance_blockwise(X_centered, block_size = block_size, weights = weights)
+  if (is.null(gram_arg)) {
+    gram_arg <- if (is.null(weights)) {
+      am_crossprod(X_centered)
+    } else {
+      am_crossprod(.amatrix_apply_row_weights(X_centered, weights))
+    }
   }
 
   cov_host <- as.matrix(amatrix_materialize_host(gram_arg)) / denom

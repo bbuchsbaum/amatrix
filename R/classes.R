@@ -34,6 +34,7 @@ setClass(
     policy = "character",
     precision = "character",
     object_id = "character",
+    src_id = "character",
     finalizer_env = "environment"
   ),
   prototype = list(
@@ -41,6 +42,7 @@ setClass(
     policy = "auto",
     precision = "strict",
     object_id = "",
+    src_id = "",
     finalizer_env = new.env(parent = emptyenv())
   ),
   validity = .validate_amatrix_slots

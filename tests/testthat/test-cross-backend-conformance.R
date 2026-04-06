@@ -102,9 +102,9 @@
 }
 
 # -- am_rsvd conformance (reconstruction + orthonormality) --------------------
-.run_rsvd_conformance <- function(backend_name, tol) {
+.run_rsvd_conformance <- function(backend_name, tol, precision = "strict") {
   d   <- .conformance_data
-  X_in <- adgeMatrix(d$low_rank_r, preferred_backend = backend_name)
+  X_in <- adgeMatrix(d$low_rank_r, preferred_backend = backend_name, precision = precision)
   k   <- 3L  # true rank of d$low_rank_r is 3
 
   sv  <- am_rsvd(X_in, k = k, n_oversamples = 10L, n_iter = 4L)
@@ -239,7 +239,10 @@ test_that("mlx backend: am_rsvd reconstruction and orthonormality", {
     isTRUE(try(amatrix.mlx::amatrix_mlx_is_available(), silent = TRUE)),
     "mlx backend not available"
   )
-  .run_rsvd_conformance("mlx", tol = .GPU_TOL)
+  # In the broad cross-backend suite, strict precision should preserve the
+  # CPU-quality contract even when a GPU backend is preferred. The native MLX
+  # fast-path is covered separately by backend-local smoke tests.
+  .run_rsvd_conformance("mlx", tol = .CPU_TOL, precision = "strict")
 })
 
 # -- ArrayFire backend conformance --------------------------------------------
@@ -256,5 +259,5 @@ test_that("arrayfire backend: am_rsvd reconstruction and orthonormality", {
     isTRUE(try(amatrix.arrayfire::amatrix_arrayfire_is_available(), silent = TRUE)),
     "arrayfire backend not available"
   )
-  .run_rsvd_conformance("arrayfire", tol = .GPU_TOL)
+  .run_rsvd_conformance("arrayfire", tol = .CPU_TOL, precision = "strict")
 })

@@ -1,10 +1,29 @@
-setMethod("%*%", signature(x = "adgeMatrix", y = "ANY"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "matrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "Matrix"), function(x, y) am_matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "ANY"),       function(x, y) am_matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "matrix"),    function(x, y) am_matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "Matrix"),    function(x, y) am_matmul(x, y))
 setMethod("%*%", signature(x = "adgeMatrix", y = "dgeMatrix"), function(x, y) am_matmul(x, y))
 setMethod("%*%", signature(x = "adgeMatrix", y = "dgCMatrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "adgeMatrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"), function(x, y) am_matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "adgeMatrix"),function(x, y) am_matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"),function(x, y) am_matmul(x, y))
+
+# Left-hand numeric/matrix — required for irlba's `mult(v, A)` pattern and any
+# row-vector times adgeMatrix call. Without these, S4 falls through to base::%*%
+# which coerces A to a plain matrix, silently destroying GPU residency.
+#
+# Route through y (the adgeMatrix) for GPU dispatch. am_matmul cannot be used
+# here because it calls .amatrix_backend_for(x, ...) which expects x to be an
+# aMatrix with @preferred_backend slot.
+#
+# numeric %*% adgeMatrix: am_crossprod(A, x_col) = t(A) %*% x_col = n×1.
+# Values identical to x_row %*% A (1×n); drop()/t() in irlba normalise both.
+setMethod("%*%", signature(x = "numeric", y = "adgeMatrix"), function(x, y) {
+  am_crossprod(y, matrix(x, ncol = 1L))
+})
+
+# matrix %*% adgeMatrix: x(k×m) %*% A(m×n) = t(crossprod(A, t(x))) = k×n.
+setMethod("%*%", signature(x = "matrix",  y = "adgeMatrix"), function(x, y) {
+  am_transpose(am_crossprod(y, t(x)))
+})
 
 if (!isGeneric("t")) setGeneric("t", function(x) base::t(x))
 setMethod("t", "adgeMatrix", function(x) am_transpose(x))

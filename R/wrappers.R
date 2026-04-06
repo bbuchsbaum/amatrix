@@ -119,6 +119,51 @@
   invisible(NULL)
 }
 
+# t(A) %*% B fast path: use A's live resident key for crossprod_resident,
+# avoiding a re-upload of the (already resident) source data.
+# Uses the backend where A is resident, bypassing backend_for so that the fast
+# path works even when the planner would not normally choose that backend for a
+# standalone "crossprod" operation.
+.amatrix_try_crossprod_via_src <- function(x, y) {
+  src_entry <- .amatrix_src_resident_entry(x)
+  if (is.null(src_entry)) return(NULL)
+
+  backend_name <- src_entry$backend
+  backend <- .amatrix_get_backend(backend_name)
+  if (!.amatrix_backend_supports_resident_op(backend, "crossprod")) return(NULL)
+  if (!isTRUE(backend$resident_has(src_entry$resident_key))) return(NULL)
+
+  rhs <- .amatrix_prepare_resident_arg(y, backend_name)
+  if (is.null(rhs)) return(NULL)
+
+  out_key <- .amatrix_next_resident_key(backend_name)
+  value <- backend$crossprod_resident(src_entry$resident_key, rhs$key, out_key)
+  .amatrix_cleanup_temp_resident(list(rhs), backend_name)
+  if (is.null(value)) return(NULL)
+  list(value = value, backend = backend_name, resident_key = out_key)
+}
+
+# A %*% t(B) fast path: use B's live resident key for tcrossprod_resident.
+# Same reasoning as above: use the backend where B is resident.
+.amatrix_try_tcrossprod_via_src <- function(x, y) {
+  src_entry <- .amatrix_src_resident_entry(y)
+  if (is.null(src_entry)) return(NULL)
+
+  backend_name <- src_entry$backend
+  backend <- .amatrix_get_backend(backend_name)
+  if (!.amatrix_backend_supports_resident_op(backend, "tcrossprod")) return(NULL)
+  if (!isTRUE(backend$resident_has(src_entry$resident_key))) return(NULL)
+
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+  if (is.null(lhs)) return(NULL)
+
+  out_key <- .amatrix_next_resident_key(backend_name)
+  value <- backend$tcrossprod_resident(lhs$key, src_entry$resident_key, out_key)
+  .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+  if (is.null(value)) return(NULL)
+  list(value = value, backend = backend_name, resident_key = out_key)
+}
+
 .amatrix_try_resident_matmul <- function(x, y, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
   if (!.amatrix_backend_supports_resident_op(backend, "matmul")) {
@@ -279,9 +324,55 @@
 }
 
 am_matmul <- function(x, y) {
-  choice <- .amatrix_backend_for(x, "matmul", y = y)
-  resident <- .amatrix_try_resident_matmul(x, y, choice$name)
+  # irlba's hot path passes a plain numeric vector for v (A %*% v).
+  # _prepare_resident_arg only accepts matrices, so without promotion the
+  # resident path silently fails: _try_resident_matmul returns NULL,
+  # amatrix_dispatch_op drops the resident binding, and A is re-uploaded on
+  # every Lanczos step.  Promoting to a column matrix fixes that.
+  y_vec <- is.numeric(y) && is.null(dim(y))
+  y_eff <- if (y_vec) matrix(y, ncol = 1L) else y
+
+  # t(A) %*% B: x carries src_id pointing to A's object_id. Route to
+  # crossprod_resident(A_key, B_key) — no re-upload of the transposed data.
+  if (inherits(x, "adgeMatrix") && nzchar(x@src_id)) {
+    resident <- .amatrix_try_crossprod_via_src(x, y_eff)
+    if (!is.null(resident)) {
+      if (y_vec) {
+        bk <- .amatrix_get_backend(resident$backend)
+        mat_result <- bk$resident_materialize(resident$resident_key)
+        if (isTRUE(bk$resident_has(resident$resident_key))) bk$resident_drop(resident$resident_key)
+        return(drop(mat_result))
+      }
+      value <- .amatrix_rewrap_like(x, resident$value)
+      return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
+    }
+    # src is no longer resident — fall through to normal matmul with x's @x
+  }
+
+  # A %*% t(B): y carries src_id pointing to B's object_id. Route to
+  # tcrossprod_resident(A_key, B_key).
+  if (inherits(y_eff, "adgeMatrix") && nzchar(y_eff@src_id)) {
+    resident <- .amatrix_try_tcrossprod_via_src(x, y_eff)
+    if (!is.null(resident)) {
+      value <- .amatrix_rewrap_like(x, resident$value)
+      return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
+    }
+  }
+
+  choice <- .amatrix_backend_for(x, "matmul", y = y_eff)
+  resident <- .amatrix_try_resident_matmul(x, y_eff, choice$name)
   if (!is.null(resident)) {
+    if (y_vec) {
+      # Result is an m×1 matrix stored at out_key on device. Materialize to host,
+      # squeeze to vector, then free the out_key (not useful as a resident matrix).
+      # A's key is marked non-temporary so it stays resident for the next call.
+      bk <- .amatrix_get_backend(resident$backend)
+      mat_result <- bk$resident_materialize(resident$resident_key)
+      if (isTRUE(bk$resident_has(resident$resident_key))) {
+        bk$resident_drop(resident$resident_key)
+      }
+      return(drop(mat_result))
+    }
     value <- .amatrix_rewrap_like(x, resident$value)
     return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
   }
@@ -351,6 +442,32 @@ am_tcrossprod <- function(x, y = NULL, ...) {
   )
 }
 
+# Internal fused GEMM: alpha * op(A) %*% op(B) + beta * C.
+# Routes to the most efficient matmul variant (crossprod, tcrossprod, matmul).
+# MLX's lazy evaluation graph fuses the scale, matmul, and add automatically.
+# Never exported — callers use am_matmul / am_crossprod / am_tcrossprod directly.
+.am_gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
+                     transA = FALSE, transB = FALSE) {
+  AB <- if (transA && transB) {
+    am_matmul(am_transpose(A), am_transpose(B))
+  } else if (transA) {
+    am_crossprod(A, B)          # t(A) %*% B — uses crossprod_resident fast path
+  } else if (transB) {
+    am_tcrossprod(A, B)         # A %*% t(B) — uses tcrossprod_resident fast path
+  } else {
+    am_matmul(A, B)
+  }
+
+  if (alpha != 1.0) AB <- am_ewise("*", AB, alpha)
+
+  if (!is.null(C)) {
+    C_scaled <- if (beta != 1.0) am_ewise("*", C, beta) else C
+    am_ewise("+", AB, C_scaled)
+  } else {
+    AB
+  }
+}
+
 am_row_sums <- function(x, na.rm = FALSE, dims = 1L) {
   choice <- .amatrix_backend_for(x, "rowSums")
   resident <- .amatrix_try_resident_rowSums(x, na.rm, dims, choice$name)
@@ -378,6 +495,21 @@ am_col_sums <- function(x, na.rm = FALSE, dims = 1L) {
 }
 
 am_transpose <- function(x) {
+  # For GPU-resident matrices: create a transposed view that remembers the
+  # original object_id (src_id). When the result is used in %*%, am_matmul
+  # will detect src_id and route to crossprod_resident(A_key, B_key) without
+  # re-uploading the transposed data to the device.
+  src_backend <- .amatrix_live_resident_backend(x)
+  if (!is.null(src_backend)) {
+    t_data <- t(as.matrix(amatrix_materialize_host(x)))
+    return(new_adgeMatrix(
+      t_data,
+      preferred_backend = x@preferred_backend,
+      policy = x@policy,
+      precision = x@precision,
+      src_id = x@object_id
+    ))
+  }
   .amatrix_rewrap_like(x, t(as.matrix(amatrix_materialize_host(x))))
 }
 
@@ -533,4 +665,231 @@ am_set_dimnames <- function(x, value) {
   host_x <- amatrix_materialize_host(x)
   dimnames(host_x) <- value
   .amatrix_rewrap_like(x, host_x)
+}
+
+# ── Distance / Kernel helpers ──────────────────────────────────────────────
+
+.am_as_double_matrix <- function(x) {
+  if (inherits(x, c("adgeMatrix", "adgCMatrix")))
+    x <- amatrix_materialize_host(x)
+  if (!is.matrix(x)) x <- as.matrix(x)
+  if (!is.double(x)) storage.mode(x) <- "double"
+  x
+}
+
+# GPU dispatch helpers for distance/kernel computation.
+# .am_dist_sq_gpu: returns squared Euclidean distance matrix [m×n].
+# .am_kernel_gpu:  returns kernel matrix [m×n].
+# Both use dedicated column-major AF bridges (all dims) or MLX.
+
+.am_af_ok <- function() {
+  tryCatch(
+    requireNamespace("amatrix.arrayfire", quietly = TRUE) &&
+      amatrix.arrayfire::amatrix_arrayfire_is_available(),
+    error = function(e) FALSE
+  )
+}
+.am_mlx_ok <- function() {
+  tryCatch(
+    requireNamespace("amatrix.mlx", quietly = TRUE) &&
+      amatrix.mlx::amatrix_mlx_is_available(),
+    error = function(e) FALSE
+  )
+}
+
+# MLX is preferred on Apple Silicon (39x vs 9x speedup in benchmarks).
+# AF is the fallback for CUDA/other platforms where MLX is unavailable.
+
+# AF bridge does D² entirely in C (GEMM + rowSums + broadcast + clamp) with no
+# R-level allocation overhead, so it's fast regardless of GPU vs CPU backend.
+# MLX path only does the GEMM on GPU; subsequent R ops on 3M-element matrices
+# add ~150ms overhead for large matrices — only worthwhile when AF unavailable.
+.am_dist_sq_gpu <- function(X, Y = NULL) {
+  if (isTRUE(.am_af_ok()))
+    return(.Call("am_af_dist_sq_bridge", X, Y, PACKAGE = "amatrix.arrayfire"))
+  Y_eff <- if (is.null(Y)) X else Y
+  if (isTRUE(.am_mlx_ok())) {
+    G  <- .Call("amatrix_mlx_tcrossprod_bridge", X, Y, PACKAGE = "amatrix.mlx")
+    nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+    return(pmax(outer(nx, ny, "+") - 2 * G, 0))
+  }
+  G  <- tcrossprod(X, Y)
+  nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+  pmax(outer(nx, ny, "+") - 2 * G, 0)
+}
+
+.am_kernel_gpu <- function(X, Y = NULL, kernel, sigma, degree, coef) {
+  # AF bridge computes entire kernel in C — no R allocation overhead.
+  if (isTRUE(.am_af_ok()))
+    return(.Call("am_af_kernel_bridge", X, Y, kernel,
+                 as.double(sigma), as.integer(degree), as.double(coef),
+                 PACKAGE = "amatrix.arrayfire"))
+  # MLX: GPU GEMM + R-level transforms (cheap for linear/poly/cosine; heavier for rbf/lap)
+  if (isTRUE(.am_mlx_ok())) {
+    G     <- .Call("amatrix_mlx_tcrossprod_bridge", X, Y, PACKAGE = "amatrix.mlx")
+    Y_eff <- if (is.null(Y)) X else Y
+    return(switch(kernel,
+      linear     = G,
+      polynomial = (coef + G)^degree,
+      cosine     = {
+        nx <- sqrt(rowSums(X^2)); ny <- if (is.null(Y)) nx else sqrt(rowSums(Y_eff^2))
+        G / pmax(outer(nx, ny), .Machine$double.eps)
+      },
+      rbf        = {
+        nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+        D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
+        if (is.null(Y)) diag(D_sq) <- 0
+        exp(-D_sq / (2 * sigma^2))
+      },
+      laplacian  = {
+        nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+        D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
+        if (is.null(Y)) diag(D_sq) <- 0
+        exp(-sqrt(D_sq) / sigma)
+      }
+    ))
+  }
+  # CPU fallback
+  Y_eff <- if (is.null(Y)) X else Y
+  G <- tcrossprod(X, Y)
+
+  switch(kernel,
+    linear     = G,
+    polynomial = (coef + G)^degree,
+    cosine     = {
+      nx <- sqrt(rowSums(X^2))
+      ny <- if (is.null(Y)) nx else sqrt(rowSums(Y_eff^2))
+      G / pmax(outer(nx, ny), .Machine$double.eps)
+    },
+    rbf        = {
+      nx   <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+      D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
+      if (is.null(Y)) diag(D_sq) <- 0
+      exp(-D_sq / (2 * sigma^2))
+    },
+    laplacian  = {
+      nx   <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+      D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
+      if (is.null(Y)) diag(D_sq) <- 0
+      exp(-sqrt(D_sq) / sigma)
+    }
+  )
+}
+
+# Tiled pairwise distance for large n (avoids GPU OOM on n > 50k).
+# Processes row-blocks of X (and Y) independently, assembling the host result
+# block by block.  Exploits symmetry when Y = NULL to halve the GEMM count.
+.am_dist_tiled <- function(X, Y, method, tile_size) {
+  m <- nrow(X)
+  symmetric <- is.null(Y)
+  Y_eff <- if (symmetric) X else Y
+  n <- nrow(Y_eff)
+
+  result <- matrix(0.0, nrow = m, ncol = n)
+
+  i_breaks <- c(seq(1L, m, by = tile_size), m + 1L)
+  j_breaks <- c(seq(1L, n, by = tile_size), n + 1L)
+  ni <- length(i_breaks) - 1L
+  nj <- length(j_breaks) - 1L
+
+  for (ii in seq_len(ni)) {
+    i0 <- i_breaks[ii]; i1 <- i_breaks[ii + 1L] - 1L
+    Xi <- X[i0:i1, , drop = FALSE]
+
+    # Symmetric: compute only lower-triangular blocks, mirror to upper.
+    j_end <- if (symmetric) ii else nj
+    for (jj in seq_len(j_end)) {
+      j0 <- j_breaks[jj]; j1 <- j_breaks[jj + 1L] - 1L
+      Xj <- Y_eff[j0:j1, , drop = FALSE]
+
+      D_sq <- .am_dist_sq_gpu(Xi, Xj)
+      D_block <- if (method == "euclidean") sqrt(D_sq) else D_sq
+
+      result[i0:i1, j0:j1] <- D_block
+      if (symmetric && ii != jj) result[j0:j1, i0:i1] <- t(D_block)
+    }
+  }
+
+  if (symmetric) diag(result) <- 0
+  result
+}
+
+#' GPU-accelerated pairwise distance matrix
+#'
+#' Computes the pairwise distance matrix between rows of \code{X} and \code{Y}.
+#' The dominant cost (row inner-products via tcrossprod) is dispatched to the
+#' active GPU backend (ArrayFire or MLX); norm computation and final transforms
+#' run on CPU where they are O(mp + np) — negligible versus the O(mnp) GEMM.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix}, shape [m, p].
+#' @param Y Numeric matrix or \code{adgeMatrix}, shape [n, p], or \code{NULL}
+#'   to compute pairwise distances within \code{X} (returns [m, m] matrix).
+#' @param method One of \code{"euclidean"} (default), \code{"sqeuclidean"},
+#'   or \code{"cosine"}.
+#' @param tile_size Integer row-block size for tiled computation, or \code{NULL}
+#'   (default) to auto-tile when \code{nrow(X) > 50000} (self-distance only).
+#'   Set explicitly to process any size in row-blocks; useful when GPU memory
+#'   is limited.  Not supported for \code{method = "cosine"}.
+#' @return Numeric matrix [m, n] of pairwise distances.
+#' @seealso \code{\link{am_kernel}}
+#' @export
+am_dist <- function(X, Y = NULL,
+                    method = c("euclidean", "sqeuclidean", "cosine"),
+                    tile_size = NULL) {
+  method <- match.arg(method)
+  X_mat <- .am_as_double_matrix(X)
+  Y_mat <- if (!is.null(Y)) .am_as_double_matrix(Y) else NULL
+
+  # Auto-tile for large self-distance to prevent GPU OOM
+  if (is.null(tile_size) && is.null(Y_mat) && nrow(X_mat) > 50000L)
+    tile_size <- 10000L
+
+  if (!is.null(tile_size) && method != "cosine") {
+    return(.am_dist_tiled(X_mat, Y_mat, method, as.integer(tile_size)))
+  }
+
+  if (method == "cosine")
+    return(.am_kernel_gpu(X_mat, Y_mat, "cosine", 1.0, 2L, 0.0))
+
+  D_sq <- .am_dist_sq_gpu(X_mat, Y_mat)
+  if (is.null(Y_mat)) diag(D_sq) <- 0   # fix float32/float64 diagonal mismatch
+  if (method == "sqeuclidean") return(D_sq)
+  sqrt(D_sq)
+}
+
+#' GPU-accelerated pairwise kernel matrix
+#'
+#' Computes the pairwise kernel matrix between rows of \code{X} and \code{Y}.
+#' The expensive tcrossprod is GPU-dispatched; element-wise transforms (exp,
+#' sqrt, pow) run on CPU.
+#'
+#' Kernels:
+#' \describe{
+#'   \item{linear}{k(x,y) = x·y}
+#'   \item{rbf}{k(x,y) = exp(-||x-y||² / (2σ²))}
+#'   \item{polynomial}{k(x,y) = (coef + x·y)^degree}
+#'   \item{cosine}{k(x,y) = x·y / (||x|| ||y||)}
+#'   \item{laplacian}{k(x,y) = exp(-||x-y|| / σ)}
+#' }
+#'
+#' @param X Numeric matrix or \code{adgeMatrix}, shape [m, p].
+#' @param Y Numeric matrix or \code{adgeMatrix}, shape [n, p], or \code{NULL}.
+#' @param kernel Kernel type string (see Details).
+#' @param sigma Bandwidth for \code{"rbf"} and \code{"laplacian"}.
+#' @param degree Polynomial degree for \code{"polynomial"}.
+#' @param coef Constant term for \code{"polynomial"}: (coef + x·y)^degree.
+#' @return Numeric matrix [m, n] of kernel values.
+#' @seealso \code{\link{am_dist}}
+#' @export
+am_kernel <- function(X, Y = NULL,
+                      kernel = c("linear", "rbf", "polynomial",
+                                 "cosine", "laplacian"),
+                      sigma = 1.0, degree = 2L, coef = 0.0) {
+  kernel <- match.arg(kernel)
+  X_mat  <- .am_as_double_matrix(X)
+  Y_mat  <- if (!is.null(Y)) .am_as_double_matrix(Y) else NULL
+  Y_eff  <- if (is.null(Y_mat)) X_mat else Y_mat
+
+  .am_kernel_gpu(X_mat, Y_mat, kernel,
+                 sigma = sigma, degree = degree, coef = coef)
 }

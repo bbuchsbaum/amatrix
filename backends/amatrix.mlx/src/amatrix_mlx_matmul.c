@@ -1014,6 +1014,8 @@ static SEXP amatrix_mlx_tsqr_build_real(SEXP x, SEXP block_rows, SEXP q_keys, SE
   mlx_stream stream = mlx_default_cpu_stream_new();
   float* block_buf = NULL;
   float* r_stack_buf = NULL;
+  mlx_array* leaf_q = NULL;
+  mlx_array* leaf_r = NULL;
   SEXP result = R_NilValue;
   SEXP block_rows_r = R_NilValue;
   SEXP q_keys_r = R_NilValue;
@@ -1030,60 +1032,68 @@ static SEXP amatrix_mlx_tsqr_build_real(SEXP x, SEXP block_rows, SEXP q_keys, SE
 
   block_buf = (float*) R_alloc((size_t)block_rows_val * (size_t)ncol, sizeof(float));
   r_stack_buf = (float*) R_alloc((size_t)top_nrow * (size_t)ncol, sizeof(float));
+  leaf_q = (mlx_array*) R_alloc((size_t)nblocks, sizeof(mlx_array));
+  leaf_r = (mlx_array*) R_alloc((size_t)nblocks, sizeof(mlx_array));
 
   PROTECT(block_rows_r = allocVector(INTSXP, nblocks));
   PROTECT(q_keys_r = duplicate(q_keys));
 
+  /* Phase 1: Schedule all leaf QRs without per-block sync/eval.
+   * mlx_array_new_data copies block_buf immediately so reusing it across
+   * iterations is safe. Batching all schedules before any eval lets MLX's
+   * lazy graph engine pipeline the leaf QRs on the GPU. */
   for (int block_idx = 0; block_idx < nblocks; ++block_idx) {
     const int row_start = block_idx * block_rows_val;
     const int block_nrow = (row_start + block_rows_val <= nrow) ? block_rows_val : (nrow - row_start);
     const int block_shape[2] = {block_nrow, ncol};
     mlx_array ax = mlx_array_new();
-    mlx_array q = mlx_array_new();
-    mlx_array r = mlx_array_new();
-    const float* r_data = NULL;
-    amatrix_mlx_resident_entry* entry = NULL;
+    leaf_q[block_idx] = mlx_array_new();
+    leaf_r[block_idx] = mlx_array_new();
 
     INTEGER(block_rows_r)[block_idx] = block_nrow;
     copy_r_block_to_row_major_float(block_buf, x_data, nrow, ncol, row_start, block_nrow);
-
     ax = mlx_array_new_data(block_buf, block_shape, 2, MLX_FLOAT32);
 
-    if (mlx_linalg_qr(&q, &r, ax, stream) != 0) {
+    if (mlx_linalg_qr(&leaf_q[block_idx], &leaf_r[block_idx], ax, stream) != 0) {
       mlx_stream_free(stream);
       amatrix_mlx_free_array_if_needed(ax);
-      amatrix_mlx_free_array_if_needed(q);
-      amatrix_mlx_free_array_if_needed(r);
+      for (int j = 0; j <= block_idx; ++j) {
+        amatrix_mlx_free_array_if_needed(leaf_q[j]);
+        amatrix_mlx_free_array_if_needed(leaf_r[j]);
+      }
       UNPROTECT(2);
-      error("mlx_linalg_qr failed in tsqr leaf");
+      error("mlx_linalg_qr failed in tsqr leaf %d", block_idx);
     }
+    amatrix_mlx_free_array_if_needed(ax);
+  }
 
-    if (mlx_synchronize(stream) != 0) {
+  /* Phase 2: Batch evaluate all leaf R matrices. Scheduling all QRs first
+   * gives the MLX GPU stream the opportunity to execute them concurrently. */
+  for (int block_idx = 0; block_idx < nblocks; ++block_idx) {
+    if (mlx_array_eval(leaf_r[block_idx]) != 0) {
       mlx_stream_free(stream);
-      amatrix_mlx_free_array_if_needed(ax);
-      amatrix_mlx_free_array_if_needed(q);
-      amatrix_mlx_free_array_if_needed(r);
+      for (int j = 0; j < nblocks; ++j) {
+        amatrix_mlx_free_array_if_needed(leaf_q[j]);
+        amatrix_mlx_free_array_if_needed(leaf_r[j]);
+      }
       UNPROTECT(2);
-      error("mlx_synchronize failed in tsqr leaf");
+      error("mlx_array_eval failed for tsqr leaf R %d", block_idx);
     }
+  }
 
-    if (mlx_array_eval(r) != 0) {
-      mlx_stream_free(stream);
-      amatrix_mlx_free_array_if_needed(ax);
-      amatrix_mlx_free_array_if_needed(q);
-      amatrix_mlx_free_array_if_needed(r);
-      UNPROTECT(2);
-      error("mlx_array_eval failed in tsqr leaf");
-    }
+  /* Phase 3: Copy R data into r_stack_buf and store Q arrays in registry. */
+  for (int block_idx = 0; block_idx < nblocks; ++block_idx) {
+    const float* r_data = mlx_array_data_float32(leaf_r[block_idx]);
+    amatrix_mlx_resident_entry* entry = NULL;
 
-    r_data = mlx_array_data_float32(r);
     if (r_data == NULL) {
       mlx_stream_free(stream);
-      amatrix_mlx_free_array_if_needed(ax);
-      amatrix_mlx_free_array_if_needed(q);
-      amatrix_mlx_free_array_if_needed(r);
+      for (int j = 0; j < nblocks; ++j) {
+        amatrix_mlx_free_array_if_needed(leaf_q[j]);
+        amatrix_mlx_free_array_if_needed(leaf_r[j]);
+      }
       UNPROTECT(2);
-      error("mlx tsqr leaf R data is unavailable");
+      error("mlx tsqr leaf R data unavailable for block %d", block_idx);
     }
 
     memcpy(
@@ -1093,10 +1103,9 @@ static SEXP amatrix_mlx_tsqr_build_real(SEXP x, SEXP block_rows, SEXP q_keys, SE
     );
 
     entry = amatrix_mlx_registry_reserve(CHAR(STRING_ELT(q_keys_r, block_idx)));
-    entry->array = q;
+    entry->array = leaf_q[block_idx];
 
-    amatrix_mlx_free_array_if_needed(ax);
-    amatrix_mlx_free_array_if_needed(r);
+    amatrix_mlx_free_array_if_needed(leaf_r[block_idx]);
   }
 
   {
@@ -1115,15 +1124,6 @@ static SEXP amatrix_mlx_tsqr_build_real(SEXP x, SEXP block_rows, SEXP q_keys, SE
       amatrix_mlx_free_array_if_needed(r);
       UNPROTECT(2);
       error("mlx_linalg_qr failed in tsqr top reduction");
-    }
-
-    if (mlx_synchronize(stream) != 0) {
-      mlx_stream_free(stream);
-      amatrix_mlx_free_array_if_needed(ax);
-      amatrix_mlx_free_array_if_needed(q);
-      amatrix_mlx_free_array_if_needed(r);
-      UNPROTECT(2);
-      error("mlx_synchronize failed in tsqr top reduction");
     }
 
     if (mlx_array_eval(r) != 0) {
@@ -2997,6 +2997,115 @@ SEXP amatrix_mlx_eigh_bridge(SEXP A_r) {
   return amatrix_mlx_eigh_real(A_r);
 #else
   error("amatrix_mlx_eigh requires mlx-c (HAVE_MLXC not defined)");
+  return R_NilValue;
+#endif
+}
+
+/* Fused covariance: center X on GPU, compute X_c^T X_c / denom in one lazy graph.
+ * Eliminates two CPU materializations compared to the three-step R-side path.
+ * Arguments:
+ *   x_r      - real matrix (n x p), column-major R layout
+ *   center_r - logical scalar: whether to subtract column means
+ *   denom_r  - numeric scalar: divisor (n-1 for sample cov, n for population)
+ * Returns a p x p real matrix (column-major R layout).
+ */
+static SEXP amatrix_mlx_covariance_real(SEXP x_r, SEXP center_r, SEXP denom_r) {
+  mlx_stream stream;
+  mlx_array ax      = mlx_array_new();
+  mlx_array xc      = mlx_array_new();
+  mlx_array xct     = mlx_array_new();
+  mlx_array col_s   = mlx_array_new();
+  mlx_array col_m   = mlx_array_new();
+  mlx_array gram    = mlx_array_new();
+  mlx_array cov     = mlx_array_new();
+  mlx_array sc      = mlx_array_new();
+  const int do_center = LOGICAL(center_r)[0];
+  const double denom_val = isReal(denom_r) ? REAL(denom_r)[0] : (double)INTEGER(denom_r)[0];
+  const int nrow = INTEGER(getAttrib(x_r, R_DimSymbol))[0];
+  SEXP result = R_NilValue;
+
+  amatrix_mlx_install_error_handler();
+
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+    error("mlx GPU stream is unavailable");
+  }
+
+  ax = amatrix_mlx_matrix_from_r(x_r);
+
+  if (do_center) {
+    /* col_s[j] = sum_i X[i,j]  →  shape [p] */
+    if (mlx_sum_axis(&col_s, ax, 0, false, stream) != 0) {
+      mlx_stream_free(stream); amatrix_mlx_free_array_if_needed(ax);
+      error("mlx_sum_axis failed in covariance centering");
+    }
+
+    /* col_m = col_s / n  →  shape [p] */
+    sc = mlx_array_new_float32(1.0f / (float)nrow);
+    if (mlx_multiply(&col_m, col_s, sc, stream) != 0) {
+      mlx_stream_free(stream); amatrix_mlx_free_array_if_needed(ax);
+      amatrix_mlx_free_array_if_needed(col_s); amatrix_mlx_free_array_if_needed(sc);
+      error("mlx_multiply failed computing column means");
+    }
+    amatrix_mlx_free_array_if_needed(col_s);
+    amatrix_mlx_free_array_if_needed(sc);
+
+    /* xc = ax - col_m  (broadcast [n,p] - [p])  →  [n,p] */
+    if (mlx_subtract(&xc, ax, col_m, stream) != 0) {
+      mlx_stream_free(stream); amatrix_mlx_free_array_if_needed(ax);
+      amatrix_mlx_free_array_if_needed(col_m);
+      error("mlx_subtract failed in covariance centering");
+    }
+    amatrix_mlx_free_array_if_needed(ax);
+    amatrix_mlx_free_array_if_needed(col_m);
+  } else {
+    /* No centering: use ax directly; null ax to avoid double-free */
+    xc = ax;
+    ax.ctx = NULL;
+  }
+
+  /* gram = xc^T @ xc  →  [p,p] */
+  if (mlx_transpose(&xct, xc, stream) != 0) {
+    mlx_stream_free(stream); amatrix_mlx_free_array_if_needed(xc);
+    error("mlx_transpose failed in covariance");
+  }
+  if (mlx_matmul(&gram, xct, xc, stream) != 0) {
+    mlx_stream_free(stream); amatrix_mlx_free_array_if_needed(xc);
+    amatrix_mlx_free_array_if_needed(xct);
+    error("mlx_matmul failed in covariance");
+  }
+  amatrix_mlx_free_array_if_needed(xc);
+  amatrix_mlx_free_array_if_needed(xct);
+
+  /* cov = gram / denom  →  [p,p] */
+  sc = mlx_array_new_float32((float)(1.0 / denom_val));
+  if (mlx_multiply(&cov, gram, sc, stream) != 0) {
+    mlx_stream_free(stream); amatrix_mlx_free_array_if_needed(gram);
+    amatrix_mlx_free_array_if_needed(sc);
+    error("mlx_multiply failed scaling covariance by 1/denom");
+  }
+  amatrix_mlx_free_array_if_needed(gram);
+  amatrix_mlx_free_array_if_needed(sc);
+
+  result = amatrix_mlx_result_to_r_matrix(cov);
+  mlx_stream_free(stream);
+  amatrix_mlx_free_array_if_needed(cov);
+  return result;
+}
+
+SEXP amatrix_mlx_covariance_bridge(SEXP x_r, SEXP center_r, SEXP denom_r) {
+  if (!isReal(x_r) || !isMatrix(x_r)) {
+    error("x must be a real numeric matrix");
+  }
+  if (!isLogical(center_r) || LENGTH(center_r) != 1) {
+    error("center must be a single logical scalar");
+  }
+  if (LENGTH(denom_r) != 1) {
+    error("denom must be a single numeric scalar");
+  }
+#ifdef HAVE_MLXC
+  return amatrix_mlx_covariance_real(x_r, center_r, denom_r);
+#else
+  error("amatrix_mlx_covariance requires mlx-c (HAVE_MLXC not defined)");
   return R_NilValue;
 #endif
 }

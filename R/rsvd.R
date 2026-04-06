@@ -28,7 +28,7 @@ am_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
   n_iter        <- as.integer(n_iter)
 
   if (is(x, "adgeMatrix")) {
-    bk_name <- tryCatch(x@preferred_backend, error = function(e) NULL)
+    bk_name <- tryCatch(.amatrix_svd_factor_rsvd_backend(x), error = function(e) NULL)
     if (!is.null(bk_name)) {
       bk <- tryCatch(.amatrix_get_backend(bk_name), error = function(e) NULL)
       if (!is.null(bk) && is.function(bk$rsvd)) {

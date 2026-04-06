@@ -76,19 +76,35 @@ am_chol_solve <- function(factor, B) {
 
   R <- factor@factor
   B_in <- B
-  if (is.vector(B)) {
-    B <- as.matrix(B)
+  B_mat <- if (is.vector(B)) matrix(B, ncol = 1L) else as.matrix(B)
+
+  # GPU path: dispatch through the backend's chol_solve_factor when the factor
+  # was computed in fast mode on a GPU-capable backend.
+  x <- if (isTRUE(factor@precision == "fast") &&
+           nzchar(factor@backend) && factor@backend != "cpu") {
+    backend <- tryCatch(
+      amatrix:::.amatrix_get_backend(factor@backend),
+      error = function(e) NULL
+    )
+    if (!is.null(backend) && is.function(backend$chol_solve_factor)) {
+      tryCatch(
+        backend$chol_solve_factor(R, B_mat),
+        error = function(e) {
+          z <- forwardsolve(t(R), B_mat)
+          backsolve(R, z)
+        }
+      )
+    } else {
+      z <- forwardsolve(t(R), B_mat)
+      backsolve(R, z)
+    }
   } else {
-    B <- as.matrix(B)
+    # CPU path: standard triangular solve
+    z <- forwardsolve(t(R), B_mat)
+    backsolve(R, z)
   }
 
-  # A = R' R, so A x = B solved via forwardsolve(R', B) then backsolve(R, .)
-  z <- forwardsolve(t(R), B)
-  x <- backsolve(R, z)
-
-  if (is.vector(B_in) && ncol(x) == 1L) {
-    x <- as.matrix(x)
-  }
+  if (is.vector(B_in) && ncol(x) == 1L) x <- drop(x)
   x
 }
 

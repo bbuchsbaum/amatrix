@@ -1,9 +1,9 @@
 amatrix_arrayfire_capabilities <- function() {
-  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "qr")
+  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "qr", "rsvd")
 }
 
 amatrix_arrayfire_features <- function() {
-  c("dense_f32", "qr", "op_resident")
+  c("dense_f32", "qr", "op_resident", "rsvd")
 }
 
 amatrix_arrayfire_precision_modes <- function() {
@@ -231,6 +231,39 @@ amatrix_arrayfire_chol_resident <- function(x_key, out_key) {
   !is.null(dims) && length(dims) == 2L && max(dims) >= threshold
 }
 
+amatrix_arrayfire_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 4L) {
+  mat <- as.matrix(x)
+  storage.mode(mat) <- "double"
+  m <- nrow(mat)
+  n <- ncol(mat)
+  p <- min(k + n_oversamples, m, n)
+  k <- min(k, p)
+  # Sketch: Y = A * Omega (m x p) on GPU
+  Omega <- matrix(rnorm(n * p), n, p)
+  storage.mode(Omega) <- "double"
+  Y <- .Call("amatrix_arrayfire_matmul_correct_bridge", mat, Omega, PACKAGE = "amatrix.arrayfire")
+  # Thin QR on CPU: p is small (<=60), so O(m*p^2) cost is negligible
+  Q <- qr.Q(qr(Y))  # m x p orthonormal
+  storage.mode(Q) <- "double"
+  # Power iteration: big matmuls on GPU, thin QR on CPU
+  for (i in seq_len(n_iter)) {
+    Z <- .Call("amatrix_arrayfire_crossprod_correct_bridge", mat, Q, PACKAGE = "amatrix.arrayfire")  # n x p
+    Q <- qr.Q(qr(Z))  # n x p orthonormal, CPU
+    storage.mode(Q) <- "double"
+    Z <- .Call("amatrix_arrayfire_matmul_correct_bridge", mat, Q, PACKAGE = "amatrix.arrayfire")  # m x p
+    Q <- qr.Q(qr(Z))  # m x p orthonormal, CPU
+    storage.mode(Q) <- "double"
+  }
+  # Project: B = Q^T * A  (p x n) on GPU, small SVD on CPU
+  B <- .Call("amatrix_arrayfire_crossprod_correct_bridge", Q, mat, PACKAGE = "amatrix.arrayfire")
+  svd_B <- base::svd(B, nu = k, nv = k)
+  U_B <- svd_B$u
+  storage.mode(U_B) <- "double"
+  # Lift U back: U = Q * U_B (m x k) on GPU
+  U <- .Call("amatrix_arrayfire_matmul_correct_bridge", Q, U_B, PACKAGE = "amatrix.arrayfire")
+  list(u = U, d = svd_B$d[seq_len(k)], v = svd_B$v)
+}
+
 amatrix_arrayfire_backend <- function() {
   cpu <- amatrix:::.amatrix_cpu_backend()
   capabilities <- amatrix_arrayfire_capabilities()
@@ -286,6 +319,10 @@ amatrix_arrayfire_backend <- function() {
 
       if (identical(op, "qr")) {
         return(.amatrix_arrayfire_qr_safe() && .amatrix_arrayfire_meets_threshold(x, thresholds$qr_min_dim))
+      }
+
+      if (identical(op, "rsvd")) {
+        return(.amatrix_arrayfire_meets_threshold(x, getOption("amatrix.arrayfire.rsvd_min_dim", 400L)))
       }
 
       FALSE
@@ -355,6 +392,9 @@ amatrix_arrayfire_backend <- function() {
     },
     chol_resident = function(x_key, out_key) {
       amatrix_arrayfire_chol_resident(x_key, out_key)
+    },
+    rsvd = function(x, k, n_oversamples = 10L, n_iter = 4L) {
+      amatrix_arrayfire_rsvd(x, k = k, n_oversamples = n_oversamples, n_iter = n_iter)
     }
   )
 }

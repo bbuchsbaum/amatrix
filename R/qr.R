@@ -7,10 +7,11 @@ setOldClass(c("amQR", "amDenseQR"))
   rhs
 }
 
-.amatrix_qr_state <- function(factor = NULL, factor_source = NULL, q = NULL, q_key = NULL, backend_ops = NULL) {
+.amatrix_qr_state <- function(factor = NULL, factor_source = NULL, q = NULL, q_key = NULL, backend_ops = NULL, factor_builder = NULL) {
   state <- new.env(parent = emptyenv())
   state$factor <- factor
   state$factor_source <- factor_source
+  state$factor_builder <- factor_builder
   state$q <- q
   state$q_key <- q_key
   state$backend_ops <- backend_ops
@@ -55,6 +56,9 @@ setOldClass(c("amQR", "amDenseQR"))
 .amatrix_wrap_qr <- function(qr_obj, x, method = "cpu") {
   stopifnot(is.list(qr_obj))
   source_dim <- dim(.amatrix_host_arg(x))
+  qr_factor <- qr_obj[["factor", exact = TRUE]]
+  qr_factor_builder <- qr_obj[["factor_builder", exact = TRUE]]
+  qr_factor_source <- qr_obj[["factor_source", exact = TRUE]]
 
   if (!is.null(qr_obj$qr)) {
     representation <- "base_qr"
@@ -65,9 +69,9 @@ setOldClass(c("amQR", "amDenseQR"))
     pivot <- qr_obj$pivot
     pivoted <- !is.null(pivot) && !identical(as.integer(pivot), seq_along(pivot))
     state <- .amatrix_qr_state(factor = qr_obj, factor_source = "native")
-  } else if (identical(qr_obj$representation, "mlx_compact_qr") && !is.null(qr_obj$factor)) {
+  } else if (identical(qr_obj$representation, "mlx_compact_qr")) {
     representation <- "mlx_compact_qr"
-    rank <- as.integer(.amatrix_qr_or(qr_obj$rank, .amatrix_qr_or(qr_obj$factor$rank, if (!is.null(source_dim)) min(source_dim) else NA_integer_)))
+    rank <- as.integer(.amatrix_qr_or(qr_obj$rank, .amatrix_qr_or(qr_factor$rank, if (!is.null(source_dim)) min(source_dim) else NA_integer_)))
     q_materialized <- FALSE
     r_materialized <- !is.null(qr_obj$r)
     r_dim <- if (!is.null(qr_obj$r)) dim(as.matrix(qr_obj$r)) else if (!is.null(source_dim)) c(min(source_dim), source_dim[[2]]) else NULL
@@ -75,8 +79,9 @@ setOldClass(c("amQR", "amDenseQR"))
     pivot <- if (!is.null(qr_obj$pivot)) as.integer(qr_obj$pivot) else NULL
     pivoted <- !is.null(pivot) && !identical(as.integer(pivot), seq_along(pivot))
     state <- .amatrix_qr_state(
-      factor = qr_obj$factor,
-      factor_source = qr_obj$factor_source,
+      factor = qr_factor,
+      factor_source = qr_factor_source,
+      factor_builder = qr_factor_builder,
       q = NULL,
       q_key = qr_obj$q_key,
       backend_ops = qr_obj$backend_ops
@@ -91,8 +96,9 @@ setOldClass(c("amQR", "amDenseQR"))
     pivot <- if (!is.null(qr_obj$pivot)) as.integer(qr_obj$pivot) else NULL
     pivoted <- !is.null(pivot) && !identical(as.integer(pivot), seq_along(pivot))
     state <- .amatrix_qr_state(
-      factor = qr_obj$factor,
-      factor_source = qr_obj$factor_source,
+      factor = qr_factor,
+      factor_source = qr_factor_source,
+      factor_builder = qr_factor_builder,
       q = qr_obj$q,
       q_key = qr_obj$q_key,
       backend_ops = qr_obj$backend_ops
@@ -107,8 +113,9 @@ setOldClass(c("amQR", "amDenseQR"))
     pivot <- if (!is.null(qr_obj$pivot)) as.integer(qr_obj$pivot) else NULL
     pivoted <- !is.null(pivot) && !identical(as.integer(pivot), seq_along(pivot))
     state <- .amatrix_qr_state(
-      factor = qr_obj$factor,
-      factor_source = qr_obj$factor_source,
+      factor = qr_factor,
+      factor_source = qr_factor_source,
+      factor_builder = qr_factor_builder,
       q = NULL,
       q_key = qr_obj$q_key,
       backend_ops = qr_obj$backend_ops
@@ -228,6 +235,16 @@ setOldClass(c("amQR", "amDenseQR"))
 }
 
 .amatrix_qr_compact_available <- function(qr) {
+  if (!inherits(qr, "amQR")) {
+    return(FALSE)
+  }
+  if (!is.null(qr$state$factor) || is.function(qr$state$factor_builder)) {
+    return(TRUE)
+  }
+  identical(.amatrix_qr_kind(qr), "explicit_qr")
+}
+
+.amatrix_qr_compact_materialized <- function(qr) {
   inherits(qr, "amQR") && !is.null(qr$state$factor)
 }
 
@@ -265,6 +282,14 @@ setOldClass(c("amQR", "amDenseQR"))
     return(factor)
   }
 
+  factor_builder <- qr$state$factor_builder
+  if (is.function(factor_builder)) {
+    factor <- factor_builder()
+    qr$state$factor <- factor
+    qr$state$factor_builder <- NULL
+    return(factor)
+  }
+
   if (!identical(.amatrix_qr_kind(qr), "explicit_qr")) {
     stop("compact QR factor is unavailable", call. = FALSE)
   }
@@ -295,6 +320,7 @@ am_qr_info <- function(qr) {
     method = qr$method,
     compact_factor_available = .amatrix_qr_compact_available(qr),
     compact_factor_source = qr$state$factor_source,
+    compact_factor_materialized = .amatrix_qr_compact_materialized(qr),
     q_materialized = .amatrix_qr_q_materialized(qr),
     r_materialized = .amatrix_qr_r_materialized(qr)
   )
@@ -641,7 +667,11 @@ print.amDenseQR <- function(x, ...) {
     x$source_class
   ))
   if (.amatrix_qr_compact_available(x)) {
-    cat(sprintf("  compact_factor: %s\n", x$state$factor_source))
+    factor_tag <- .amatrix_qr_or(x$state$factor_source, "available")
+    if (!.amatrix_qr_compact_materialized(x)) {
+      factor_tag <- sprintf("%s [lazy]", factor_tag)
+    }
+    cat(sprintf("  compact_factor: %s\n", factor_tag))
   }
   if (!is.null(.amatrix_qr_q_key(x))) {
     cat(sprintf("  resident_q: %s\n", .amatrix_qr_q_key(x)))

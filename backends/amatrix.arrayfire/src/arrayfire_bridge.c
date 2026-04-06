@@ -1532,3 +1532,112 @@ SEXP am_af_kernel_bridge(SEXP X_r, SEXP Y_r, SEXP kernel_r,
   error("am_af_kernel requires ArrayFire"); return R_NilValue;
 #endif
 }
+
+/* =========================================================================
+ * Correct column-major helpers and bridges for rsvd
+ *
+ * The original arrayfire_matrix_from_r / arrayfire_result_to_r_matrix use a
+ * row-major staging buffer that was designed for the earlier MLX convention.
+ * The three functions below use the natural column-major layout shared by R,
+ * LAPACK, and ArrayFire.  They are used exclusively by the rsvd bridge.
+ * ========================================================================= */
+
+#ifdef HAVE_ARRAYFIRE
+
+/* Cast R double column-major → float32, preserving element order */
+static float* amatrix_af_r_to_f32(const double *src, int n) {
+  float *buf = (float *) arrayfire_xmalloc((size_t)n * sizeof(float));
+  for (int k = 0; k < n; k++) buf[k] = (float)src[k];
+  return buf;
+}
+
+/* Build an AF array from an R matrix (column-major, double→float32) */
+static af_array amatrix_af_from_r(SEXP x) {
+  SEXP dim = getAttrib(x, R_DimSymbol);
+  int m = INTEGER(dim)[0], n = INTEGER(dim)[1];
+  dim_t dims[2] = {(dim_t)m, (dim_t)n};
+  float *buf = amatrix_af_r_to_f32(REAL(x), m * n);
+  af_array out = 0;
+  af_create_array(&out, buf, 2, dims, f32);
+  free(buf);
+  return out;
+}
+
+/* Convert AF array → R matrix (column-major, float32→double) */
+static SEXP amatrix_af_to_r(af_array arr) {
+  dim_t dims[4] = {0, 0, 0, 0};
+  af_get_dims(&dims[0], &dims[1], &dims[2], &dims[3], arr);
+  int m = (int)dims[0], n = (int)dims[1];
+  float *buf = (float *) arrayfire_xmalloc((size_t)m * n * sizeof(float));
+  af_get_data_ptr(buf, arr);
+  SEXP out = PROTECT(allocMatrix(REALSXP, m, n));
+  double *dst = REAL(out);
+  for (int k = 0; k < m * n; k++) dst[k] = (double)buf[k];
+  free(buf);
+  UNPROTECT(1);
+  return out;
+}
+
+#endif /* HAVE_ARRAYFIRE (correct helpers) */
+
+/* ── amatrix_arrayfire_matmul_correct_bridge(A, B) → A %*% B ─────────── */
+SEXP amatrix_arrayfire_matmul_correct_bridge(SEXP A_r, SEXP B_r) {
+  if (!isReal(A_r) || !isMatrix(A_r) || !isReal(B_r) || !isMatrix(B_r))
+    error("inputs must be real matrices");
+#ifdef HAVE_ARRAYFIRE
+  af_array A = 0, B = 0, C = 0;
+  A = amatrix_af_from_r(A_r);
+  B = amatrix_af_from_r(B_r);
+  af_err err = af_matmul(&C, A, B, AF_MAT_NONE, AF_MAT_NONE);
+  af_release_array(A); af_release_array(B);
+  if (err != AF_SUCCESS) error("amatrix_arrayfire_matmul_correct: af_matmul failed (%d)", (int)err);
+  SEXP result = PROTECT(amatrix_af_to_r(C));
+  af_release_array(C);
+  UNPROTECT(1);
+  return result;
+#else
+  error("amatrix_arrayfire_matmul_correct requires ArrayFire");
+  return R_NilValue;
+#endif
+}
+
+/* ── amatrix_arrayfire_crossprod_correct_bridge(A, B) → t(A) %*% B ───── */
+SEXP amatrix_arrayfire_crossprod_correct_bridge(SEXP A_r, SEXP B_r) {
+  if (!isReal(A_r) || !isMatrix(A_r) || !isReal(B_r) || !isMatrix(B_r))
+    error("inputs must be real matrices");
+#ifdef HAVE_ARRAYFIRE
+  af_array A = 0, B = 0, C = 0;
+  A = amatrix_af_from_r(A_r);
+  B = amatrix_af_from_r(B_r);
+  af_err err = af_matmul(&C, A, B, AF_MAT_TRANS, AF_MAT_NONE);
+  af_release_array(A); af_release_array(B);
+  if (err != AF_SUCCESS) error("amatrix_arrayfire_crossprod_correct: af_matmul failed (%d)", (int)err);
+  SEXP result = PROTECT(amatrix_af_to_r(C));
+  af_release_array(C);
+  UNPROTECT(1);
+  return result;
+#else
+  error("amatrix_arrayfire_crossprod_correct requires ArrayFire");
+  return R_NilValue;
+#endif
+}
+
+/* ── amatrix_arrayfire_qr_q_correct_bridge(A) → thin Q [m×min(m,n)] ──── */
+SEXP amatrix_arrayfire_qr_q_correct_bridge(SEXP A_r) {
+  if (!isReal(A_r) || !isMatrix(A_r))
+    error("input must be a real matrix");
+#ifdef HAVE_ARRAYFIRE
+  af_array A = 0, Q = 0, R = 0, tau = 0;
+  A = amatrix_af_from_r(A_r);
+  af_err err = af_qr(&Q, &R, &tau, A);
+  af_release_array(A); af_release_array(R); af_release_array(tau);
+  if (err != AF_SUCCESS) error("amatrix_arrayfire_qr_q_correct: af_qr failed (%d)", (int)err);
+  SEXP result = PROTECT(amatrix_af_to_r(Q));
+  af_release_array(Q);
+  UNPROTECT(1);
+  return result;
+#else
+  error("amatrix_arrayfire_qr_q_correct requires ArrayFire");
+  return R_NilValue;
+#endif
+}

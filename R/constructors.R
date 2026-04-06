@@ -51,7 +51,8 @@ new_adgeMatrix <- function(
   x,
   preferred_backend = "cpu",
   policy = amatrix_default_policy(),
-  precision = amatrix_default_precision()
+  precision = amatrix_default_precision(),
+  src_id = ""
 ) {
   base <- .amatrix_dense_base(x)
   object_id <- .amatrix_next_object_id()
@@ -65,6 +66,7 @@ new_adgeMatrix <- function(
     policy = policy,
     precision = precision,
     object_id = object_id,
+    src_id = src_id,
     finalizer_env = .amatrix_make_finalizer_env(object_id)
   )
 }

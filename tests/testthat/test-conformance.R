@@ -994,7 +994,8 @@ test_that("am_qr_info reports explicit backend QR metadata", {
   info_before <- am_qr_info(fac)
   expect_identical(info_before$representation, "explicit_qr")
   expect_true(info_before$compact_factor_available)
-  expect_identical(info_before$compact_factor_source, "bridge_compact")
+  expect_identical(info_before$compact_factor_source, "reconstructable")
+  expect_false(info_before$compact_factor_materialized)
   expect_identical(info_before$helper_path, "native_resident_backend")
   expect_false(info_before$q_materialized)
   expect_true(info_before$r_materialized)
@@ -1011,7 +1012,8 @@ test_that("am_qr_info reports explicit backend QR metadata", {
   expect_false(info_after$q_materialized)
   expect_true(info_after$r_materialized)
   expect_true(info_after$compact_factor_available)
-  expect_identical(info_after$compact_factor_source, "bridge_compact")
+  expect_identical(info_after$compact_factor_source, "reconstructable")
+  expect_false(info_after$compact_factor_materialized)
 })
 
 test_that("am_qr_info reports compact MLX QR representation when requested", {
@@ -1032,11 +1034,15 @@ test_that("am_qr_info reports compact MLX QR representation when requested", {
   expect_identical(info$representation, "mlx_compact_qr")
   expect_identical(info$helper_path, "compact_mlx_factor")
   expect_true(info$compact_factor_available)
-  expect_identical(info$compact_factor_source, "bridge_compact")
+  expect_identical(info$compact_factor_source, "host_compact")
+  expect_false(info$compact_factor_materialized)
   expect_false(info$q_materialized)
   expect_true(info$r_materialized)
   expect_equal(as.matrix(qr.coef(fac, x_host)), base::qr.coef(base::qr(x_host), x_host), tolerance = 1e-8)
   expect_equal(as.matrix(qr.qty(fac, x_host)), base::qr.qty(base::qr(x_host), x_host), tolerance = 1e-8)
+
+  info_after <- am_qr_info(fac)
+  expect_true(info_after$compact_factor_materialized)
 })
 
 test_that("qr-backed fits report bridge-compact provenance for explicit backend QR", {
@@ -1063,17 +1069,17 @@ test_that("qr-backed fits report bridge-compact provenance for explicit backend 
   expect_identical(lm_fit$qr_representation, "explicit_qr")
   expect_identical(lm_fit$qr_helper_path, "native_resident_backend")
   expect_true(lm_fit$qr_compact_factor_available)
-  expect_identical(lm_fit$qr_compact_factor_source, "bridge_compact")
+  expect_identical(lm_fit$qr_compact_factor_source, "reconstructable")
 
   expect_identical(many_fit$qr_representation, "explicit_qr")
   expect_identical(many_fit$qr_helper_path, "native_resident_backend")
   expect_true(many_fit$qr_compact_factor_available)
-  expect_identical(many_fit$qr_compact_factor_source, "bridge_compact")
+  expect_identical(many_fit$qr_compact_factor_source, "reconstructable")
 
   expect_identical(array_fit$qr_representation, "explicit_qr")
   expect_identical(array_fit$qr_helper_path, "native_resident_backend")
   expect_true(array_fit$qr_compact_factor_available)
-  expect_identical(array_fit$qr_compact_factor_source, "bridge_compact")
+  expect_identical(array_fit$qr_compact_factor_source, "reconstructable")
 })
 
 test_that("tall-skinny compact MLX QR uses tsqr-blocked provenance", {
@@ -1144,7 +1150,7 @@ test_that("MLX QR cache keys distinguish native and compact strategies", {
   fit_compact <- am_many_lm(X, Y_host, method = "qr", cache = TRUE, include_residuals = FALSE)
 
   expect_identical(fit_native$qr_helper_path, "native_resident_backend")
-  expect_identical(fit_native$qr_compact_factor_source, "bridge_compact")
+  expect_identical(fit_native$qr_compact_factor_source, "reconstructable")
   expect_identical(fit_compact$qr_helper_path, "compact_mlx_factor")
   expect_identical(fit_compact$qr_compact_factor_source, "tsqr_blocked")
   expect_false(identical(fit_native$cache_key, fit_compact$cache_key))

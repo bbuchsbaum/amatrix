@@ -56,6 +56,14 @@
   paste0("obj:", x@object_id)
 }
 
+# Return the residency registry entry for x's source (original matrix when x is
+# a transposed view). Returns NULL if x has no src_id or if the source is not
+# currently in the registry.
+.amatrix_src_resident_entry <- function(x) {
+  if (!inherits(x, "aMatrix") || !nzchar(x@src_id)) return(NULL)
+  get0(paste0("obj:", x@src_id), envir = .amatrix_state$residency, inherits = FALSE)
+}
+
 .amatrix_next_resident_key <- function(backend) {
   .amatrix_state$resident_counter <- .amatrix_state$resident_counter + 1L
   sprintf("%s:%d", backend, .amatrix_state$resident_counter)

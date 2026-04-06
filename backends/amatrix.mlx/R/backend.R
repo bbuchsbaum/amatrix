@@ -1,6 +1,6 @@
 amatrix_mlx_capabilities <- function() {
   c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
-    "qr", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen")
+    "qr", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen", "covariance")
 }
 
 amatrix_mlx_features <- function() {
@@ -116,11 +116,21 @@ amatrix_mlx_axis_sums <- function(x, axis) {
   qr_raw
 }
 
-.amatrix_mlx_qr_explicit <- function(x_mat, include_factor = TRUE) {
+.amatrix_mlx_host_qr_factor_builder <- function(x_mat) {
+  force(x_mat)
+  function() base::qr(x_mat)
+}
+
+.amatrix_mlx_qr_explicit <- function(x_mat, include_factor = FALSE, lazy_factor = FALSE) {
   qr_raw <- .amatrix_mlx_qr_explicit_raw(x_mat)
-  qr_raw$factor <- if (isTRUE(include_factor)) base::qr(x_mat) else NULL
-  qr_raw$factor_source <- if (isTRUE(include_factor)) "bridge_compact" else "bridge_raw"
-  qr_raw
+  c(
+    qr_raw,
+    list(
+      factor = if (isTRUE(include_factor)) base::qr(x_mat) else NULL,
+      factor_builder = if (!isTRUE(include_factor) && isTRUE(lazy_factor)) .amatrix_mlx_host_qr_factor_builder(x_mat) else NULL,
+      factor_source = if (isTRUE(include_factor) || isTRUE(lazy_factor)) "host_compact" else "reconstructable"
+    )
+  )
 }
 
 .amatrix_mlx_qr_compact_method <- function() {
@@ -442,7 +452,11 @@ amatrix_mlx_qr <- function(x) {
     ))
   }
 
-  qr_raw <- .amatrix_mlx_qr_explicit(x_mat)
+  qr_raw <- .amatrix_mlx_qr_explicit(
+    x_mat,
+    include_factor = FALSE,
+    lazy_factor = identical(helper_mode, "compact")
+  )
   qr_raw$representation <- if (identical(helper_mode, "compact")) "mlx_compact_qr" else "explicit_qr"
   qr_raw
 }
@@ -720,6 +734,16 @@ amatrix_mlx_eigh <- function(x) {
   .Call("amatrix_mlx_eigh_bridge", mat, PACKAGE = "amatrix.mlx")
 }
 
+amatrix_mlx_covariance <- function(x, center = TRUE, denom) {
+  mat <- as.matrix(x)
+  if (!is.double(mat)) storage.mode(mat) <- "double"
+  .Call("amatrix_mlx_covariance_bridge",
+        mat,
+        as.logical(center),
+        as.double(denom),
+        PACKAGE = "amatrix.mlx")
+}
+
 amatrix_mlx_backend <- function() {
   cpu <- amatrix:::.amatrix_cpu_backend()
   capabilities <- amatrix_mlx_capabilities()
@@ -857,6 +881,9 @@ amatrix_mlx_backend <- function() {
       } else {
         res
       }
+    },
+    covariance = function(x, center = TRUE, denom) {
+      amatrix_mlx_covariance(x, center = center, denom = denom)
     }
   )
 }

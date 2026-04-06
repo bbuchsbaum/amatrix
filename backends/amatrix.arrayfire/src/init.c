@@ -12,6 +12,24 @@ extern SEXP amatrix_arrayfire_tcrossprod_bridge(SEXP x, SEXP y);
 extern SEXP amatrix_arrayfire_ewise_bridge(SEXP lhs, SEXP rhs, SEXP op);
 extern SEXP amatrix_arrayfire_sum_axis_bridge(SEXP x, SEXP axis);
 extern SEXP amatrix_arrayfire_qr_bridge(SEXP x);
+extern SEXP amatrix_arrayfire_resident_store_bridge(SEXP key, SEXP x);
+extern SEXP amatrix_arrayfire_resident_has_bridge(SEXP key);
+extern SEXP amatrix_arrayfire_resident_drop_bridge(SEXP key);
+extern SEXP amatrix_arrayfire_resident_materialize_bridge(SEXP key);
+extern SEXP amatrix_arrayfire_matmul_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
+extern SEXP amatrix_arrayfire_crossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
+extern SEXP amatrix_arrayfire_tcrossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
+extern SEXP amatrix_arrayfire_ewise_resident_bridge(SEXP lhs_key, SEXP rhs, SEXP op, SEXP out_key);
+extern SEXP amatrix_arrayfire_sum_axis_resident_bridge(SEXP x_key, SEXP axis);
+extern SEXP am_af_lanczos_bidiag_bridge(SEXP A_r, SEXP v0_r, SEXP k_r);
+extern SEXP am_af_lbz_upload_A_bridge(SEXP A_r);
+extern SEXP am_af_lbz_drop_A_bridge(void);
+extern SEXP am_af_lanczos_warm_bridge(SEXP V_warm_r, SEXP U_warm_r, SEXP p0_r, SEXP k_r);
+extern SEXP am_af_dist_sq_bridge(SEXP X_r, SEXP Y_r);
+extern SEXP am_af_kernel_bridge(SEXP X_r, SEXP Y_r, SEXP kernel_r, SEXP sigma_r, SEXP degree_r, SEXP coef_r);
+extern SEXP amatrix_arrayfire_matmul_correct_bridge(SEXP A_r, SEXP B_r);
+extern SEXP amatrix_arrayfire_crossprod_correct_bridge(SEXP A_r, SEXP B_r);
+extern SEXP amatrix_arrayfire_qr_q_correct_bridge(SEXP A_r);
 
 static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_native_available_bridge", (DL_FUNC) &amatrix_arrayfire_native_available_bridge, 0},
@@ -24,6 +42,24 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_ewise_bridge", (DL_FUNC) &amatrix_arrayfire_ewise_bridge, 3},
     {"amatrix_arrayfire_sum_axis_bridge", (DL_FUNC) &amatrix_arrayfire_sum_axis_bridge, 2},
     {"amatrix_arrayfire_qr_bridge", (DL_FUNC) &amatrix_arrayfire_qr_bridge, 1},
+    {"amatrix_arrayfire_resident_store_bridge",        (DL_FUNC) &amatrix_arrayfire_resident_store_bridge,        2},
+    {"amatrix_arrayfire_resident_has_bridge",          (DL_FUNC) &amatrix_arrayfire_resident_has_bridge,          1},
+    {"amatrix_arrayfire_resident_drop_bridge",         (DL_FUNC) &amatrix_arrayfire_resident_drop_bridge,         1},
+    {"amatrix_arrayfire_resident_materialize_bridge",  (DL_FUNC) &amatrix_arrayfire_resident_materialize_bridge,  1},
+    {"amatrix_arrayfire_matmul_resident_bridge",       (DL_FUNC) &amatrix_arrayfire_matmul_resident_bridge,       3},
+    {"amatrix_arrayfire_crossprod_resident_bridge",    (DL_FUNC) &amatrix_arrayfire_crossprod_resident_bridge,    3},
+    {"amatrix_arrayfire_tcrossprod_resident_bridge",   (DL_FUNC) &amatrix_arrayfire_tcrossprod_resident_bridge,   3},
+    {"amatrix_arrayfire_ewise_resident_bridge",        (DL_FUNC) &amatrix_arrayfire_ewise_resident_bridge,        4},
+    {"amatrix_arrayfire_sum_axis_resident_bridge",     (DL_FUNC) &amatrix_arrayfire_sum_axis_resident_bridge,     2},
+    {"am_af_lanczos_bidiag_bridge",                    (DL_FUNC) &am_af_lanczos_bidiag_bridge,                    3},
+    {"am_af_lbz_upload_A_bridge",                      (DL_FUNC) &am_af_lbz_upload_A_bridge,                      1},
+    {"am_af_lbz_drop_A_bridge",                        (DL_FUNC) &am_af_lbz_drop_A_bridge,                        0},
+    {"am_af_lanczos_warm_bridge",                      (DL_FUNC) &am_af_lanczos_warm_bridge,                      4},
+    {"am_af_dist_sq_bridge",                           (DL_FUNC) &am_af_dist_sq_bridge,                           2},
+    {"am_af_kernel_bridge",                            (DL_FUNC) &am_af_kernel_bridge,                            6},
+    {"amatrix_arrayfire_matmul_correct_bridge",        (DL_FUNC) &amatrix_arrayfire_matmul_correct_bridge,        2},
+    {"amatrix_arrayfire_crossprod_correct_bridge",     (DL_FUNC) &amatrix_arrayfire_crossprod_correct_bridge,     2},
+    {"amatrix_arrayfire_qr_q_correct_bridge",          (DL_FUNC) &amatrix_arrayfire_qr_q_correct_bridge,          1},
     {NULL, NULL, 0}
 };
 
