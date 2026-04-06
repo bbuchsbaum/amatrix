@@ -330,3 +330,128 @@ test_that("dot(x, x) equals squared norm", {
   x <- rnorm(8)
   expect_equal(dot(x, x), sum(x^2), tolerance = 1e-12)
 })
+
+# ── crossprod_add_diag ────────────────────────────────────────────────────────
+
+test_that("crossprod_add_diag(X, lambda) matches crossprod(X) + lambda*I", {
+  set.seed(31)
+  X <- matrix(rnorm(30), 6, 5)
+  lambda <- 0.5
+  expected <- t(X) %*% X + lambda * diag(5)
+  result <- as.matrix(crossprod_add_diag(adgeMatrix(X), lambda))
+  expect_equal(result, expected, tolerance = 1e-10)
+})
+
+test_that("crossprod_add_diag(X, d) matches crossprod(X) + diag(d)", {
+  set.seed(32)
+  X <- matrix(rnorm(30), 6, 5)
+  d <- runif(5) + 0.1
+  expected <- t(X) %*% X + diag(d)
+  result <- as.matrix(crossprod_add_diag(adgeMatrix(X), d))
+  expect_equal(result, expected, tolerance = 1e-10)
+})
+
+test_that("crossprod_add_diag result is symmetric", {
+  set.seed(33)
+  X <- matrix(rnorm(24), 8, 3)
+  R <- as.matrix(crossprod_add_diag(adgeMatrix(X), 1.0))
+  expect_equal(R, t(R), tolerance = 1e-12)
+})
+
+# ── mat_sqrt / mat_pow / mat_log ──────────────────────────────────────────────
+
+test_that("mat_sqrt(K) %*% mat_sqrt(K) ≈ K", {
+  set.seed(34)
+  A <- matrix(rnorm(25), 5, 5)
+  K <- crossprod(A) + 5 * diag(5)
+  K_am <- adgeMatrix(K)
+  S <- as.matrix(mat_sqrt(K_am))
+  expect_equal(S %*% S, K, tolerance = 1e-8)
+})
+
+test_that("mat_pow(K, 2) ≈ K %*% K", {
+  set.seed(35)
+  A <- matrix(rnorm(16), 4, 4)
+  K <- crossprod(A) + 4 * diag(4)
+  K_am <- adgeMatrix(K)
+  expect_equal(as.matrix(mat_pow(K_am, 2)), K %*% K, tolerance = 1e-8)
+})
+
+test_that("mat_pow(K, 0.5) matches mat_sqrt(K)", {
+  set.seed(36)
+  A <- matrix(rnorm(16), 4, 4)
+  K <- crossprod(A) + 4 * diag(4)
+  K_am <- adgeMatrix(K)
+  expect_equal(as.matrix(mat_pow(K_am, 0.5)), as.matrix(mat_sqrt(K_am)),
+               tolerance = 1e-8)
+})
+
+test_that("mat_log roundtrip: exp(mat_log(K)) ≈ K via eigenvalues", {
+  set.seed(37)
+  A <- matrix(rnorm(16), 4, 4)
+  K <- crossprod(A) + 4 * diag(4)
+  K_am <- adgeMatrix(K)
+  logK <- mat_log(K_am)
+  res <- eigh(logK)
+  expect_equal(exp(res$values), eigh(K_am)$values, tolerance = 1e-6)
+})
+
+# ── solve_triangular ──────────────────────────────────────────────────────────
+
+test_that("solve_triangular upper recovers x from R %*% x", {
+  set.seed(38)
+  A <- matrix(rnorm(25), 5, 5)
+  K <- crossprod(A) + 5 * diag(5)
+  R <- chol(K)
+  x <- rnorm(5)
+  expect_equal(solve_triangular(R, R %*% x), x, tolerance = 1e-10)
+})
+
+test_that("solve_triangular lower recovers x from L %*% x", {
+  set.seed(39)
+  A <- matrix(rnorm(25), 5, 5)
+  K <- crossprod(A) + 5 * diag(5)
+  L <- t(chol(K))
+  x <- rnorm(5)
+  expect_equal(solve_triangular(L, L %*% x, lower = TRUE), x, tolerance = 1e-10)
+})
+
+test_that("solve_triangular handles multiple RHS", {
+  set.seed(40)
+  A <- matrix(rnorm(25), 5, 5)
+  K <- crossprod(A) + 5 * diag(5)
+  R <- chol(K)
+  X <- matrix(rnorm(15), 5, 3)
+  expect_equal(solve_triangular(R, R %*% X), X, tolerance = 1e-10)
+})
+
+# ── trace_estim ───────────────────────────────────────────────────────────────
+
+test_that("trace_estim converges to true trace with large k", {
+  set.seed(41)
+  A <- matrix(rnorm(25), 5, 5)
+  K <- crossprod(A) + 5 * diag(5)
+  K_am <- adgeMatrix(K)
+  est <- trace_estim(K_am, k = 500, seed = 42)
+  expect_equal(est, trace(K_am), tolerance = 1.0)  # stochastic, generous tol
+})
+
+test_that("trace_estim via solve_fn estimates tr(K^{-1})", {
+  set.seed(42)
+  A <- matrix(rnorm(16), 4, 4)
+  K <- crossprod(A) + 4 * diag(4)
+  L <- chol_factor(adgeMatrix(K))
+  true_val <- sum(diag(solve(K)))
+  est <- trace_estim(solve_fn = function(v) chol_solve(L, v), n = 4L,
+                     k = 500L, seed = 1L)
+  expect_equal(est, true_val, tolerance = 0.5)  # stochastic
+})
+
+test_that("trace_estim is reproducible with seed", {
+  set.seed(43)
+  K <- crossprod(matrix(rnorm(25), 5, 5)) + 5 * diag(5)
+  K_am <- adgeMatrix(K)
+  e1 <- trace_estim(K_am, k = 20, seed = 99)
+  e2 <- trace_estim(K_am, k = 20, seed = 99)
+  expect_equal(e1, e2)
+})

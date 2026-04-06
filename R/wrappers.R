@@ -640,6 +640,64 @@ am_diag <- function(x, nrow, ncol, names = TRUE) {
   )
 }
 
+# ── Fused crossprod + diagonal add ───────────────────────────────────────────
+
+# X'X + lambda*I  or  X'X + diag(d)
+crossprod_add_diag <- function(X, lambda) {
+  X_arg  <- .amatrix_model_dense_arg(X)
+  xtx    <- am_crossprod(X_arg)
+  p      <- ncol(X_arg)
+  xtx_m  <- as.matrix(amatrix_materialize_host(xtx))
+  if (length(lambda) == 1L) {
+    diag(xtx_m) <- diag(xtx_m) + as.double(lambda)
+  } else {
+    if (length(lambda) != p)
+      stop("lambda must be a scalar or length ncol(X)", call. = FALSE)
+    diag(xtx_m) <- diag(xtx_m) + as.double(lambda)
+  }
+  .amatrix_rewrap_like(X_arg, xtx_m)
+}
+
+# ── Matrix functions (via symmetric eigendecomposition) ───────────────────────
+
+.mat_fun <- function(X, f, check_positive = TRUE) {
+  X_arg <- .amatrix_model_dense_arg(X)
+  res   <- eigh(X_arg)
+  lam   <- res$values
+  if (isTRUE(check_positive) && any(lam <= 0))
+    warning("matrix has non-positive eigenvalues; result may be complex or NaN",
+            call. = FALSE)
+  Q     <- res$vectors
+  new_lam <- f(lam)
+  .amatrix_rewrap_like(X_arg, Q %*% diag(new_lam) %*% t(Q))
+}
+
+mat_sqrt <- function(X) .mat_fun(X, sqrt)
+mat_pow  <- function(X, p) .mat_fun(X, function(lam) lam^p)
+mat_log  <- function(X) .mat_fun(X, log)
+
+# ── Stochastic trace estimator (Hutchinson) ───────────────────────────────────
+
+# Estimates tr(A) or tr(A^{-1}) via k Rademacher probes.
+# For tr(A):         trace_estim(A, k)
+# For tr(K^{-1}):   trace_estim(solve_fn = function(v) chol_solve(L, v), n, k)
+trace_estim <- function(A = NULL, k = 30L, seed = NULL,
+                        solve_fn = NULL, n = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+
+  if (!is.null(solve_fn)) {
+    if (is.null(n)) stop("n must be supplied when using solve_fn", call. = FALSE)
+    probes <- matrix(sample(c(-1, 1), n * k, replace = TRUE), n, k)
+    sols   <- solve_fn(probes)
+    return(mean(colSums(probes * as.matrix(sols))))
+  }
+
+  A_host <- as.matrix(amatrix_materialize_host(A))
+  n      <- nrow(A_host)
+  probes <- matrix(sample(c(-1, 1), n * k, replace = TRUE), n, k)
+  mean(colSums(probes * (A_host %*% probes)))
+}
+
 # ── Row / column means ────────────────────────────────────────────────────────
 
 rowmeans <- function(x, na.rm = FALSE) {

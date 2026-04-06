@@ -122,6 +122,18 @@ chol_logdet <- function(factor) {
   2 * sum(log(diag(factor@factor)))
 }
 
+solve_triangular <- function(R, B, lower = FALSE) {
+  R_mat <- if (inherits(R, "amChol")) R@factor else as.matrix(R)
+  scalar_out <- is.vector(B) || (is.matrix(B) && ncol(B) == 1L)
+  B_mat <- if (is.vector(B)) matrix(B, ncol = 1L) else as.matrix(B)
+  x <- if (isTRUE(lower)) {
+    forwardsolve(R_mat, B_mat)
+  } else {
+    backsolve(R_mat, B_mat)
+  }
+  if (scalar_out && ncol(x) == 1L) drop(x) else x
+}
+
 quad_form <- function(factor, v) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
