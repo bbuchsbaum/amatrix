@@ -46,7 +46,9 @@ static SEXP amatrix_block_reorth_impl(SEXP z, SEXP basis, int k_used, int do_ret
   if (k < 0 || k > basis_cols) {
     error("basis_cols must be between 0 and ncol(basis)");
   }
-  z_out = PROTECT(duplicate(z));
+  /* The block Lanczos hot path passes fresh temporaries here. Avoid an
+   * unconditional copy unless R reports the input is shared. */
+  z_out = PROTECT(MAYBE_SHARED(z) ? duplicate(z) : z);
 
   if (k <= 0) {
     if (do_return_projection) {
@@ -192,7 +194,9 @@ SEXP amatrix_block_thin_qr_bridge(SEXP z) {
   n = dims[1];
   k = (m < n) ? m : n;
 
-  q = PROTECT(duplicate(z));
+  /* QR consumes a fresh block in the Lanczos loop, so we can usually work
+   * in place and only duplicate when the input is shared elsewhere. */
+  q = PROTECT(MAYBE_SHARED(z) ? duplicate(z) : z);
   tau = PROTECT(allocVector(REALSXP, k));
 
   lwork = -1;

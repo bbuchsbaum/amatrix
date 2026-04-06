@@ -615,8 +615,8 @@ irlba_native <- function(A,
   if (!.amatrix_backend_supports_resident_op(backend, "matmul")) {
     return(as.matrix(crossprod(A, q_block)))
   }
+  q_mat <- .amatrix_block_lanczos_numeric_matrix(q_block)
   if (is.function(backend$matmul_resident_host)) {
-    q_mat <- .amatrix_block_lanczos_numeric_matrix(q_block)
     value <- tryCatch(
       backend$matmul_resident_host(operator$resident_key, q_mat),
       error = function(e) NULL
@@ -628,7 +628,7 @@ irlba_native <- function(A,
 
   rhs <- .amatrix_prepare_resident_arg(q_block, backend_name)
   if (is.null(rhs)) {
-    return(as.matrix(crossprod(A, q_block)))
+    return(as.matrix(crossprod(A, q_mat)))
   }
   on.exit(.amatrix_cleanup_temp_resident(list(rhs), backend_name), add = TRUE)
 
@@ -647,7 +647,7 @@ irlba_native <- function(A,
     error = function(e) NULL
   )
   if (is.null(value)) {
-    return(as.matrix(crossprod(A, q_block)))
+    return(as.matrix(crossprod(A, q_mat)))
   }
 
   as.matrix(.amatrix_host_arg(value))
@@ -673,9 +673,9 @@ irlba_native <- function(A,
   if (is.null(backend) || !.amatrix_backend_supports_resident_op(backend, "matmul")) {
     return(as.matrix(A %*% q_block))
   }
+  q_mat <- .amatrix_block_lanczos_numeric_matrix(q_block)
   if (is.list(operator) && !is.null(operator$resident_key) && nzchar(operator$resident_key) &&
       is.function(backend$matmul_resident_host)) {
-    q_mat <- .amatrix_block_lanczos_numeric_matrix(q_block)
     value <- tryCatch(
       backend$matmul_resident_host(operator$resident_key, q_mat),
       error = function(e) NULL
@@ -690,10 +690,10 @@ irlba_native <- function(A,
   } else {
     .amatrix_prepare_resident_arg(A, backend_name)
   }
-  rhs <- .amatrix_prepare_resident_arg(q_block, backend_name)
+  rhs <- .amatrix_prepare_resident_arg(q_mat, backend_name)
   if (is.null(lhs) || is.null(rhs)) {
     .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
-    return(as.matrix(A %*% q_block))
+    return(as.matrix(A %*% q_mat))
   }
   on.exit(.amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name), add = TRUE)
 
@@ -712,7 +712,7 @@ irlba_native <- function(A,
     error = function(e) NULL
   )
   if (is.null(value)) {
-    return(as.matrix(A %*% q_block))
+    return(as.matrix(A %*% q_mat))
   }
 
   as.matrix(.amatrix_host_arg(value))
