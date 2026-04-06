@@ -788,6 +788,139 @@ SEXP amatrix_arrayfire_sum_axis_resident_bridge(SEXP x_key, SEXP axis) {
 #endif
 }
 
+/* ── Cholesky factorization ────────────────────────────────────────────── */
+
+SEXP amatrix_arrayfire_chol_bridge(SEXP x) {
+  if (!isReal(x) || !isMatrix(x))
+    error("x must be a numeric matrix");
+#ifdef HAVE_ARRAYFIRE
+  bool lapack = false;
+  af_is_lapack_available(&lapack);
+  if (!lapack)
+    error("amatrix_arrayfire_chol: LAPACK not available in this ArrayFire build");
+  af_array ax = 0, out = 0;
+  int info = 0;
+  ax = arrayfire_matrix_from_r(x);
+  af_err err = af_cholesky(&out, &info, ax, true /* upper */);
+  af_release_array(ax);
+  if (err != AF_SUCCESS || info != 0) {
+    if (out) af_release_array(out);
+    error("af_cholesky failed (info=%d)", info);
+  }
+  SEXP result = arrayfire_result_to_r_matrix(out);
+  af_release_array(out);
+  return result;
+#else
+  error("amatrix_arrayfire_chol requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
+SEXP amatrix_arrayfire_chol_resident_bridge(SEXP x_key, SEXP out_key) {
+#ifdef HAVE_ARRAYFIRE
+  if (!isString(x_key) || LENGTH(x_key) != 1 || !isString(out_key) || LENGTH(out_key) != 1)
+    error("keys must be scalar strings");
+  bool lapack = false;
+  af_is_lapack_available(&lapack);
+  if (!lapack)
+    error("amatrix_arrayfire_chol_resident: LAPACK not available");
+  amatrix_af_resident_entry* ex = amatrix_af_registry_find(CHAR(STRING_ELT(x_key, 0)));
+  if (ex == NULL) error("arrayfire resident key not found: %s", CHAR(STRING_ELT(x_key, 0)));
+  af_array out = 0;
+  int info = 0;
+  af_err err = af_cholesky(&out, &info, ex->array, true /* upper */);
+  if (err != AF_SUCCESS || info != 0) {
+    if (out) af_release_array(out);
+    error("af_cholesky (resident) failed (info=%d)", info);
+  }
+  amatrix_af_resident_entry* eout = amatrix_af_registry_reserve(CHAR(STRING_ELT(out_key, 0)));
+  eout->array = out;
+  return ScalarLogical(1);
+#else
+  error("arrayfire chol_resident requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
+/* ── Linear solve ──────────────────────────────────────────────────────── */
+
+SEXP amatrix_arrayfire_solve_bridge(SEXP a, SEXP b) {
+  if (!isReal(a) || !isMatrix(a))
+    error("a must be a numeric matrix");
+#ifdef HAVE_ARRAYFIRE
+  bool lapack = false;
+  af_is_lapack_available(&lapack);
+  if (!lapack)
+    error("amatrix_arrayfire_solve: LAPACK not available in this ArrayFire build");
+  af_array aa = 0, ab = 0, out = 0;
+  aa = arrayfire_matrix_from_r(a);
+  if (isNull(b)) {
+    SEXP dim = getAttrib(a, R_DimSymbol);
+    int n = INTEGER(dim)[0];
+    dim_t dims[2] = {(dim_t)n, (dim_t)n};
+    af_identity(&ab, 2, dims, f32);
+  } else {
+    if (!isReal(b) || !isMatrix(b))
+      error("b must be a numeric matrix or NULL");
+    ab = arrayfire_matrix_from_r(b);
+  }
+  af_err err = af_solve(&out, aa, ab, AF_MAT_NONE);
+  af_release_array(aa);
+  af_release_array(ab);
+  if (err != AF_SUCCESS) {
+    if (out) af_release_array(out);
+    error("af_solve failed");
+  }
+  SEXP result = arrayfire_result_to_r_matrix(out);
+  af_release_array(out);
+  return result;
+#else
+  error("amatrix_arrayfire_solve requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
+SEXP amatrix_arrayfire_solve_resident_bridge(SEXP a_key, SEXP b_key, SEXP out_key) {
+#ifdef HAVE_ARRAYFIRE
+  if (!isString(a_key) || LENGTH(a_key) != 1 || !isString(out_key) || LENGTH(out_key) != 1)
+    error("a_key and out_key must be scalar strings");
+  bool lapack = false;
+  af_is_lapack_available(&lapack);
+  if (!lapack)
+    error("amatrix_arrayfire_solve_resident: LAPACK not available");
+  amatrix_af_resident_entry* ea = amatrix_af_registry_find(CHAR(STRING_ELT(a_key, 0)));
+  if (ea == NULL) error("arrayfire resident key not found: %s", CHAR(STRING_ELT(a_key, 0)));
+  af_array ab = 0;
+  int own_ab = 0;
+  if (isNull(b_key)) {
+    dim_t d[4] = {0, 0, 0, 0};
+    af_get_dims(&d[0], &d[1], &d[2], &d[3], ea->array);
+    dim_t dims[2] = {d[0], d[0]};
+    af_identity(&ab, 2, dims, f32);
+    own_ab = 1;
+  } else {
+    if (!isString(b_key) || LENGTH(b_key) != 1)
+      error("b_key must be a scalar string or NULL");
+    amatrix_af_resident_entry* eb = amatrix_af_registry_find(CHAR(STRING_ELT(b_key, 0)));
+    if (eb == NULL) error("arrayfire resident key not found: %s", CHAR(STRING_ELT(b_key, 0)));
+    ab = eb->array;
+  }
+  af_array out = 0;
+  af_err err = af_solve(&out, ea->array, ab, AF_MAT_NONE);
+  if (own_ab) af_release_array(ab);
+  if (err != AF_SUCCESS) {
+    if (out) af_release_array(out);
+    error("af_solve (resident) failed");
+  }
+  amatrix_af_resident_entry* eout = amatrix_af_registry_reserve(CHAR(STRING_ELT(out_key, 0)));
+  eout->array = out;
+  return ScalarLogical(1);
+#else
+  error("arrayfire solve_resident requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Native GPU Lanczos Bidiagonalization
    ───────────────────────────────────────────────────────────────────────────

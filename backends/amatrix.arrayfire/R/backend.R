@@ -1,9 +1,15 @@
 amatrix_arrayfire_capabilities <- function() {
-  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "qr", "rsvd")
+  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
+    "qr", "rsvd", "chol", "solve", "covariance")
 }
 
 amatrix_arrayfire_features <- function() {
-  c("dense_f32", "qr", "op_resident", "rsvd")
+  c("dense_f32", "qr", "op_resident", "rsvd", "chol_gpu", "solve_gpu")
+}
+
+amatrix_arrayfire_lapack_available <- function() {
+  diag <- amatrix_arrayfire_diagnostics()
+  isTRUE(diag$lapack_available)
 }
 
 amatrix_arrayfire_precision_modes <- function() {
@@ -197,25 +203,65 @@ amatrix_arrayfire_colSums_resident <- function(x_key, na.rm = FALSE, dims = 1L) 
   .Call("amatrix_arrayfire_sum_axis_resident_bridge", as.character(x_key), 1L)
 }
 
-# CPU fallback — no ArrayFire LAPACK bridge exists yet (no .Call for solve/chol).
-# The matrix is downloaded from the ArrayFire device, computed on CPU via base R,
-# then stored back. This is functionally correct but slower than a native GPU path
-# and bypasses any float32 precision benefit. A real AF_LAPACK bridge is an M8 item.
-amatrix_arrayfire_solve_resident <- function(a_key, b_key = NULL, out_key) {
-  message("[amatrix.arrayfire] solve: no GPU bridge; falling back to CPU (host round-trip)")
-  a_host <- amatrix_arrayfire_resident_materialize(a_key)
-  result <- if (is.null(b_key)) base::solve(a_host)
-            else base::solve(a_host, amatrix_arrayfire_resident_materialize(b_key))
-  amatrix_arrayfire_resident_store(out_key, result)
-  result
+amatrix_arrayfire_chol <- function(x) {
+  x_mat <- as.matrix(x)
+  if (!is.double(x_mat)) storage.mode(x_mat) <- "double"
+  if (amatrix_arrayfire_lapack_available()) {
+    .Call("amatrix_arrayfire_chol_bridge", x_mat)
+  } else {
+    base::chol(x_mat)
+  }
 }
 
-# CPU fallback — see note above amatrix_arrayfire_solve_resident.
+amatrix_arrayfire_solve <- function(a, b = NULL) {
+  a_mat <- as.matrix(a)
+  if (!is.double(a_mat)) storage.mode(a_mat) <- "double"
+  b_arg <- if (!is.null(b)) { b_mat <- as.matrix(b); if (!is.double(b_mat)) storage.mode(b_mat) <- "double"; b_mat } else NULL
+  if (amatrix_arrayfire_lapack_available()) {
+    .Call("amatrix_arrayfire_solve_bridge", a_mat, b_arg)
+  } else {
+    if (is.null(b_arg)) base::solve(a_mat) else base::solve(a_mat, b_arg)
+  }
+}
+
+amatrix_arrayfire_covariance <- function(x, center = TRUE, denom = NULL) {
+  mat <- as.matrix(x)
+  if (!is.double(mat)) storage.mode(mat) <- "double"
+  n <- nrow(mat)
+  if (isTRUE(center)) {
+    col_means <- colMeans(mat)
+    mat <- mat - matrix(col_means, nrow = n, ncol = ncol(mat), byrow = TRUE)
+  }
+  d <- if (is.null(denom)) n - 1L else as.integer(denom)
+  amatrix_arrayfire_crossprod(mat) / d
+}
+
+amatrix_arrayfire_solve_resident <- function(a_key, b_key = NULL, out_key) {
+  if (amatrix_arrayfire_lapack_available()) {
+    .Call("amatrix_arrayfire_solve_resident_bridge",
+          as.character(a_key),
+          if (is.null(b_key)) NULL else as.character(b_key),
+          as.character(out_key))
+    amatrix_arrayfire_resident_materialize(out_key)
+  } else {
+    a_host <- amatrix_arrayfire_resident_materialize(a_key)
+    result <- if (is.null(b_key)) base::solve(a_host)
+              else base::solve(a_host, amatrix_arrayfire_resident_materialize(b_key))
+    amatrix_arrayfire_resident_store(out_key, result)
+    result
+  }
+}
+
 amatrix_arrayfire_chol_resident <- function(x_key, out_key) {
-  message("[amatrix.arrayfire] chol: no GPU bridge; falling back to CPU (host round-trip)")
-  result <- base::chol(amatrix_arrayfire_resident_materialize(x_key))
-  amatrix_arrayfire_resident_store(out_key, result)
-  result
+  if (amatrix_arrayfire_lapack_available()) {
+    .Call("amatrix_arrayfire_chol_resident_bridge",
+          as.character(x_key), as.character(out_key))
+    amatrix_arrayfire_resident_materialize(out_key)
+  } else {
+    result <- base::chol(amatrix_arrayfire_resident_materialize(x_key))
+    amatrix_arrayfire_resident_store(out_key, result)
+    result
+  }
 }
 
 .amatrix_arrayfire_forced_available <- function() {
@@ -332,6 +378,14 @@ amatrix_arrayfire_backend <- function() {
         return(.amatrix_arrayfire_meets_threshold(x, getOption("amatrix.arrayfire.rsvd_min_dim", 400L)))
       }
 
+      if (op %in% c("chol", "solve")) {
+        return(.amatrix_arrayfire_meets_threshold(x, getOption("amatrix.arrayfire.lapack_min_dim", 256L)))
+      }
+
+      if (identical(op, "covariance")) {
+        return(.amatrix_arrayfire_meets_threshold(x, thresholds$crossprod_min_dim))
+      }
+
       FALSE
     },
     matmul = function(x, y) {
@@ -393,6 +447,15 @@ amatrix_arrayfire_backend <- function() {
     },
     colSums_resident = function(x_key, na.rm = FALSE, dims = 1L) {
       amatrix_arrayfire_colSums_resident(x_key, na.rm = na.rm, dims = dims)
+    },
+    chol = function(x, ...) {
+      amatrix_arrayfire_chol(x)
+    },
+    solve = function(a, b = NULL, ...) {
+      amatrix_arrayfire_solve(a, b = b)
+    },
+    covariance = function(x, center = TRUE, denom = NULL, ...) {
+      amatrix_arrayfire_covariance(x, center = center, denom = denom)
     },
     solve_resident = function(a_key, b_key = NULL, out_key) {
       amatrix_arrayfire_solve_resident(a_key, b_key = b_key, out_key = out_key)
