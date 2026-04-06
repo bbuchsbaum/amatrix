@@ -640,6 +640,41 @@ am_diag <- function(x, nrow, ncol, names = TRUE) {
   )
 }
 
+# ── Row / column means ────────────────────────────────────────────────────────
+
+rowmeans <- function(x, na.rm = FALSE) {
+  x_host <- as.matrix(amatrix_materialize_host(x))
+  base::rowMeans(x_host, na.rm = na.rm)
+}
+
+colmeans <- function(x, na.rm = FALSE) {
+  x_host <- as.matrix(amatrix_materialize_host(x))
+  base::colMeans(x_host, na.rm = na.rm)
+}
+
+# ── Matrix trace ──────────────────────────────────────────────────────────────
+
+trace <- function(x) {
+  x_host <- as.matrix(amatrix_materialize_host(x))
+  sum(base::diag(x_host))
+}
+
+# ── Symmetry enforcement ──────────────────────────────────────────────────────
+
+sym <- function(x) {
+  X_arg <- .amatrix_model_dense_arg(x)
+  x_host <- as.matrix(amatrix_materialize_host(X_arg))
+  .amatrix_rewrap_like(X_arg, (x_host + t(x_host)) / 2)
+}
+
+# ── Inner product ─────────────────────────────────────────────────────────────
+
+dot <- function(x, y) {
+  x_host <- .amatrix_host_arg(x)
+  y_host <- .amatrix_host_arg(y)
+  sum(x_host * y_host)
+}
+
 ewise <- function(op, e1, e2 = NULL) {
   template <- .amatrix_template(e1, e2)
   host_e1 <- .amatrix_host_arg(e1)

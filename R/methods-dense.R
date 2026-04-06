@@ -91,6 +91,8 @@ setMethod("tcrossprod", signature(x = "adgeMatrix", y = "missing"), function(x, 
 
 setMethod("rowSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) rowsums(x, na.rm = na.rm, dims = dims))
 setMethod("colSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colsums(x, na.rm = na.rm, dims = dims))
+setMethod("rowMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) rowmeans(x, na.rm = na.rm))
+setMethod("colMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colmeans(x, na.rm = na.rm))
 
 setMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)

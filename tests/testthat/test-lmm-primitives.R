@@ -240,3 +240,93 @@ test_that("EMMA rotation pattern: rowscale(X_star, 1/d) then crossprod", {
   XtDX2 <- as.matrix(crossprod(rowscale(X_am, 1 / sqrt(d))))
   expect_equal(XtDX, XtDX2, tolerance = 1e-10)
 })
+
+# ── rowmeans / colmeans ───────────────────────────────────────────────────────
+
+test_that("rowmeans matches base rowMeans", {
+  set.seed(19)
+  X <- matrix(rnorm(30), 6, 5)
+  expect_equal(rowmeans(adgeMatrix(X)), rowMeans(X), tolerance = 1e-12)
+})
+
+test_that("colmeans matches base colMeans", {
+  set.seed(20)
+  X <- matrix(rnorm(30), 6, 5)
+  expect_equal(colmeans(adgeMatrix(X)), colMeans(X), tolerance = 1e-12)
+})
+
+test_that("rowMeans S4 dispatch works on adgeMatrix", {
+  set.seed(21)
+  X <- matrix(rnorm(20), 4, 5)
+  expect_equal(rowMeans(adgeMatrix(X)), rowMeans(X), tolerance = 1e-12)
+})
+
+test_that("colMeans S4 dispatch works on adgeMatrix", {
+  set.seed(22)
+  X <- matrix(rnorm(20), 4, 5)
+  expect_equal(colMeans(adgeMatrix(X)), colMeans(X), tolerance = 1e-12)
+})
+
+# ── trace ─────────────────────────────────────────────────────────────────────
+
+test_that("trace matches sum(diag(A)) for square matrix", {
+  set.seed(23)
+  A <- matrix(rnorm(25), 5, 5)
+  expect_equal(trace(adgeMatrix(A)), sum(diag(A)), tolerance = 1e-12)
+})
+
+test_that("trace of identity matrix equals n", {
+  expect_equal(trace(adgeMatrix(diag(7))), 7, tolerance = 1e-12)
+})
+
+test_that("trace of SPD matrix equals sum of eigenvalues", {
+  set.seed(24)
+  A <- matrix(rnorm(25), 5, 5)
+  K <- A %*% t(A) + diag(5)
+  expect_equal(trace(adgeMatrix(K)), sum(eigen(K, only.values = TRUE)$values),
+               tolerance = 1e-8)
+})
+
+# ── sym ───────────────────────────────────────────────────────────────────────
+
+test_that("sym result is exactly symmetric", {
+  set.seed(25)
+  A <- matrix(rnorm(25), 5, 5)
+  S <- sym(adgeMatrix(A))
+  expect_equal(as.matrix(S), t(as.matrix(S)), tolerance = 1e-14)
+})
+
+test_that("sym matches manual (A + t(A)) / 2", {
+  set.seed(26)
+  A <- matrix(rnorm(16), 4, 4)
+  expected <- (A + t(A)) / 2
+  expect_equal(as.matrix(sym(adgeMatrix(A))), expected, tolerance = 1e-12)
+})
+
+test_that("sym is idempotent", {
+  set.seed(27)
+  A <- matrix(rnorm(16), 4, 4)
+  A_am <- adgeMatrix(A)
+  expect_equal(as.matrix(sym(sym(A_am))), as.matrix(sym(A_am)), tolerance = 1e-14)
+})
+
+# ── dot ───────────────────────────────────────────────────────────────────────
+
+test_that("dot(x, y) matches sum(x * y) for vectors", {
+  set.seed(28)
+  x <- rnorm(10); y <- rnorm(10)
+  expect_equal(dot(x, y), sum(x * y), tolerance = 1e-12)
+})
+
+test_that("dot(X, Y) matches sum(X * Y) for matrices (Frobenius inner product)", {
+  set.seed(29)
+  X <- matrix(rnorm(20), 4, 5)
+  Y <- matrix(rnorm(20), 4, 5)
+  expect_equal(dot(adgeMatrix(X), adgeMatrix(Y)), sum(X * Y), tolerance = 1e-12)
+})
+
+test_that("dot(x, x) equals squared norm", {
+  set.seed(30)
+  x <- rnorm(8)
+  expect_equal(dot(x, x), sum(x^2), tolerance = 1e-12)
+})

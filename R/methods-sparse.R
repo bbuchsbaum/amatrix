@@ -13,6 +13,8 @@ setMethod("tcrossprod", signature(x = "adgCMatrix", y = "ANY"), function(x, y = 
 
 setMethod("rowSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) rowsums(x, na.rm = na.rm, dims = dims))
 setMethod("colSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) colsums(x, na.rm = na.rm, dims = dims))
+setMethod("rowMeans", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) rowmeans(x, na.rm = na.rm))
+setMethod("colMeans", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) colmeans(x, na.rm = na.rm))
 
 setMethod("[", signature(x = "adgCMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
