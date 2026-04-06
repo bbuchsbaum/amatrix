@@ -401,7 +401,7 @@ am_gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
   }
 }
 
-am_row_sums <- function(x, na.rm = FALSE, dims = 1L) {
+am_rowsums <- function(x, na.rm = FALSE, dims = 1L) {
   choice <- .amatrix_backend_for(x, "rowSums")
   resident <- .amatrix_try_resident_rowSums(x, na.rm, dims, choice$name)
   if (!is.null(resident)) return(resident)
@@ -414,7 +414,7 @@ am_row_sums <- function(x, na.rm = FALSE, dims = 1L) {
   )
 }
 
-am_col_sums <- function(x, na.rm = FALSE, dims = 1L) {
+am_colsums <- function(x, na.rm = FALSE, dims = 1L) {
   choice <- .amatrix_backend_for(x, "colSums")
   resident <- .amatrix_try_resident_colSums(x, na.rm, dims, choice$name)
   if (!is.null(resident)) return(resident)

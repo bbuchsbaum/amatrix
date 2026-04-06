@@ -22,19 +22,75 @@ setMethod("%*%", signature(x = "numeric", y = "adgeMatrix"), function(x, y) {
 
 # matrix %*% adgeMatrix: x(k×m) %*% A(m×n) = t(crossprod(A, t(x))) = k×n.
 setMethod("%*%", signature(x = "matrix",  y = "adgeMatrix"), function(x, y) {
-  am_transpose(am_crossprod(y, t(x)))
+  # x(k×m) %*% y(m×n): wrap x as adgeMatrix and use the standard matmul path.
+  am_matmul(new_adgeMatrix(x,
+    preferred_backend = y@preferred_backend,
+    policy            = y@policy,
+    precision         = y@precision), y)
 })
 
 if (!isGeneric("t")) setGeneric("t", function(x) base::t(x))
-setMethod("t", "adgeMatrix", function(x) am_transpose(x))
+setMethod("t", "adgeMatrix",     function(x) am_transpose(x))
+setMethod("t", "aTransposeView", function(x) x@source)
+
+# --- aTransposeView dispatch ------------------------------------------------
+
+setMethod("show", "aTransposeView", function(object) {
+  cat(sprintf(
+    "An amatrix transpose view [%s|policy=%s|precision=%s] %d x %d\n",
+    object@preferred_backend, object@policy, object@precision,
+    object@Dim[1L], object@Dim[2L]
+  ))
+})
+
+setMethod("dim",      "aTransposeView", function(x) x@Dim)
+setMethod("nrow",     "aTransposeView", function(x) x@Dim[1L])
+setMethod("ncol",     "aTransposeView", function(x) x@Dim[2L])
+setMethod("dimnames", "aTransposeView", function(x) x@Dimnames)
+
+# t(A) %*% B — route to crossprod(A, B) using the source resident key
+setMethod("%*%", signature(x = "aTransposeView", y = "adgeMatrix"),
+  function(x, y) am_crossprod(x@source, y))
+setMethod("%*%", signature(x = "aTransposeView", y = "matrix"),
+  function(x, y) am_crossprod(x@source, y))
+setMethod("%*%", signature(x = "aTransposeView", y = "ANY"),
+  function(x, y) am_crossprod(x@source, y))
+
+# A %*% t(B) — route to tcrossprod(A, B) using the source resident key
+setMethod("%*%", signature(x = "adgeMatrix",     y = "aTransposeView"),
+  function(x, y) am_tcrossprod(x, y@source))
+setMethod("%*%", signature(x = "matrix",         y = "aTransposeView"),
+  function(x, y) am_tcrossprod(new_adgeMatrix(x,
+    preferred_backend = y@source@preferred_backend,
+    policy            = y@source@policy,
+    precision         = y@source@precision), y@source))
+
+# t(A) %*% t(B) = tcrossprod(B, A)
+setMethod("%*%", signature(x = "aTransposeView", y = "aTransposeView"),
+  function(x, y) am_tcrossprod(y@source, x@source))
+
+# Arithmetic: materialize to adgeMatrix then delegate
+setMethod("Ops", signature(e1 = "aTransposeView", e2 = "ANY"), function(e1, e2) {
+  callGeneric(as(e1, "adgeMatrix"), e2)
+})
+setMethod("Ops", signature(e1 = "ANY", e2 = "aTransposeView"), function(e1, e2) {
+  callGeneric(e1, as(e2, "adgeMatrix"))
+})
+
+setAs("aTransposeView", "adgeMatrix", function(from) {
+  new_adgeMatrix(t(as.matrix(amatrix_materialize_dense(from@source))),
+    preferred_backend = from@preferred_backend,
+    policy            = from@policy,
+    precision         = from@precision)
+})
 
 setMethod("crossprod", signature(x = "adgeMatrix", y = "ANY"), function(x, y = NULL, ...) am_crossprod(x, y = y, ...))
 setMethod("crossprod", signature(x = "adgeMatrix", y = "missing"), function(x, y, ...) am_crossprod(x, y = NULL, ...))
 setMethod("tcrossprod", signature(x = "adgeMatrix", y = "ANY"), function(x, y = NULL, ...) am_tcrossprod(x, y = y, ...))
 setMethod("tcrossprod", signature(x = "adgeMatrix", y = "missing"), function(x, y, ...) am_tcrossprod(x, y = NULL, ...))
 
-setMethod("rowSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_row_sums(x, na.rm = na.rm, dims = dims))
-setMethod("colSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_col_sums(x, na.rm = na.rm, dims = dims))
+setMethod("rowSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_rowsums(x, na.rm = na.rm, dims = dims))
+setMethod("colSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_colsums(x, na.rm = na.rm, dims = dims))
 
 setMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)

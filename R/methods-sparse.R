@@ -11,8 +11,8 @@ setMethod("t", "adgCMatrix", function(x) am_transpose(x))
 setMethod("crossprod", signature(x = "adgCMatrix", y = "ANY"), function(x, y = NULL, ...) am_crossprod(x, y = y, ...))
 setMethod("tcrossprod", signature(x = "adgCMatrix", y = "ANY"), function(x, y = NULL, ...) am_tcrossprod(x, y = y, ...))
 
-setMethod("rowSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_row_sums(x, na.rm = na.rm, dims = dims))
-setMethod("colSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_col_sums(x, na.rm = na.rm, dims = dims))
+setMethod("rowSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_rowsums(x, na.rm = na.rm, dims = dims))
+setMethod("colSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_colsums(x, na.rm = na.rm, dims = dims))
 
 setMethod("[", signature(x = "adgCMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
