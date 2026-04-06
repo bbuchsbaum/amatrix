@@ -158,12 +158,5 @@ setMethod("determinant", "KronMatrix", function(x, logarithm = TRUE, ...) {
   structure(list(modulus = mod, sign = sgn), class = "det")
 })
 
-# kron(): eager — materialises the full mp×nq result as adgeMatrix.
-# kron_matrix(): lazy — returns KronMatrix for O(mpq) vec-trick operations.
-kron <- function(A, B) {
-  A_mat <- if (is.matrix(A)) A else as.matrix(A)
-  B_mat <- if (is.matrix(B)) B else as.matrix(B)
-  storage.mode(A_mat) <- "double"
-  storage.mode(B_mat) <- "double"
-  adgeMatrix(base::kronecker(A_mat, B_mat))
-}
+# kron(): eager wrapper lives in wrappers.R — handles aMatrix inputs via
+# .am_as_double_matrix(). kron_matrix() (above) is the lazy path.
