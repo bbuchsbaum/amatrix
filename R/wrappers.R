@@ -591,6 +591,30 @@ am_xty_weighted <- function(X, w, y) {
   )
 }
 
+# ── Diagonal scaling ──────────────────────────────────────────────────────────
+
+# diag(d) %*% X  — scale row i by d[i]
+am_rowscale <- function(X, d) {
+  X_arg <- .amatrix_model_dense_arg(X)
+  d <- as.double(d)
+  if (length(d) != nrow(X_arg)) {
+    stop("length(d) must equal nrow(X)", call. = FALSE)
+  }
+  x_host <- as.matrix(amatrix_materialize_host(X_arg))
+  .amatrix_rewrap_like(X_arg, x_host * d)
+}
+
+# X %*% diag(d)  — scale col j by d[j]
+am_colscale <- function(X, d) {
+  X_arg <- .amatrix_model_dense_arg(X)
+  d <- as.double(d)
+  if (length(d) != ncol(X_arg)) {
+    stop("length(d) must equal ncol(X)", call. = FALSE)
+  }
+  x_host <- as.matrix(amatrix_materialize_host(X_arg))
+  .amatrix_rewrap_like(X_arg, t(t(x_host) * d))
+}
+
 am_diag <- function(x, nrow, ncol, names = TRUE) {
   amatrix_dispatch_op(
     x = x,

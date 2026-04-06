@@ -174,3 +174,69 @@ test_that("am_xty_weighted handles matrix y", {
   result <- as.matrix(am_xty_weighted(X_am, w, Y))
   expect_equal(result, expected, tolerance = 1e-10)
 })
+
+# ── am_rowscale / am_colscale ─────────────────────────────────────────────────
+
+test_that("am_rowscale matches diag(d) %*% X", {
+  set.seed(15)
+  X <- matrix(rnorm(30), 6, 5)
+  d <- runif(6) + 0.5
+  X_am <- adgeMatrix(X)
+
+  expected <- diag(d) %*% X
+  result <- as.matrix(am_rowscale(X_am, d))
+  expect_equal(result, expected, tolerance = 1e-12)
+})
+
+test_that("am_colscale matches X %*% diag(d)", {
+  set.seed(16)
+  X <- matrix(rnorm(30), 6, 5)
+  d <- runif(5) + 0.5
+  X_am <- adgeMatrix(X)
+
+  expected <- X %*% diag(d)
+  result <- as.matrix(am_colscale(X_am, d))
+  expect_equal(result, expected, tolerance = 1e-12)
+})
+
+test_that("am_rowscale errors on length mismatch", {
+  X_am <- adgeMatrix(matrix(1:12, 4, 3))
+  expect_error(am_rowscale(X_am, rep(1, 3)), "nrow")
+})
+
+test_that("am_colscale errors on length mismatch", {
+  X_am <- adgeMatrix(matrix(1:12, 4, 3))
+  expect_error(am_colscale(X_am, rep(1, 4)), "ncol")
+})
+
+test_that("am_rowscale result has same dims as input", {
+  X_am <- adgeMatrix(matrix(rnorm(20), 4, 5))
+  result <- am_rowscale(X_am, rep(2, 4))
+  expect_equal(dim(result), c(4L, 5L))
+})
+
+test_that("am_rowscale followed by am_crossprod equals am_crossprod_weighted", {
+  set.seed(17)
+  X <- matrix(rnorm(30), 10, 3)
+  w <- runif(10) + 0.1
+  X_am <- adgeMatrix(X)
+
+  via_rowscale  <- as.matrix(am_crossprod(am_rowscale(X_am, sqrt(w))))
+  via_weighted  <- as.matrix(am_crossprod_weighted(X_am, w))
+  expect_equal(via_rowscale, via_weighted, tolerance = 1e-10)
+})
+
+test_that("EMMA rotation pattern: am_rowscale(X_star, 1/d) then am_crossprod", {
+  # Simulate the EMMA inner loop: X*' D^{-1} X* = crossprod(rowscale(X*, 1/sqrt(d)))
+  set.seed(18)
+  n <- 20; p <- 3
+  X_star <- matrix(rnorm(n * p), n, p)
+  lambda  <- sort(abs(rnorm(n))) + 0.1
+  delta   <- 0.5
+  d       <- lambda + delta
+
+  X_am  <- adgeMatrix(X_star)
+  XtDX  <- as.matrix(am_crossprod_weighted(X_am, 1 / d))
+  XtDX2 <- as.matrix(am_crossprod(am_rowscale(X_am, 1 / sqrt(d))))
+  expect_equal(XtDX, XtDX2, tolerance = 1e-10)
+})
