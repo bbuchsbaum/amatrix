@@ -50,7 +50,7 @@ chol_factor <- function(X) {
   }
 
   cache_key <- paste0("chol:", X@object_id)
-  cached <- get0(cache_key, envir = .amatrix_state$model_cache, inherits = FALSE)
+  cached <- .amatrix_cache_get(cache_key)
   if (!is.null(cached)) {
     return(cached)
   }
@@ -65,7 +65,7 @@ chol_factor <- function(X) {
     backend = X@preferred_backend
   )
 
-  assign(cache_key, factor_obj, envir = .amatrix_state$model_cache)
+  .amatrix_cache_set(cache_key, factor_obj)
   factor_obj
 }
 
@@ -144,4 +144,62 @@ quad_form <- function(factor, v) {
   } else {
     crossprod(as.matrix(v), as.matrix(z))
   }
+}
+
+# ---------------------------------------------------------------------------
+# LU factorization  (general square systems; mirrors the amChol pattern)
+# ---------------------------------------------------------------------------
+
+setClass(
+  "amLU",
+  slots = list(
+    A          = "matrix",    # original square matrix; LAPACK DGESV factorises on solve
+    source_id  = "character",
+    precision  = "character",
+    backend    = "character"
+  ),
+  prototype = list(
+    A          = matrix(numeric(0), 0L, 0L),
+    source_id  = NA_character_,
+    precision  = NA_character_,
+    backend    = NA_character_
+  )
+)
+
+setMethod("show", "amLU", function(object) {
+  cat(sprintf(
+    "amLU [%dx%d | %s | source: %s]\n",
+    nrow(object@A), ncol(object@A),
+    object@precision, object@source_id
+  ))
+  invisible(object)
+})
+
+lu_factor <- function(A) {
+  A_mat <- if (inherits(A, "adgeMatrix")) {
+    m <- as.matrix(amatrix_materialize_host(A))
+    storage.mode(m) <- "double"
+    m
+  } else {
+    m <- as.matrix(A)
+    storage.mode(m) <- "double"
+    m
+  }
+  if (nrow(A_mat) != ncol(A_mat)) {
+    stop("A must be a square matrix", call. = FALSE)
+  }
+  src  <- if (inherits(A, "adgeMatrix")) A@object_id else NA_character_
+  prec <- if (inherits(A, "adgeMatrix")) A@precision  else NA_character_
+  be   <- if (inherits(A, "adgeMatrix")) A@preferred_backend else NA_character_
+  new("amLU", A = A_mat, source_id = src, precision = prec, backend = be)
+}
+
+lu_solve <- function(factor, B) {
+  if (!inherits(factor, "amLU")) {
+    stop("factor must be an amLU object", call. = FALSE)
+  }
+  scalar_out <- is.vector(B) || (is.matrix(B) && ncol(B) == 1L)
+  B_mat <- if (is.vector(B)) matrix(B, ncol = 1L) else as.matrix(B)
+  x <- base::solve(factor@A, B_mat)
+  if (scalar_out && ncol(x) == 1L) drop(x) else x
 }
