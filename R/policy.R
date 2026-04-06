@@ -22,7 +22,7 @@
     )
     derived_backend <- switch(mode,
       exact    = "cpu",             # hard-pinned: exact means CPU semantics
-      balanced = "cpu",             # auto routing not implemented yet; defaults to cpu
+      balanced = "cpu",             # M8: auto-route to GPU where float64-safe; currently CPU-pinned
       fast     = "cpu"              # backend= needed to route to GPU
     )
     pb  <- if (!is.null(preferred_backend)) preferred_backend else if (!is.null(backend)) backend else derived_backend

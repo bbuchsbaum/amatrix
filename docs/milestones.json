@@ -146,20 +146,23 @@
     {
       "id": "M7",
       "name": "Algebraic Surface Hardening",
-      "status": "current",
+      "status": "complete",
       "depends_on": [
         "M6"
       ],
       "deliverables": [
         "Replace the current src_id-linked transpose shortcut with a proper aTransposeView or aMatrixView design",
         "Preserve fast crossprod/tcrossprod routing for t(A) %*% B and A %*% t(B) while removing the remaining host transpose cost",
-        "Promote internal .am_gemm to a documented public am_gemm() surface for explicit alpha/beta/accumulator control",
+        "Promote internal .am_gemm to a documented public gemm() surface for explicit alpha/beta/accumulator control",
         "Align contract, PRD, and migration docs around structural views for common cases and explicit kernels for full control"
       ],
       "exit_criteria": [
         "Docs and issue tracker agree that structural views are allowed while full GEMM control stays explicit",
         "The transpose-view implementation path preserves distinct cache and residency identity from the source matrix",
         "t(t(A)) has a clean collapse rule without redundant host transposition"
+      ],
+      "known_gaps": [
+        "gemm(transA=TRUE, transB=TRUE): no fused GPU kernel; am_transpose(B) materialises t(B) to host before am_crossprod. The single-flag cases (transA-only, transB-only) are zero-copy via crossprod/tcrossprod dispatch. Double-flag deferral documented in R/wrappers.R. Tracked for M8."
       ]
     },
     {
@@ -172,7 +175,9 @@
       "deliverables": [
         "Tighten and decide promotion criteria for the first block Lanczos prototype now that the initial MLX benchmark wins are landed",
         "Decide whether ArrayFire rsvd quality and performance are product-ready or should remain experimental",
-        "Add deterministic or better-bounded testing strategy for stochastic backend decomposition paths where needed"
+        "Add deterministic or better-bounded testing strategy for stochastic backend decomposition paths where needed",
+        "Implement fused transA+transB path in gemm() via tcrossprod identity (t(B%*%A)) or native transposed-matmul kernel to eliminate the O(nm) host materialisation deferred from M7",
+        "Implement balanced mode auto-routing: select GPU backend when the op is float64-safe (currently CPU-pinned per M7 deferral)"
       ],
       "exit_criteria": [
         "Block Lanczos has a benchmark-backed case for beating the current am_irlba compatibility path and at least one CPU crossover point, and the current approximation envelope is documented honestly",

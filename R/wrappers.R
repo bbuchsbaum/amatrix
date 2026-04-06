@@ -390,7 +390,10 @@ am_tcrossprod <- function(x, y = NULL, ...) {
 gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
                     transA = FALSE, transB = FALSE) {
   AB <- if (transA && transB) {
-    am_crossprod(A, am_transpose(B))  # t(A) %*% t(B) via host-materialised t(B)
+    # t(A) %*% t(B): no fused GPU kernel; am_transpose(B) materialises t(B) to host.
+    # Known gap deferred to M8: implement via tcrossprod identity t(B %*% A) or
+    # a native transposed-matmul kernel that avoids the O(nm) host copy.
+    am_crossprod(A, am_transpose(B))
   } else if (transA) {
     am_crossprod(A, B)
   } else if (transB) {
