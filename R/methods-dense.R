@@ -222,3 +222,18 @@ setMethod("norm", "adgeMatrix", function(x, type = "F", ...) {
     }
   )
 })
+
+# Fallback for plain matrix — delegate to base::norm
+setMethod("norm", "matrix", function(x, type = "F", ...) {
+  base::norm(x, type = type, ...)
+})
+
+# Vector norms (no base::norm equivalent for numeric vectors)
+setMethod("norm", "numeric", function(x, type = "2", ...) {
+  type <- match.arg(toupper(substr(type, 1L, 1L)), c("2", "1", "I"))
+  switch(type,
+    "2" = sqrt(sum(x * x)),
+    "1" = sum(abs(x)),
+    "I" = max(abs(x))
+  )
+})

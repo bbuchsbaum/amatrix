@@ -384,16 +384,14 @@ am_tcrossprod <- function(x, y = NULL, ...) {
 # Routes each case to the most efficient resident operation:
 #   transA only  → crossprod_resident  (t(A) %*% B)
 #   transB only  → tcrossprod_resident (A %*% t(B))
-#   transA+B     → am_crossprod(A, t(B))  = t(A) %*% t(B), via host materialization of t(B)
+#   transA+B     → t(B %*% A)  (tcrossprod identity; no host copy of t(B))
 #   neither      → matmul_resident     (A %*% B)
 # Use matmul / am_crossprod / am_tcrossprod for plain operator idioms.
 gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
                     transA = FALSE, transB = FALSE) {
   AB <- if (transA && transB) {
-    # t(A) %*% t(B): no fused GPU kernel; am_transpose(B) materialises t(B) to host.
-    # Known gap deferred to M8: implement via tcrossprod identity t(B %*% A) or
-    # a native transposed-matmul kernel that avoids the O(nm) host copy.
-    am_crossprod(A, am_transpose(B))
+    # t(A) %*% t(B) = t(B %*% A): use identity to avoid materialising t(B) to host.
+    am_transpose(matmul(B, A))
   } else if (transA) {
     am_crossprod(A, B)
   } else if (transB) {
@@ -1005,21 +1003,6 @@ kernel_matrix <- function(X, Y = NULL,
 # Kronecker product
 # ---------------------------------------------------------------------------
 
-#' Kronecker product
-#'
-#' Compute the Kronecker product A \eqn{\otimes} B.  For an \eqn{m \times n}
-#' matrix A and a \eqn{p \times q} matrix B the result is \eqn{mp \times nq}.
-#'
-#' @param A Numeric matrix, \code{adgeMatrix}, or \code{adgCMatrix}.
-#' @param B Numeric matrix, \code{adgeMatrix}, or \code{adgCMatrix}.
-#' @return An \code{adgeMatrix} of dimension \eqn{mp \times nq}.
-#' @export
-kron <- function(A, B) {
-  A_mat <- .am_as_double_matrix(A)
-  B_mat <- .am_as_double_matrix(B)
-  result <- base::kronecker(A_mat, B_mat)
-  adgeMatrix(result)
-}
 
 # norm: matrix and vector norms.
 #
