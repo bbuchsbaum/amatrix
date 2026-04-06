@@ -197,7 +197,12 @@ amatrix_arrayfire_colSums_resident <- function(x_key, na.rm = FALSE, dims = 1L) 
   .Call("amatrix_arrayfire_sum_axis_resident_bridge", as.character(x_key), 1L)
 }
 
+# CPU fallback — no ArrayFire LAPACK bridge exists yet (no .Call for solve/chol).
+# The matrix is downloaded from the ArrayFire device, computed on CPU via base R,
+# then stored back. This is functionally correct but slower than a native GPU path
+# and bypasses any float32 precision benefit. A real AF_LAPACK bridge is an M8 item.
 amatrix_arrayfire_solve_resident <- function(a_key, b_key = NULL, out_key) {
+  message("[amatrix.arrayfire] solve: no GPU bridge; falling back to CPU (host round-trip)")
   a_host <- amatrix_arrayfire_resident_materialize(a_key)
   result <- if (is.null(b_key)) base::solve(a_host)
             else base::solve(a_host, amatrix_arrayfire_resident_materialize(b_key))
@@ -205,7 +210,9 @@ amatrix_arrayfire_solve_resident <- function(a_key, b_key = NULL, out_key) {
   result
 }
 
+# CPU fallback — see note above amatrix_arrayfire_solve_resident.
 amatrix_arrayfire_chol_resident <- function(x_key, out_key) {
+  message("[amatrix.arrayfire] chol: no GPU bridge; falling back to CPU (host round-trip)")
   result <- base::chol(amatrix_arrayfire_resident_materialize(x_key))
   amatrix_arrayfire_resident_store(out_key, result)
   result
