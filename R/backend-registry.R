@@ -1,3 +1,7 @@
+.amatrix_optional_backends_enabled <- function() {
+  !identical(getOption("amatrix.optional_backends", TRUE), FALSE)
+}
+
 .amatrix_optional_backend_specs <- function() {
   list(
     mlx = list(
@@ -13,6 +17,10 @@
 
 .amatrix_try_register_optional_backend <- function(name) {
   stopifnot(is.character(name), length(name) == 1L, nzchar(name))
+
+  if (!.amatrix_optional_backends_enabled()) {
+    return(FALSE)
+  }
 
   if (exists(name, envir = .amatrix_state$backends, inherits = FALSE)) {
     return(TRUE)
@@ -118,7 +126,9 @@ amatrix_register_backend <- function(name, backend, overwrite = FALSE) {
 }
 
 amatrix_backend_names <- function() {
-  invisible(lapply(names(.amatrix_optional_backend_specs()), .amatrix_try_register_optional_backend))
+  if (.amatrix_optional_backends_enabled()) {
+    invisible(lapply(names(.amatrix_optional_backend_specs()), .amatrix_try_register_optional_backend))
+  }
   sort(ls(envir = .amatrix_state$backends, all.names = FALSE))
 }
 
@@ -142,7 +152,9 @@ amatrix_backend_precision_modes <- function(name) {
 
 amatrix_backend_status <- function(names = NULL) {
   if (is.null(names)) {
-    invisible(lapply(names(.amatrix_optional_backend_specs()), .amatrix_try_register_optional_backend))
+    if (.amatrix_optional_backends_enabled()) {
+      invisible(lapply(names(.amatrix_optional_backend_specs()), .amatrix_try_register_optional_backend))
+    }
     names <- amatrix_backend_names()
   }
 
