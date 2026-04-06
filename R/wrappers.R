@@ -1000,3 +1000,93 @@ kernel_matrix <- function(X, Y = NULL,
   .am_kernel_gpu(X_mat, Y_mat, kernel,
                  sigma = sigma, degree = degree, coef = coef)
 }
+
+# ---------------------------------------------------------------------------
+# Batch factorization helpers
+# ---------------------------------------------------------------------------
+
+# Normalise a batch argument to a list of plain R matrices.
+# Accepts: list of matrices, or a 3-D array dim c(n, n, B).
+.am_batch_to_list <- function(A, arg_name = "A") {
+  if (is.list(A)) {
+    lapply(A, function(a) {
+      m <- as.matrix(a)
+      if (!is.double(m)) storage.mode(m) <- "double"
+      m
+    })
+  } else if (is.array(A) && length(dim(A)) == 3L) {
+    B <- dim(A)[[3L]]
+    lapply(seq_len(B), function(b) {
+      m <- A[, , b, drop = FALSE]
+      dim(m) <- dim(m)[1:2]
+      if (!is.double(m)) storage.mode(m) <- "double"
+      m
+    })
+  } else {
+    stop(arg_name, " must be a list of matrices or a 3-D array [n, n, B]",
+         call. = FALSE)
+  }
+}
+
+#' Batch Cholesky factorization
+#'
+#' Factorize B symmetric positive-definite matrices in parallel.  Each matrix
+#' is dispatched through the same backend as \code{\link{chol_factor}}, so MLX
+#' GPU acceleration applies to every element when available.
+#'
+#' @param A A list of square numeric matrices, or a 3-D array \code{[n, n, B]}.
+#' @return A list of \code{amChol} objects, one per input matrix.
+#' @seealso \code{\link{chol_factor}}, \code{\link{batch_solve}}
+#' @export
+batch_chol <- function(A) {
+  mats <- .am_batch_to_list(A, "A")
+  lapply(mats, function(m) {
+    X <- adgeMatrix(m)
+    chol_factor(X)
+  })
+}
+
+#' Batch triangular solve
+#'
+#' Solve B linear systems \code{A_b x_b = B_b} where each \code{A_b} is
+#' represented by its Cholesky factor from \code{\link{batch_chol}}.
+#'
+#' @param Ls A list of \code{amChol} objects (output of \code{batch_chol}).
+#' @param B A list of right-hand-side matrices/vectors, or a 3-D array
+#'   \code{[n, k, B]}.  Length / third dimension must match \code{Ls}.
+#' @return A list of solution matrices (or vectors when each rhs is a vector).
+#' @seealso \code{\link{batch_chol}}, \code{\link{chol_solve}}
+#' @export
+batch_solve <- function(Ls, B) {
+  if (!is.list(Ls) || !all(vapply(Ls, inherits, logical(1L), "amChol"))) {
+    stop("Ls must be a list of amChol objects from batch_chol()", call. = FALSE)
+  }
+
+  rhs_list <- if (is.list(B)) {
+    B
+  } else if (is.array(B) && length(dim(B)) == 3L) {
+    nb <- dim(B)[[3L]]
+    lapply(seq_len(nb), function(b) B[, , b, drop = TRUE])
+  } else {
+    stop("B must be a list or a 3-D array [n, k, B]", call. = FALSE)
+  }
+
+  if (length(Ls) != length(rhs_list)) {
+    stop("Ls and B must have the same batch size", call. = FALSE)
+  }
+
+  Map(chol_solve, Ls, rhs_list)
+}
+
+#' Batch crossproduct
+#'
+#' Compute \code{t(A_b) \%*\% A_b} for each matrix in a batch.
+#'
+#' @param A A list of numeric matrices, or a 3-D array \code{[n, p, B]}.
+#' @return A list of \code{p x p} crossproduct matrices.
+#' @seealso \code{\link{batch_chol}}
+#' @export
+batch_crossprod <- function(A) {
+  mats <- .am_batch_to_list(A, "A")
+  lapply(mats, function(m) crossprod(m))
+}

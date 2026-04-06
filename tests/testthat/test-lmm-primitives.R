@@ -455,3 +455,63 @@ test_that("trace_estim is reproducible with seed", {
   e2 <- trace_estim(K_am, k = 20, seed = 99)
   expect_equal(e1, e2)
 })
+
+# ---------------------------------------------------------------------------
+# batch_chol / batch_solve / batch_crossprod
+# ---------------------------------------------------------------------------
+
+test_that("batch_chol returns a list of amChol objects", {
+  set.seed(1)
+  B <- 4L; n <- 5L
+  mats <- lapply(seq_len(B), function(i) {
+    A <- matrix(rnorm(n * n), n, n); crossprod(A) + diag(n)
+  })
+  Ls <- batch_chol(mats)
+  expect_length(Ls, B)
+  expect_true(all(vapply(Ls, inherits, logical(1), "amChol")))
+})
+
+test_that("batch_chol accepts a 3-D array", {
+  set.seed(2)
+  B <- 3L; n <- 4L
+  arr <- array(0, c(n, n, B))
+  for (b in seq_len(B)) { A <- matrix(rnorm(n*n), n, n); arr[,,b] <- crossprod(A) + diag(n) }
+  Ls <- batch_chol(arr)
+  expect_length(Ls, B)
+})
+
+test_that("batch_solve recovers RHS", {
+  set.seed(3)
+  B <- 5L; n <- 6L; k <- 2L
+  mats <- lapply(seq_len(B), function(i) { A <- matrix(rnorm(n*n), n, n); crossprod(A) + diag(n) })
+  Xs   <- lapply(seq_len(B), function(i) matrix(rnorm(n * k), n, k))
+  Ls   <- batch_chol(mats)
+  # compute RHS = A_b %*% x_b for each b
+  rhs  <- Map(function(m, x) m %*% x, mats, Xs)
+  sols <- batch_solve(Ls, rhs)
+  for (b in seq_len(B)) {
+    expect_equal(sols[[b]], Xs[[b]], tolerance = 1e-9)
+  }
+})
+
+test_that("batch_solve works with 3-D B array", {
+  set.seed(4)
+  B <- 3L; n <- 4L; k <- 2L
+  mats <- lapply(seq_len(B), function(i) { A <- matrix(rnorm(n*n), n, n); crossprod(A) + diag(n) })
+  Ls   <- batch_chol(mats)
+  rhs_arr <- array(rnorm(n * k * B), c(n, k, B))
+  sols <- batch_solve(Ls, rhs_arr)
+  expect_length(sols, B)
+})
+
+test_that("batch_crossprod returns list of p x p matrices", {
+  set.seed(5)
+  B <- 4L; n <- 8L; p <- 3L
+  mats <- lapply(seq_len(B), function(i) matrix(rnorm(n * p), n, p))
+  XtXs <- batch_crossprod(mats)
+  expect_length(XtXs, B)
+  for (b in seq_len(B)) {
+    expect_equal(dim(XtXs[[b]]), c(p, p))
+    expect_equal(XtXs[[b]], crossprod(mats[[b]]), tolerance = 1e-12)
+  }
+})
