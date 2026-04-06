@@ -51,6 +51,38 @@ Why this is the preferred package-author path:
 - it keeps backend choice and precision policy centralized
 - it leaves the rest of your package structure alone
 
+## Transpose-Heavy Hot Paths
+
+For transpose products, prefer `crossprod()` and `tcrossprod()` today instead
+of spelling the transpose explicitly in a hot path.
+
+Before:
+
+```r
+XtY <- t(X) %*% Y
+G   <- X %*% t(Y)
+```
+
+After:
+
+```r
+XtY <- crossprod(X, Y)
+G   <- tcrossprod(X, Y)
+```
+
+Why:
+
+- current `t(adgeMatrix)` still materializes a transposed host payload even
+  though it can reuse the source residency for the downstream GPU product
+- `crossprod()` and `tcrossprod()` already express the intended transpose
+  algebra directly
+- the next iteration is a dedicated transpose-view class that removes the
+  remaining host transpose cost
+
+If you need full BLAS-style control over `alpha`, `beta`, or an accumulator
+matrix `C`, keep that as an explicit kernel surface via planned `am_gemm()`
+rather than expecting eager operator chains to fuse.
+
 ### 3. Workflow Swap
 
 If the bottleneck is a repeated-fit pattern, adopt a flagship helper instead of manually looping.
@@ -138,10 +170,19 @@ Do not write backend-specific branches in your package code unless there is a pr
 
 Do not:
 
+- build a parallel public surface of `gpuFoo()` wrappers around your existing package API
 - call backend-native bridges directly
 - scatter `if (backend == "mlx")` conditionals through your algorithms
 - depend on resident execution being present
 - assume zero-adaptation is guaranteed for all callers
+
+Prefer:
+
+- constructor swap for the object boundary
+- hot-kernel swap for the bottleneck
+- workflow swap for repeated-fit surfaces
+
+The point is to adopt the substrate, not to create a new pile of backend-specific wrapper functions.
 
 ## Rule Of Thumb
 

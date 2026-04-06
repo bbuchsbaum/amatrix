@@ -1,95 +1,123 @@
 {
   "document_type": "ExecutionPlan",
   "product_name": "amatrix",
-  "created_at": "2026-04-03",
+  "created_at": "2026-04-06",
+  "strategy": "Stabilize what is already implemented, keep the user contract explicit, replace the transpose shortcut with a proper structural view, and expose full GEMM control explicitly before another broad expansion of algorithm families.",
   "sequence": [
     {
       "order": 1,
-      "issue_id": "bd-io8.1",
-      "title": "Document Backend Contract",
-      "parent": "bd-io8",
-      "objective": "Write a backend author specification for amatrix so optional backend packages target one explicit contract.",
+      "status": "completed",
+      "title": "Harden am_rsvd precision contract",
+      "objective": "Make standalone am_rsvd() obey the same fast-only backend rule as am_svd_factor(), and keep the broad conformance slice green under strict semantics.",
       "scope": [
-        "Document required backend fields and functions",
-        "Define capability semantics and ordering",
-        "Document backend selection precedence across preferred_backend, policy, and cpu",
-        "State v1 rules: dense-first acceleration, Matrix-first sparse semantics, opportunistic sparse GPU only",
-        "Include a minimal backend skeleton and a fallback example"
+        "Dispatch backend rsvd only when x is an adgeMatrix in fast precision",
+        "Keep strict precision on the CPU reference path",
+        "Move stochastic fast-path numeric expectations out of the broad cross-backend conformance harness and into focused backend-local or dispatch tests"
       ],
       "acceptance_criteria": [
-        "A docs file in the repo explains the backend contract and its required functions.",
-        "The document states that sparse is Matrix-first in v1 and GPU sparse is opportunistic.",
-        "The document defines capability ordering/meaning and backend selection precedence clearly enough for a third-party backend package to implement the contract.",
-        "The document includes at least one concrete example backend skeleton and one example of correct CPU fallback behavior."
+        "Broad backend-integration, conformance, and cross-backend-conformance slices pass",
+        "Strict precision no longer calls float32-only backend rsvd paths",
+        "Standalone am_rsvd() has direct dispatch tests for both strict and fast precision"
       ]
     },
     {
       "order": 2,
-      "issue_id": "bd-u4p.1",
-      "title": "Add Root Backend Integration Harness",
-      "parent": "bd-u4p",
-      "depends_on": [
-        "bd-io8.1"
-      ],
-      "objective": "Exercise installed optional backend packages from the amatrix core package side using a shared smoke/integration harness.",
+      "status": "completed",
+      "title": "Freeze public mode and backend contract",
+      "objective": "Stop promising behavior the package does not yet implement and make the current contract explicit everywhere users will read it.",
       "scope": [
-        "Detect optional backend packages cleanly",
-        "Run common assertions against each installed backend",
-        "Verify backend registration and core capability/status helpers",
-        "Verify dense supported routing and CPU fallback for unsupported/sparse paths",
-        "Verify precedence between preferred_backend and policy"
+        "Document exact as strict CPU semantics",
+        "Document balanced conservatively as strict CPU behavior unless an explicit backend is supplied",
+        "Document fast plus backend as the current accelerator opt-in",
+        "Align README, PRD, flagship-workflows, and kernel-model-core docs"
       ],
       "acceptance_criteria": [
-        "The core package has integration tests that exercise installed optional backend packages from amatrix, not only from the backend package repos.",
-        "The harness can skip cleanly when an optional backend package is not installed.",
-        "For each installed backend package, the harness verifies dense supported routing, CPU fallback for unsupported ops, and CPU fallback for sparse ops.",
-        "The harness reuses common assertions so new backends can be added without duplicating the whole test surface."
+        "No core doc claims balanced automatic GPU routing as a shipped behavior",
+        "The mode/backend story is consistent across README and docs",
+        "Strict-versus-fast semantics are explicit for decomposition paths"
       ]
     },
     {
       "order": 3,
-      "issue_id": "bd-2qe.1",
-      "title": "Implement Thin MLX Bridge Boundary",
-      "parent": "bd-2qe",
-      "depends_on": [
-        "bd-u4p.1"
-      ],
-      "objective": "Add the first real native/interface boundary in amatrix.mlx, starting with dense matmul, without changing the public backend contract or host-side object semantics.",
+      "status": "completed",
+      "title": "Validate MLX GPU Cholesky plus batched solve on flagship SPD workflows",
+      "objective": "Turn the existing MLX bridge-backed Cholesky and triangular-solve path into a benchmarked, trustworthy second flagship.",
       "scope": [
-        "Add a minimal compiled or foreign-function boundary in amatrix.mlx",
-        "Keep registration and selection through the existing plugin contract",
-        "Guard unsupported systems cleanly through availability reporting",
-        "Add at least one integration test that proves the bridge path is callable through the mlx backend"
+        "Add focused parity tests around am_chol_factor() and am_chol_solve() in fast MLX mode",
+        "Benchmark representative SPD many-RHS workloads such as ridge-like solves or kernel systems",
+        "Document where the MLX path is already real and where ArrayFire remains a stub or fallback"
       ],
       "acceptance_criteria": [
-        "amatrix.mlx contains a minimal compiled or foreign-function bridge boundary dedicated to MLX-backed dense matmul.",
-        "The backend contract in amatrix remains unchanged and the mlx package still registers through the same plugin interface.",
-        "When MLX support is unavailable, the package reports that cleanly and falls back without changing object semantics.",
-        "At least one integration test proves the bridge path is callable behind the registered mlx backend contract, even if the implementation is initially guarded or mock-backed on non-MLX systems."
+        "MLX factor and solve paths have benchmark-backed validation",
+        "Docs describe the Cholesky workflow honestly as implemented and validated, not merely planned",
+        "Any remaining backend gaps are explicit"
       ]
     },
     {
       "order": 4,
-      "issue_id": "bd-2qe.2",
-      "title": "Implement Compact MLX QR Factor Path",
-      "parent": "bd-2qe",
-      "depends_on": [
-        "bd-2qe.1",
-        "bd-u4p.1"
-      ],
-      "objective": "Replace the current explicit-Q MLX QR hot path with a true compact factor representation for pivot = FALSE so QR-heavy many-RHS workflows stop depending on resident Q materialization.",
+      "status": "completed",
+      "title": "Reduce compact MLX QR cold factor-build cost",
+      "objective": "Keep pushing the flagship many-RHS QR workflow where the current bottleneck actually is: cold compact-factor construction, not the hot solve path.",
       "scope": [
-        "Add an internal mlx_compact_qr representation under amQR",
-        "Implement a first pivot = FALSE, thin QR compact path for fast mode",
-        "Route qr.qty, qr.qy, qr.coef, qr.solve, and qr.resid through the compact representation",
-        "Keep exact mode and pivoted QR on CPU fallback until the compact MLX path is trustworthy",
-        "Benchmark the compact path against cached base QR and the current resident-Q MLX path on many-RHS workflows"
+        "Profile compact QR factor build separately from qr.coef()/many_lm hot helpers",
+        "Move more compact-path setup below R if the current cost is bridge/setup dominated",
+        "Re-benchmark resident-Q versus compact MLX paths on many_lm"
       ],
       "acceptance_criteria": [
-        "am_qr_info() can report a native compact MLX QR representation distinct from bridge_compact and resident explicit-Q paths.",
-        "many_lm(..., method = \"qr\") on MLX fast mode can execute its hot helper path without depending on explicit Q materialization.",
-        "The compact MLX QR path passes parity tests for pivot = FALSE helper operations and CPU fallback remains correct for exact mode.",
-        "Benchmark output shows whether the compact path improves the flagship many-RHS workflow over both cached base QR and the resident-Q MLX bridge path."
+        "Compact QR cold-build cost is measured and reduced or clearly explained",
+        "The docs can state whether compact or resident-Q is the premium QR implementation today",
+        "The flagship many-RHS benchmark story is stronger after the pass"
+      ]
+    },
+    {
+      "order": 5,
+      "status": "completed",
+      "title": "Land block Lanczos prototype after flagship validation",
+      "objective": "After the flagship QR and Cholesky passes, add and benchmark a first GEMM-oriented block Lanczos surface against the am_irlba compatibility path.",
+      "scope": [
+        "Expose a GEMM-oriented block Lanczos surface in the main package",
+        "Benchmark against am_irlba compatibility mode and CPU baselines",
+        "Document the current accuracy-versus-speed envelope honestly so the prototype is not mistaken for a strict replacement"
+      ],
+      "acceptance_criteria": [
+        "Block Lanczos shows a credible benchmark-backed win over the current compatibility path",
+        "The current prototype status and error envelope are explicit in the docs",
+        "The work does not pre-empt unfinished flagship workflow hardening"
+      ]
+    },
+    {
+      "order": 6,
+      "status": "current",
+      "title": "Replace the src_id transpose shortcut with a proper structural view and expose explicit GEMM",
+      "objective": "Keep ordinary algebra pleasant while staying honest about the eager S4 contract. The current transpose shortcut fixes the GPU re-upload problem, but it still materializes host data; the next step is a real view class plus a public explicit GEMM surface.",
+      "scope": [
+        "Replace the current src_id-linked transposed adgeMatrix shortcut with a dedicated aTransposeView or aMatrixView design",
+        "Preserve distinct cache and residency identity from the source matrix while keeping t(A) %*% B and A %*% t(B) on the fast crossprod/tcrossprod paths",
+        "Collapse t(t(A)) cleanly without redundant host transposition",
+        "Promote internal .am_gemm to a documented public am_gemm(A, B, C = NULL, alpha = 1, beta = 0, transA = FALSE, transB = FALSE) surface"
+      ],
+      "acceptance_criteria": [
+        "Docs, issue tracker, and implementation plan agree that structural views are allowed while full GEMM control stays explicit",
+        "Transpose-heavy hot paths no longer need an O(nm) host transpose once the follow-up lands",
+        "No roadmap doc implies that a general lazy expression system is the default plan"
+      ]
+    },
+    {
+      "order": 7,
+      "status": "closed",
+      "title": "Decide product status of ArrayFire rsvd",
+      "objective": "Make an explicit decision about whether the current ArrayFire rsvd path is ready to advertise as parity or should remain experimental until better quality/performance data exists.",
+      "decision": "experimental",
+      "decision_date": "2026-04-06",
+      "rationale": "Algorithm correct (standard randomized SVD with power iteration). Bridges use the corrected variants from c21561d. Conformance test always skips (guards on amatrix_arrayfire_is_available() which returns false in CI). No real-hardware quality or performance data vs MLX exists. Recommended path on Apple Silicon is MLX. Users with AF hardware can enable via the rsvd_min_dim threshold.",
+      "scope": [
+        "Measure quality and performance against CPU and MLX references",
+        "Document whether the path is product-ready, experimental, or fallback-only",
+        "Keep docs and tests aligned with that decision"
+      ],
+      "acceptance_criteria": [
+        "ArrayFire rsvd status is documented honestly",
+        "No roadmap doc still treats ArrayFire rsvd as both 'not implemented' and 'shipped'"
       ]
     }
   ]

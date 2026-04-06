@@ -1,16 +1,16 @@
-setMethod("%*%", signature(x = "adgeMatrix", y = "ANY"),       function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "matrix"),    function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "Matrix"),    function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "dgeMatrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "dgCMatrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "adgeMatrix"),function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"),function(x, y) am_matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "ANY"),       function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "matrix"),    function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "Matrix"),    function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "dgeMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "dgCMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "adgeMatrix"),function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"),function(x, y) matmul(x, y))
 
 # Left-hand numeric/matrix — required for irlba's `mult(v, A)` pattern and any
 # row-vector times adgeMatrix call. Without these, S4 falls through to base::%*%
 # which coerces A to a plain matrix, silently destroying GPU residency.
 #
-# Route through y (the adgeMatrix) for GPU dispatch. am_matmul cannot be used
+# Route through y (the adgeMatrix) for GPU dispatch. matmul cannot be used
 # here because it calls .amatrix_backend_for(x, ...) which expects x to be an
 # aMatrix with @preferred_backend slot.
 #
@@ -20,10 +20,10 @@ setMethod("%*%", signature(x = "numeric", y = "adgeMatrix"), function(x, y) {
   am_crossprod(y, matrix(x, ncol = 1L))
 })
 
-# matrix %*% adgeMatrix: x(k×m) %*% A(m×n) = t(crossprod(A, t(x))) = k×n.
+# matrix %*% adgeMatrix: x(k×m) %*% A(m×n) = t(am_crossprod(A, t(x))) = k×n.
 setMethod("%*%", signature(x = "matrix",  y = "adgeMatrix"), function(x, y) {
   # x(k×m) %*% y(m×n): wrap x as adgeMatrix and use the standard matmul path.
-  am_matmul(new_adgeMatrix(x,
+  matmul(new_adgeMatrix(x,
     preferred_backend = y@preferred_backend,
     policy            = y@policy,
     precision         = y@precision), y)
@@ -89,8 +89,8 @@ setMethod("crossprod", signature(x = "adgeMatrix", y = "missing"), function(x, y
 setMethod("tcrossprod", signature(x = "adgeMatrix", y = "ANY"), function(x, y = NULL, ...) am_tcrossprod(x, y = y, ...))
 setMethod("tcrossprod", signature(x = "adgeMatrix", y = "missing"), function(x, y, ...) am_tcrossprod(x, y = NULL, ...))
 
-setMethod("rowSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_rowsums(x, na.rm = na.rm, dims = dims))
-setMethod("colSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_colsums(x, na.rm = na.rm, dims = dims))
+setMethod("rowSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) rowsums(x, na.rm = na.rm, dims = dims))
+setMethod("colSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colsums(x, na.rm = na.rm, dims = dims))
 
 setMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
@@ -150,49 +150,49 @@ setMethod("diag", "adgeMatrix", function(x = 1, nrow, ncol, names = TRUE) {
 })
 
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "ANY"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "numeric"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "integer"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "logical"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "matrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "Matrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "ANY", e2 = "adgeMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "numeric", e2 = "adgeMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "integer", e2 = "adgeMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "logical", e2 = "adgeMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "matrix", e2 = "adgeMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "Matrix", e2 = "adgeMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })

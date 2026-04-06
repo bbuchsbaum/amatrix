@@ -34,7 +34,7 @@ setMethod("show", "amSVD", function(object) {
   invisible(object)
 })
 
-.amatrix_svd_factor_methods <- c("auto", "exact", "rsvd")
+.amatrix_svd_factor_methods <- c("auto", "exact", "rsvd", "subspace")
 
 .amatrix_svd_factor_default_oversamples <- function(k) {
   as.integer(max(5L, min(10L, as.integer(k))))
@@ -46,6 +46,18 @@ setMethod("show", "amSVD", function(object) {
 
 .amatrix_svd_factor_rsvd_max_rank_ratio <- function() {
   as.numeric(getOption("amatrix.svd_factor.rsvd_max_rank_ratio", 0.2))
+}
+
+.amatrix_svd_factor_subspace_min_dim <- function() {
+  as.integer(getOption("amatrix.svd_factor.subspace_min_dim", 400L))
+}
+
+.amatrix_svd_factor_subspace_min_rank_ratio <- function() {
+  as.numeric(getOption("amatrix.svd_factor.subspace_min_rank_ratio", 0.1))
+}
+
+.amatrix_svd_factor_subspace_max_rank_ratio <- function() {
+  as.numeric(getOption("amatrix.svd_factor.subspace_max_rank_ratio", 0.65))
 }
 
 .amatrix_backend_supports_capability <- function(name, capability, precision = NULL) {
@@ -92,6 +104,47 @@ setMethod("show", "amSVD", function(object) {
   NULL
 }
 
+.amatrix_svd_factor_subspace_backend <- function(X) {
+  if (!inherits(X, "adgeMatrix")) {
+    return(NULL)
+  }
+
+  requested <- unique(c(X@preferred_backend, X@policy, amatrix_default_policy()))
+  requested <- requested[nzchar(requested) & !(requested %in% c("auto", "cpu"))]
+
+  for (backend_name in requested) {
+    has_matmul <- .amatrix_backend_supports_capability(
+      backend_name,
+      "matmul",
+      precision = X@precision
+    )
+    has_crossprod <- .amatrix_backend_supports_capability(
+      backend_name,
+      "crossprod",
+      precision = X@precision
+    )
+    if (has_matmul && has_crossprod) {
+      return(backend_name)
+    }
+  }
+
+  has_mlx_matmul <- .amatrix_backend_supports_capability(
+    "mlx",
+    "matmul",
+    precision = X@precision
+  )
+  has_mlx_crossprod <- .amatrix_backend_supports_capability(
+    "mlx",
+    "crossprod",
+    precision = X@precision
+  )
+  if (length(requested) > 0L && has_mlx_matmul && has_mlx_crossprod) {
+    return("mlx")
+  }
+
+  NULL
+}
+
 .amatrix_svd_factor_should_use_rsvd <- function(X, k, backend_name) {
   if (is.null(backend_name)) {
     return(FALSE)
@@ -110,23 +163,215 @@ setMethod("show", "amSVD", function(object) {
   (k / min_dim) <= .amatrix_svd_factor_rsvd_max_rank_ratio()
 }
 
+.amatrix_svd_factor_should_use_subspace <- function(X, k, backend_name) {
+  if (is.null(backend_name) || !inherits(X, "adgeMatrix")) {
+    return(FALSE)
+  }
+
+  if (!identical(X@precision, "fast")) {
+    return(FALSE)
+  }
+
+  dims <- dim(X)
+  if (is.null(dims) || length(dims) != 2L) {
+    return(FALSE)
+  }
+
+  min_dim <- min(dims)
+  if (min_dim < .amatrix_svd_factor_subspace_min_dim() || k >= min_dim) {
+    return(FALSE)
+  }
+
+  rank_ratio <- k / min_dim
+  rank_ratio >= .amatrix_svd_factor_subspace_min_rank_ratio() &&
+    rank_ratio <= .amatrix_svd_factor_subspace_max_rank_ratio()
+}
+
+.amatrix_svd_factor_prepare_work_x <- function(X, target_backend = NULL) {
+  work_x <- X
+
+  if (!inherits(work_x, "adgeMatrix")) {
+    work_x <- adgeMatrix(
+      amatrix_materialize_host(X),
+      preferred_backend = if (is.null(target_backend)) X@preferred_backend else target_backend,
+      policy = X@policy,
+      precision = X@precision
+    )
+  } else if (!is.null(target_backend) && !identical(work_x@preferred_backend, target_backend)) {
+    work_x <- adgeMatrix(
+      amatrix_materialize_host(X),
+      preferred_backend = target_backend,
+      policy = X@policy,
+      precision = X@precision
+    )
+  }
+
+  work_x
+}
+
+.amatrix_subspace_rademacher <- function(n, r) {
+  draws <- ifelse(stats::runif(n * r) < 0.5, -1.0, 1.0)
+  matrix(draws, nrow = n, ncol = r)
+}
+
+.amatrix_subspace_qr <- function(x) {
+  qr_obj <- qr(x)
+  list(
+    q = as.matrix(qr.Q(qr_obj, complete = FALSE)),
+    r = as.matrix(qr.R(qr_obj, complete = FALSE))
+  )
+}
+
+.amatrix_subspace_trim_q <- function(q, r, k, eps_rank) {
+  diag_r <- if (length(r) > 0L) abs(base::diag(as.matrix(r))) else numeric(0L)
+  keep <- which(diag_r > eps_rank)
+
+  if (length(keep) == 0L) {
+    keep <- seq_len(min(k, ncol(q)))
+  }
+
+  list(
+    q = q[, keep, drop = FALSE],
+    diag_history = if (length(diag_r) > 0L) diag_r[keep] else numeric(0L)
+  )
+}
+
+.amatrix_subspace_core_solver <- function(k_eff, rank_discovered, min_dim) {
+  if (rank_discovered < k_eff && rank_discovered <= 64L) {
+    return("svd_core")
+  }
+
+  if (k_eff >= 128L || (k_eff / min_dim) >= 0.12) {
+    return("gram")
+  }
+
+  "qr"
+}
+
+.amatrix_subspace_svd <- function(X,
+                                  k,
+                                  n_oversamples = .amatrix_svd_factor_default_oversamples(k),
+                                  n_iter = 2L,
+                                  target_backend = NULL,
+                                  eps_rank = 1e-8) {
+  work_x <- .amatrix_svd_factor_prepare_work_x(X, target_backend = target_backend)
+  dims <- dim(work_x)
+  n <- dims[[2L]]
+  min_dim <- min(dims)
+
+  target_rank <- min(as.integer(k + n_oversamples), min_dim)
+  Omega <- .amatrix_subspace_rademacher(n = n, r = target_rank)
+
+  phase <- .amatrix_subspace_qr(work_x %*% Omega)
+  q_basis <- phase$q
+  r_basis <- phase$r
+
+  if (n_iter > 0L) {
+    for (iter in seq_len(n_iter)) {
+      right_phase <- .amatrix_subspace_qr(crossprod(work_x, q_basis))
+      phase <- .amatrix_subspace_qr(work_x %*% right_phase$q)
+      q_basis <- phase$q
+      r_basis <- phase$r
+    }
+  }
+
+  trimmed <- .amatrix_subspace_trim_q(
+    q = q_basis,
+    r = r_basis,
+    k = k,
+    eps_rank = eps_rank
+  )
+  q_basis <- trimmed$q
+  rank_discovered <- ncol(q_basis)
+  if (rank_discovered < 1L) {
+    stop("subspace SVD did not discover a usable range space", call. = FALSE)
+  }
+
+  t_mat <- as.matrix(crossprod(work_x, q_basis))
+  k_eff <- min(as.integer(k), rank_discovered)
+  core_solver <- .amatrix_subspace_core_solver(
+    k_eff = k_eff,
+    rank_discovered = rank_discovered,
+    min_dim = min_dim
+  )
+
+  if (identical(core_solver, "gram")) {
+    gram <- base::crossprod(t_mat)
+    eig <- eigen((gram + base::t(gram)) / 2, symmetric = TRUE)
+    ord <- order(eig$values, decreasing = TRUE)
+    lam <- pmax(eig$values[ord], 0)
+    u_core <- eig$vectors[, ord, drop = FALSE][, seq_len(k_eff), drop = FALSE]
+    d <- sqrt(lam[seq_len(k_eff)])
+    d[d < 1e-12] <- 1e-12
+    u <- q_basis %*% u_core
+    v <- t_mat %*% u_core
+    v <- sweep(v, 2L, d, "/", check.margin = FALSE)
+  } else if (identical(core_solver, "svd_core")) {
+    b_core <- t(t_mat)
+    sv <- base::svd(b_core, nu = k_eff, nv = k_eff)
+    u <- q_basis %*% sv$u[, seq_len(k_eff), drop = FALSE]
+    d <- sv$d[seq_len(k_eff)]
+    v <- sv$v[, seq_len(k_eff), drop = FALSE]
+  } else {
+    qr_t <- qr(t_mat)
+    rank_t <- qr_t$rank
+    if (rank_t < 1L) {
+      stop("projected core is numerically rank-deficient", call. = FALSE)
+    }
+
+    pivot <- qr_t$pivot
+    if (is.null(pivot)) {
+      pivot <- seq_len(ncol(t_mat))
+    }
+
+    q_b <- qr.Q(qr_t, complete = FALSE)[, seq_len(rank_t), drop = FALSE]
+    r_full <- qr.R(qr_t, complete = FALSE)
+    r_reduced <- r_full[seq_len(rank_t), , drop = FALSE]
+    tiny <- t(r_reduced)
+    sv <- base::svd(tiny, nu = k_eff, nv = k_eff)
+
+    u <- q_basis[, pivot, drop = FALSE] %*% sv$u[, seq_len(k_eff), drop = FALSE]
+    d <- sv$d[seq_len(k_eff)]
+    v <- q_b %*% sv$v[, seq_len(k_eff), drop = FALSE]
+  }
+
+  list(
+    u = u,
+    d = as.numeric(d),
+    v = v,
+    rank_discovered = rank_discovered,
+    core_solver = core_solver,
+    diag_history = trimmed$diag_history
+  )
+}
+
 .amatrix_svd_factor_plan <- function(X, k, method, n_oversamples, n_iter) {
   method <- match.arg(method, .amatrix_svd_factor_methods)
   rsvd_backend <- .amatrix_svd_factor_rsvd_backend(X)
+  subspace_backend <- .amatrix_svd_factor_subspace_backend(X)
 
   if (identical(method, "auto")) {
-    method <- if (.amatrix_svd_factor_should_use_rsvd(X, k, rsvd_backend)) "rsvd" else "exact"
+    if (.amatrix_svd_factor_should_use_rsvd(X, k, rsvd_backend)) {
+      method <- "rsvd"
+    } else if (.amatrix_svd_factor_should_use_subspace(X, k, subspace_backend)) {
+      method <- "subspace"
+    } else {
+      method <- "exact"
+    }
   }
 
   factor_backend <- X@preferred_backend
   if (identical(method, "rsvd") && !is.null(rsvd_backend)) {
     factor_backend <- rsvd_backend
+  } else if (identical(method, "subspace") && !is.null(subspace_backend)) {
+    factor_backend <- subspace_backend
   }
 
   list(
     method = method,
     factor_backend = factor_backend,
     rsvd_backend = if (identical(method, "rsvd")) rsvd_backend else NULL,
+    subspace_backend = if (identical(method, "subspace")) subspace_backend else NULL,
     n_oversamples = as.integer(n_oversamples),
     n_iter = as.integer(n_iter)
   )
@@ -139,15 +384,15 @@ setMethod("show", "amSVD", function(object) {
     as.integer(k),
     plan$method,
     plan$factor_backend,
-    if (identical(plan$method, "rsvd")) plan$n_oversamples else "exact",
-    if (identical(plan$method, "rsvd")) plan$n_iter else "exact",
+    if (identical(plan$method, "exact")) "exact" else plan$n_oversamples,
+    if (identical(plan$method, "exact")) "exact" else plan$n_iter,
     sep = ":"
   )
 }
 
-am_svd_factor <- function(X,
+svd_factor <- function(X,
                           k = min(dim(X)),
-                          method = c("auto", "exact", "rsvd"),
+                          method = c("auto", "exact", "rsvd", "subspace"),
                           n_oversamples = .amatrix_svd_factor_default_oversamples(k),
                           n_iter = 2L) {
   if (!inherits(X, "aMatrix")) {
@@ -186,30 +431,23 @@ am_svd_factor <- function(X,
   }
 
   svd_result <- if (identical(plan$method, "rsvd")) {
-    work_x <- X
-    target_backend <- plan$rsvd_backend
-
-    if (!inherits(work_x, "adgeMatrix")) {
-      work_x <- adgeMatrix(
-        amatrix_materialize_host(X),
-        preferred_backend = if (is.null(target_backend)) X@preferred_backend else target_backend,
-        policy = X@policy,
-        precision = X@precision
-      )
-    } else if (!is.null(target_backend) && !identical(work_x@preferred_backend, target_backend)) {
-      work_x <- adgeMatrix(
-        amatrix_materialize_host(X),
-        preferred_backend = target_backend,
-        policy = X@policy,
-        precision = X@precision
-      )
-    }
-
-    am_rsvd(
+    work_x <- .amatrix_svd_factor_prepare_work_x(
+      X,
+      target_backend = plan$rsvd_backend
+    )
+    rsvd(
       work_x,
       k = k,
       n_oversamples = plan$n_oversamples,
       n_iter = plan$n_iter
+    )
+  } else if (identical(plan$method, "subspace")) {
+    .amatrix_subspace_svd(
+      X,
+      k = k,
+      n_oversamples = plan$n_oversamples,
+      n_iter = plan$n_iter,
+      target_backend = plan$subspace_backend
     )
   } else {
     am_svd(X, nu = k, nv = k)
@@ -225,7 +463,7 @@ am_svd_factor <- function(X,
 
   backend <- plan$factor_backend
   use_gpu <- nzchar(backend) && backend != "cpu" && X@precision == "fast"
-  # Pre-transpose u so am_matmul(ut_am, Y) routes through the matmul path
+  # Pre-transpose u so matmul(ut_am, Y) routes through the matmul path
   # (min_dim threshold 128) instead of crossprod (threshold 2048).
   ut_am <- if (use_gpu) adgeMatrix(t(u), preferred_backend = backend, precision = X@precision) else NULL
   v_am  <- if (use_gpu) adgeMatrix(v,    preferred_backend = backend, precision = X@precision) else NULL
@@ -247,14 +485,14 @@ am_svd_factor <- function(X,
   factor
 }
 
-am_svd_project <- function(factor, Y) {
+svd_project <- function(factor, Y) {
   if (!methods::is(factor, "amSVD")) {
     stop("factor must be an amSVD object", call. = FALSE)
   }
   Y_mat <- if (is.matrix(Y)) Y else matrix(as.numeric(Y), nrow = NROW(Y))
   ut_am <- factor@ut_am
   if (!is.null(ut_am)) {
-    # GPU path: ut_am = t(u) as adgeMatrix; am_matmul routes through the
+    # GPU path: ut_am = t(u) as adgeMatrix; matmul routes through the
     # matmul path (min_dim threshold 128, vs 2048 for crossprod). t(u) is
     # stored once at factor creation time — no per-call transpose.
     if (nrow(Y_mat) != ncol(ut_am)) {
@@ -263,7 +501,7 @@ am_svd_project <- function(factor, Y) {
         nrow(Y_mat), ncol(ut_am)
       ), call. = FALSE)
     }
-    as.matrix(am_matmul(ut_am, Y_mat))
+    as.matrix(matmul(ut_am, Y_mat))
   } else {
     u <- factor@u
     if (nrow(Y_mat) != nrow(u)) {
@@ -276,7 +514,7 @@ am_svd_project <- function(factor, Y) {
   }
 }
 
-am_svd_reconstruct <- function(factor, Z) {
+svd_reconstruct <- function(factor, Z) {
   if (!methods::is(factor, "amSVD")) {
     stop("factor must be an amSVD object", call. = FALSE)
   }
@@ -291,12 +529,12 @@ am_svd_reconstruct <- function(factor, Z) {
   v_am <- factor@v_am
   if (!is.null(v_am)) {
     # GPU path: V %*% (Z / d) — scale Z columns by 1/d then matmul through backend
-    as.matrix(am_matmul(v_am, Z_mat / d))
+    as.matrix(matmul(v_am, Z_mat / d))
   } else {
     factor@v %*% (Z_mat / d)
   }
 }
 
-am_pca_coef <- function(factor, Y) {
-  am_svd_reconstruct(factor, am_svd_project(factor, Y))
+pca_coef <- function(factor, Y) {
+  svd_reconstruct(factor, svd_project(factor, Y))
 }

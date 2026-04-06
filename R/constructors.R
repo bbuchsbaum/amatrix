@@ -147,6 +147,26 @@ as_adgCMatrix <- function(
                  policy = params$policy, precision = params$precision)
 }
 
+# Internal constructor for zero-copy transpose views.
+# Always creates a new object_id distinct from the source so caches and
+# the residency registry remain independent.
+.new_aTransposeView <- function(source) {
+  oid <- .amatrix_next_object_id()
+  dn <- source@Dimnames
+  new(
+    "aTransposeView",
+    source           = source,
+    Dim              = rev(source@Dim),
+    Dimnames         = if (length(dn) == 2L) rev(dn) else list(NULL, NULL),
+    preferred_backend = source@preferred_backend,
+    policy           = source@policy,
+    precision        = source@precision,
+    object_id        = oid,
+    src_id           = source@object_id,
+    finalizer_env    = .amatrix_make_finalizer_env(oid)
+  )
+}
+
 setAs("matrix", "adgeMatrix", function(from) new_adgeMatrix(from))
 setAs("dgeMatrix", "adgeMatrix", function(from) new_adgeMatrix(from))
 setAs("matrix", "adgCMatrix", function(from) new_adgCMatrix(from))

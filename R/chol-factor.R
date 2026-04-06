@@ -44,7 +44,7 @@ setMethod("show", "amChol", function(object) {
 
 as.matrix.amChol <- function(x, ...) x@factor
 
-am_chol_factor <- function(X) {
+chol_factor <- function(X) {
   if (!inherits(X, "adgeMatrix")) {
     stop("X must be an adgeMatrix (symmetric positive definite)", call. = FALSE)
   }
@@ -69,7 +69,7 @@ am_chol_factor <- function(X) {
   factor_obj
 }
 
-am_chol_solve <- function(factor, B) {
+chol_solve <- function(factor, B) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
   }
@@ -108,29 +108,25 @@ am_chol_solve <- function(factor, B) {
   x
 }
 
-chol_solve <- function(factor, B) {
-  am_chol_solve(factor, B)
-}
-
-am_chol_diag <- function(factor) {
+chol_diag <- function(factor) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
   }
   diag(factor@factor)
 }
 
-am_chol_logdet <- function(factor) {
+chol_logdet <- function(factor) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
   }
   2 * sum(log(diag(factor@factor)))
 }
 
-am_quad_form <- function(factor, v) {
+quad_form <- function(factor, v) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
   }
-  z <- am_chol_solve(factor, v)
+  z <- chol_solve(factor, v)
   if (is.vector(v)) {
     as.double(crossprod(v, z))
   } else {

@@ -1,80 +1,108 @@
-# ALTREP Integration — Research Note and Deferral Rationale
+# ALTREP Integration — Adoption Multiplier, Not The Primary Speed Engine
 
-## What ALTREP Is
+## What ALTREP Can Actually Buy
 
-ALTREP (Alternative Representation) is an R 3.5+ mechanism that allows a
-package to register a custom representation for an R vector.  The key hook is
-`DATAPTR` (and its read-only variant `DATAPTR_OR_NULL`): when R code accesses
-the raw memory of a vector — as `matrix` arithmetic, `lm()`, `prcomp()`, etc.
-all do — ALTREP intercepts the call and can materialise the data on demand.
+ALTREP matters in `amatrix` for one reason: downstream code that defensively
+calls `as.matrix(x)` or otherwise asks for plain R vector memory currently
+collapses residency and forces host materialization. An ALTREP-backed dense
+payload could defer that copy until bytes are actually required, which makes
+near-zero-change adoption more real for Matrix-aware third-party code.
 
-In theory this means an `adgeMatrix` wrapped in an ALTREP vector could be
-passed directly to *any* base-R function without pre-materialisation, and the
-GPU→CPU copy would happen only if and when the function actually touches the
-bytes.
+That makes ALTREP an adoption multiplier. It is not the main benchmark lever.
 
-## Why It Is Deferred
+## What ALTREP Does Not Solve
 
-### 1. adgeMatrix is S4 with a 2-D dim — ALTREP is 1-D
+### 1. It does not replace kernel or factor work
 
-ALTREP classes wrap a single R **vector** (1-D).  A matrix in R is a vector
-with a `dim` attribute.  Emulating a 2-D matrix via ALTREP requires:
+`amatrix` wins against CPU or `torch` on this roadmap through shared-`X`
+many-`Y` QR, Cholesky plus batched solve, cached factorizations, and explicit
+high-value kernels. ALTREP does not create those wins by itself.
 
-* registering a 1-D ALTREP class whose length is `nrow * ncol`,
-* overriding `Attrib` and `SetAttrib` to synthesise the `dim` and `dimnames`
-  attributes on the fly,
-* maintaining a parallel S4 object so that our S4 generics (`%*%`, `crossprod`,
-  …) still dispatch correctly.
+### 2. It does not make opaque C consumers GPU-native
 
-That dual-representation bookkeeping is non-trivial and fragile across R
-version updates.
+The moment an external C path calls `DATAPTR(x)`, the full dense payload still
+has to exist on host. ALTREP can defer the copy, but it cannot eliminate it for
+opaque LAPACK- or C-level consumers.
 
-### 2. DATAPTR materialises the entire matrix
+### 3. It does not solve common algebraic syntax by itself
 
-The moment any C function calls `DATAPTR(x)` — not just `x[i,j]` in R — the
-full `nrow × ncol × 8` bytes must be copied from GPU to CPU.  For the intended
-use case of amatrix (large matrices resident on GPU for chain computations)
-this is exactly the overhead we want to *avoid*.  ALTREP defers the copy but
-cannot eliminate it when the callee is opaque C code.
+The right fix for `t(A) %*% B` and `A %*% t(B)` is a Matrix-compatible
+transpose view inside `amatrix` dispatch. The right fix for full `alpha`,
+`beta`, and accumulator control is an explicit `am_gemm()` surface. ALTREP is
+orthogonal to both.
 
-### 3. S4 dispatch already covers the high-value paths
+## Current Stepping Stone
 
-The S4 generics registered in `methods-dense.R` and `dispatch-hardening.R`
-cover every operator that users are likely to call explicitly:
-`%*%`, `crossprod`, `tcrossprod`, `solve`, `chol`, `qr`, `svd`, `eigen`,
-`rowSums`, `colSums`, `Ops`, `[`, `[<-`, `t`, `diag`.
+The current code has a useful but incomplete shortcut:
 
-The gaps that remain — functions that call raw C internals without going
-through an S4 generic — are exactly the cases where ALTREP's `DATAPTR` hook
-would trigger a full materialisation anyway.  There is no net benefit over the
-current explicit materialisation in the fallback path.
+* `t()` on a resident `adgeMatrix` returns a new `adgeMatrix` carrying `src_id`
+  so `%*%` can route to `crossprod_resident()` or `tcrossprod_resident()`
+  without re-uploading the source matrix.
+* That closes a real performance hole for GPU-resident transpose products.
+* It is still not a true structural view. The transposed result keeps material
+  host data in `@x`, so it still pays `O(nm)` host transpose work and memory.
 
-### 4. ALTREP API stability risk
+That shortcut is a valid stepping stone. The cleaner next step is a dedicated
+`aTransposeView`-style class that behaves like a matrix without pretending to be
+fully materialized dense host storage.
 
-The ALTREP C API (`R_altrep_class_t`, `R_make_altreal_class`, `ALTREP_DATA1`,
-`ALTREP_DATA2`) has changed between minor R releases and is not part of the
-stable API guaranteed by Writing R Extensions.  Maintaining a C-level ALTREP
-shim across R 4.x releases would add ongoing maintenance burden with no clear
-user-visible benefit given point 3 above.
+## Why ALTREP Is Still Deferred
 
-## When to Revisit
+### 1. The surface contract should stabilize first
 
-ALTREP becomes worthwhile if amatrix ever needs to support:
+The current roadmap is to keep public materialized values boring, allow
+specialized S4 structural or factor intermediates where they buy real speed,
+and make the transpose and GEMM boundary explicit before adding another
+representation layer.
 
-* **Read-only lazy slicing** — exposing a row/column slice of a GPU-resident
-  matrix to base-R code without copying the full matrix.  ALTREP's
-  `DATAPTR_OR_NULL` returning `NULL` (for read-only access refusal) plus a
-  custom `Extract_subset` method could make this zero-copy for sequential
-  access patterns.
+### 2. adgeMatrix is S4 with a 2-D dim, while ALTREP is fundamentally 1-D
 
-* **Integration with packages that accept arbitrary numeric vectors but go
-  through `[` rather than raw DATAPTR** — e.g., some tidyverse or data.table
-  paths.  But those packages typically have S3/S4 hooks that are cheaper to
-  target directly.
+ALTREP classes wrap a vector. A matrix in R is a vector plus `dim` and
+`dimnames`. Bridging that into `amatrix` means:
 
-Until one of those use-cases materialises with a concrete benchmark showing
-ALTREP would help, the S4 dispatch + explicit materialisation fallback is the
-right architecture.
+* registering a 1-D ALTREP payload of length `nrow * ncol`,
+* synthesizing `dim` and `dimnames` correctly,
+* keeping S4 dispatch coherent for `%*%`, `crossprod`, `qr`, and friends,
+* and making serialization and fallback deterministic.
+
+That is possible, but it is a large surface to stabilize.
+
+### 3. The first transparent win should be a proper transpose view, not ALTREP
+
+The highest-value syntax gap is still transpose-heavy algebra. The current
+`src_id` shortcut is a good interim fix, but a dedicated transpose-view class
+would remove the remaining host transpose cost and make later ALTREP work
+cleaner.
+
+### 4. ALTREP still carries maintenance and API-risk cost
+
+The ALTREP C API is not the most stable part of the R extension surface.
+Maintaining a dense ALTREP shim across R releases is reasonable only once the
+expected user benefit is concrete enough to justify it.
+
+## Relationship To The Main Roadmap
+
+The intended sequence is:
+
+1. Keep the current Matrix-compatible S4 contract explicit.
+2. Replace the current `src_id` transpose shortcut with a proper structural
+   transpose view.
+3. Expose explicit kernels such as `am_gemm()` for full BLAS-style control.
+4. Revisit ALTREP once the flagship workflows and structural-view layer are
+   stable.
+
+That sequencing keeps ALTREP in the right role: it broadens transparent
+adoption, but it is not the primary speed story.
+
+## When To Revisit
+
+ALTREP becomes worth serious implementation effort if:
+
+* downstream packages that should be easy adoption targets keep defeating
+  residency by calling `as.matrix()` defensively,
+* a benchmark shows that deferred host realization would materially improve a
+  real adoption path,
+* and the transpose-view plus explicit-kernel surface is already stable.
 
 ## References
 
@@ -82,5 +110,3 @@ right architecture.
   (useR! 2018 keynote)
 * `src/include/R_ext/Altrep.h` in the R source tree
 * `?ALTREP` in package **altrep** (CRAN, illustrative)
-* Writing R Extensions §5.15 "Registering native routines" — note ALTREP is
-  *not* in this stable API section.

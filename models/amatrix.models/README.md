@@ -8,7 +8,7 @@ Start here:
 library(amatrix)
 library(amatrix.models)
 
-X <- adgeMatrix(design, preferred_backend = "mlx", precision = "fast")
+X <- adgeMatrix(design, mode = "fast", backend = "mlx")
 fit <- many_lm(X, Y_many, method = "qr", cache = TRUE)
 
 coef(fit)
@@ -22,15 +22,16 @@ Why this is the current flagship:
 - many response columns `Y`
 - QR-backed least squares
 - automatic shared-`X` cache reuse
-- resident MLX QR path that now pays off when the number of right-hand sides grows
+- resident MLX QR path dominates once the number of right-hand sides grows
+
+Without a GPU backend, the package still works and caches the QR factorization of `X` across all response columns — but the primary reason to adopt it is GPU acceleration via `mode = "fast", backend = "mlx"`.
 
 Other exported surfaces:
 
-- `lm_fit(...)`
-- `wls_fit(...)`
-- `ridge_fit(...)`
-- `array_lm(...)`
-- `covariance(...)`
-- `correlation(...)`
+- `lm_fit(...)` — single least-squares fit
+- `wls_fit(...)` — single weighted fit
+- `ridge_fit(...)` — ridge regression
+- `array_lm(...)` — array-shaped responses
+- `covariance(...)` / `correlation(...)` — similarity structure
 
 If you are evaluating the package for adoption, try `many_lm(..., method = "qr")` first.

@@ -13,7 +13,7 @@ make_ridge_spd <- function(n_obs, p, lambda = 0.5, seed = 1L) {
 make_kernel_spd <- function(n_obs, p, sigma = 1.0, jitter = 0.1, seed = 1L) {
   set.seed(seed)
   X <- matrix(rnorm(n_obs * p), nrow = n_obs, ncol = p)
-  am_kernel(X, kernel = "rbf", sigma = sigma) + diag(jitter, n_obs)
+  kernel_matrix(X, kernel = "rbf", sigma = sigma) + diag(jitter, n_obs)
 }
 
 .mlx_test_spec <- function() {
@@ -25,11 +25,11 @@ make_kernel_spd <- function(n_obs, p, sigma = 1.0, jitter = 0.1, seed = 1L) {
   sqrt(sum(x * x))
 }
 
-test_that("am_chol_factor returns correct upper triangular factor", {
+test_that("chol_factor returns correct upper triangular factor", {
   M <- make_spd(8L, seed = 42L)
   X <- as_adgeMatrix(M)
 
-  fac <- am_chol_factor(X)
+  fac <- chol_factor(X)
   expect_s4_class(fac, "amChol")
 
   R <- as.matrix(fac)
@@ -41,40 +41,40 @@ test_that("am_chol_factor returns correct upper triangular factor", {
   expect_true(all(abs(R[lower.tri(R)]) < 1e-12))
 })
 
-test_that("am_chol_solve matches base::solve for single RHS vector", {
+test_that("chol_solve matches base::solve for single RHS vector", {
   M <- make_spd(10L, seed = 7L)
   X <- as_adgeMatrix(M)
-  fac <- am_chol_factor(X)
+  fac <- chol_factor(X)
 
   b <- rnorm(10L)
-  sol <- am_chol_solve(fac, b)
+  sol <- chol_solve(fac, b)
   ref <- base::solve(M, b)
 
   expect_equal(as.numeric(sol), as.numeric(ref), tolerance = 1e-10)
 })
 
-test_that("am_chol_solve matches base::solve for multi-column B (k=1, 10, 100)", {
+test_that("chol_solve matches base::solve for multi-column B (k=1, 10, 100)", {
   n <- 12L
   M <- make_spd(n, seed = 11L)
   X <- as_adgeMatrix(M)
-  fac <- am_chol_factor(X)
+  fac <- chol_factor(X)
 
   for (k in c(1L, 10L, 100L)) {
     set.seed(k)
     B <- matrix(rnorm(n * k), n, k)
-    sol <- am_chol_solve(fac, B)
+    sol <- chol_solve(fac, B)
     ref <- base::solve(M, B)
     expect_equal(dim(sol), c(n, k))
     expect_lt(max(abs(sol - ref)), 1e-10)
   }
 })
 
-test_that("am_chol_factor reuses cache on second call", {
+test_that("chol_factor reuses cache on second call", {
   M <- make_spd(6L, seed = 3L)
   X <- as_adgeMatrix(M)
 
-  fac1 <- am_chol_factor(X)
-  fac2 <- am_chol_factor(X)
+  fac1 <- chol_factor(X)
+  fac2 <- chol_factor(X)
 
   expect_identical(fac1@factor, fac2@factor)
   expect_identical(fac1, fac2)
@@ -83,7 +83,7 @@ test_that("am_chol_factor reuses cache on second call", {
 test_that("amChol show method runs without error", {
   M <- make_spd(4L, seed = 5L)
   X <- as_adgeMatrix(M)
-  fac <- am_chol_factor(X)
+  fac <- chol_factor(X)
 
   expect_output(show(fac), "amChol")
 })
@@ -103,12 +103,12 @@ test_that("fast MLX Cholesky path matches CPU on ridge-like SPD many-RHS solves"
 
     expect_identical(amatrix_backend_plan(X_mlx, "chol")$chosen, "mlx")
 
-    fac <- am_chol_factor(X_mlx)
-    sol <- am_chol_solve(fac, B)
+    fac <- chol_factor(X_mlx)
+    sol <- chol_solve(fac, B)
     ref_sol <- solve(A, B)
     by_col <- vapply(
       seq_len(ncol(B)),
-      function(j) as.numeric(am_chol_solve(fac, B[, j])),
+      function(j) as.numeric(chol_solve(fac, B[, j])),
       numeric(nrow(B))
     )
     recon_rel <- .frob_norm(crossprod(fac@factor) - A) / .frob_norm(A)
@@ -142,8 +142,8 @@ test_that("fast MLX Cholesky path stays aligned on kernel-like SPD systems", {
 
     expect_identical(amatrix_backend_plan(X_mlx, "chol")$chosen, "mlx")
 
-    fac <- am_chol_factor(X_mlx)
-    sol <- am_chol_solve(fac, B)
+    fac <- chol_factor(X_mlx)
+    sol <- chol_solve(fac, B)
     ref_sol <- solve(A, B)
     recon_rel <- .frob_norm(crossprod(fac@factor) - A) / .frob_norm(A)
     solve_ref_rel <- .frob_norm(sol - ref_sol) / .frob_norm(ref_sol)

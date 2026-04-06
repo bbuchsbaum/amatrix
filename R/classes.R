@@ -58,6 +58,19 @@ setClass(
   contains = c("aMatrix", "dgCMatrix")
 )
 
+# A zero-copy structural view of an adgeMatrix representing its transpose.
+# Does NOT inherit from dgeMatrix — carries no concrete dense host storage.
+# Materialized on demand via as.matrix() or amatrix_materialize_host().
+setClass(
+  "aTransposeView",
+  contains = "aMatrix",
+  slots = c(
+    source   = "adgeMatrix",  # reference to the original; keeps it alive
+    Dim      = "integer",     # transposed dims [ncol_src, nrow_src]
+    Dimnames = "list"         # transposed dimnames
+  )
+)
+
 setMethod("show", "adgeMatrix", function(object) {
   cat(sprintf(
     "An amatrix dense matrix [%s|policy=%s|precision=%s]\n",

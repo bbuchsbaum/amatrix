@@ -221,6 +221,10 @@ amatrix_materialize_host <- function(x) {
     return(amatrix_materialize_dense(x))
   }
 
+  if (inherits(x, "aTransposeView")) {
+    return(t(amatrix_materialize_dense(x@source)))
+  }
+
   if (inherits(x, "adgCMatrix")) {
     return(new("dgCMatrix", i = x@i, p = x@p, Dim = x@Dim, Dimnames = x@Dimnames, x = x@x, factors = x@factors))
   }

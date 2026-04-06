@@ -159,7 +159,7 @@ Use custom MLX extensions and Metal kernels only where the stock primitive path 
 
 The compact QR project is successful when:
 
-1. `am_qr_info()` reports a native compact MLX factor source rather than `bridge_compact`.
+1. `am_qr_info()` reports a native compact MLX factor source rather than the current lazy `host_compact` bridge fallback.
 2. `many_lm(..., method = "qr")` on MLX no longer depends on explicit `Q` in the hot path.
 3. Many-RHS QR workflows beat both:
    - cached base QR

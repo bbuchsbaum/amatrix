@@ -22,7 +22,7 @@
 #'   \emph{SIAM Review}, 53(2), 217-288.
 #'
 #' @export
-am_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
+rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
   k             <- as.integer(k)
   n_oversamples <- as.integer(n_oversamples)
   n_iter        <- as.integer(n_iter)

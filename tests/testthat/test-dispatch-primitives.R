@@ -123,43 +123,36 @@ test_that("adgeMatrix tcrossprod self/cross shape and type are correct", {
   expect_equal(as.matrix(tc_cross), base::tcrossprod(A_r, C_r), tolerance = .disp_tol)
 })
 
-# --- zero-copy t() fast-path tests -------------------------------------------
+# --- aTransposeView structural view tests ------------------------------------
 
-test_that("t() of a non-resident adgeMatrix has empty src_id", {
-  set.seed(41)
-  A_r <- matrix(rnorm(8 * 3), 8, 3)
+test_that("t(adgeMatrix) returns aTransposeView with correct dims", {
+  set.seed(40)
+  A_r <- matrix(rnorm(12 * 5), 12, 5)
   A   <- adgeMatrix(A_r, preferred_backend = "cpu")
 
   tA <- t(A)
 
-  expect_true(inherits(tA, "adgeMatrix"))
-  expect_equal(dim(tA), c(3L, 8L))
-  expect_true(!nzchar(tA@src_id),
-              info = "non-resident t() must not set src_id")
-  expect_equal(as.matrix(tA), t(A_r), tolerance = .disp_tol)
+  expect_true(inherits(tA, "aTransposeView"))
+  expect_equal(dim(tA), c(5L, 12L))
+  expect_equal(tA@src_id, A@object_id,
+               info = "view must carry source object_id in src_id")
+  expect_false(identical(tA@object_id, A@object_id),
+               info = "view must have its own distinct object_id")
+  expect_equal(as.matrix(tA), t(A_r), tolerance = .disp_tol,
+               label = "view must materialize correctly")
 })
 
-test_that("t() of a resident adgeMatrix sets src_id and swaps dims", {
-  counter <- new.env(parent = emptyenv())
-  backend <- make_recording_backend(counter)
+test_that("t(aTransposeView) collapses back to source adgeMatrix", {
+  set.seed(41)
+  A_r <- matrix(rnorm(8 * 3), 8, 3)
+  A   <- adgeMatrix(A_r, preferred_backend = "cpu")
 
-  with_registered_backend("mock-t-src", backend, {
-    set.seed(40)
-    A_r <- matrix(rnorm(12 * 5), 12, 5)
-    A   <- adgeMatrix(A_r, preferred_backend = "mock-t-src")
+  ttA <- t(t(A))
 
-    # trigger residency
-    invisible(A %*% matrix(rnorm(5 * 2), 5, 2))
-
-    tA <- t(A)
-
-    expect_true(inherits(tA, "adgeMatrix"))
-    expect_equal(dim(tA), c(5L, 12L))
-    expect_equal(tA@src_id, A@object_id,
-                 info = "transposed view must carry original object_id in src_id")
-    expect_equal(as.matrix(tA), t(A_r), tolerance = .disp_tol,
-                 label = "t() host data must be correct")
-  })
+  expect_true(inherits(ttA, "adgeMatrix"))
+  expect_equal(dim(ttA), c(8L, 3L))
+  expect_equal(as.matrix(ttA), A_r, tolerance = .disp_tol,
+               label = "t(t(A)) must round-trip correctly")
 })
 
 test_that("t(A) %*% B routes to crossprod_resident (not matmul_resident)", {
@@ -181,17 +174,17 @@ test_that("t(A) %*% B routes to crossprod_resident (not matmul_resident)", {
     counter$crossprod_resident <- 0L
     counter$matmul_resident    <- 0L
 
-    result <- t(A) %*% B   # 5x7 via crossprod fast path
+    result <- t(A) %*% B   # aTransposeView %*% adgeMatrix → crossprod(A, B)
 
     expect_true(inherits(result, "adgeMatrix"))
     expect_equal(dim(result), c(5L, 7L))
     expect_equal(as.matrix(result), base::crossprod(A_r, B_r),
                  tolerance = .disp_tol,
-                 label = "t(A) %*% B numerics via src_id fast path")
+                 label = "t(A) %*% B numerics via aTransposeView dispatch")
     expect_equal(counter$crossprod_resident, 1L,
-                 info = "fast path must call crossprod_resident exactly once")
+                 info = "must call crossprod_resident exactly once")
     expect_equal(counter$matmul_resident %||% 0L, 0L,
-                 info = "fast path must not call matmul_resident")
+                 info = "must not call matmul_resident")
   })
 })
 
@@ -213,43 +206,16 @@ test_that("A %*% t(B) routes to tcrossprod_resident (not matmul_resident)", {
     counter$tcrossprod_resident <- 0L
     counter$matmul_resident     <- 0L
 
-    result <- A %*% t(B)   # 6x4 via tcrossprod fast path
+    result <- A %*% t(B)   # adgeMatrix %*% aTransposeView → tcrossprod(A, B)
 
     expect_true(inherits(result, "adgeMatrix"))
     expect_equal(dim(result), c(6L, 4L))
     expect_equal(as.matrix(result), base::tcrossprod(A_r, B_r),
                  tolerance = .disp_tol,
-                 label = "A %*% t(B) numerics via src_id fast path")
+                 label = "A %*% t(B) numerics via aTransposeView dispatch")
     expect_equal(counter$tcrossprod_resident, 1L,
-                 info = "fast path must call tcrossprod_resident exactly once")
+                 info = "must call tcrossprod_resident exactly once")
     expect_equal(counter$matmul_resident %||% 0L, 0L,
-                 info = "fast path must not call matmul_resident")
-  })
-})
-
-test_that("t(A) %*% B falls back correctly when source is no longer resident", {
-  counter <- new.env(parent = emptyenv())
-  backend <- make_recording_backend(counter)
-
-  with_registered_backend("mock-t-evict", backend, {
-    set.seed(44)
-    A_r <- matrix(rnorm(8 * 4), 8, 4)
-    B_r <- matrix(rnorm(8 * 3), 8, 3)
-    A   <- adgeMatrix(A_r, preferred_backend = "mock-t-evict")
-    B   <- adgeMatrix(B_r, preferred_backend = "mock-t-evict")
-
-    invisible(A %*% matrix(rnorm(4), 4, 1))
-
-    tA <- t(A)   # src_id set to A@object_id
-
-    # Simulate eviction by dropping A's resident binding
-    amatrix:::.amatrix_drop_resident_binding(A)
-
-    result <- tA %*% B   # src no longer live; falls back to normal matmul path
-
-    expect_true(inherits(result, "adgeMatrix"))
-    expect_equal(as.matrix(result), base::crossprod(A_r, B_r),
-                 tolerance = .disp_tol,
-                 label = "fallback when src evicted must still be numerically correct")
+                 info = "must not call matmul_resident")
   })
 })

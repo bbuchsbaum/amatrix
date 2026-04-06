@@ -612,6 +612,10 @@ amatrix_mlx_resident_materialize <- function(key) {
   .Call("amatrix_mlx_resident_materialize_bridge", as.character(key))
 }
 
+amatrix_mlx_transpose_resident <- function(x_key, out_key) {
+  invisible(.Call("amatrix_mlx_transpose_resident_bridge", as.character(x_key), as.character(out_key)))
+}
+
 amatrix_mlx_matmul_resident <- function(x_key, y_key, out_key) {
   .Call("amatrix_mlx_matmul_resident_bridge", as.character(x_key), as.character(y_key), as.character(out_key))
 }
@@ -839,6 +843,9 @@ amatrix_mlx_backend <- function() {
     },
     resident_materialize = function(key) {
       amatrix_mlx_resident_materialize(key)
+    },
+    transpose_resident = function(x_key, out_key) {
+      amatrix_mlx_transpose_resident(x_key, out_key)
     },
     matmul_resident = function(x_key, y_key, out_key) {
       amatrix_mlx_matmul_resident(x_key, y_key, out_key)

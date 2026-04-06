@@ -1,10 +1,21 @@
 {
   "document_type": "ImplementationPlan",
   "product_name": "amatrix",
+  "current_focus": {
+    "milestone_id": "M7",
+    "name": "Algebraic Surface Hardening",
+    "rationale": "The flagship QR and SPD workflow passes are strong enough that the next substrate gap is transpose-heavy algebra, not another broad expansion of algorithm families. The current src_id transpose shortcut fixes the GPU re-upload problem, but the remaining work is to replace it with a proper structural view and expose full GEMM control explicitly.",
+    "deferred_until_after_current_focus": [
+      "ALTREP dense payload work",
+      "Selective sparse acceleration",
+      "New decomposition families beyond the current SVD/QR/Cholesky/block-Lanczos set"
+    ]
+  },
   "milestones": [
     {
       "id": "M0",
       "name": "Bootstrap Core Package",
+      "status": "complete",
       "depends_on": [],
       "deliverables": [
         "Create amatrix package skeleton",
@@ -22,12 +33,12 @@
     {
       "id": "M1",
       "name": "CPU Semantic Baseline",
+      "status": "complete",
       "depends_on": [
         "M0"
       ],
       "deliverables": [
-        "Implement %*%, crossprod, tcrossprod, solve, chol, qr, svd, eigen, t, rowSums, colSums, diag",
-        "Implement selected Ops methods",
+        "Implement dense core operations and decompositions on the CPU reference path",
         "Add serialization and deserialization behavior",
         "Document fallback semantics"
       ],
@@ -40,6 +51,7 @@
     {
       "id": "M2",
       "name": "Conformance Harness",
+      "status": "complete",
       "depends_on": [
         "M1"
       ],
@@ -47,82 +59,125 @@
         "Randomized dense conformance tests",
         "Randomized sparse conformance tests",
         "Fixture coverage for metadata, dimnames, and edge values",
-        "Backend parity test scaffolding"
+        "Backend parity and integration scaffolding"
       ],
       "exit_criteria": [
         "Every covered method has a CPU-reference conformance test",
-        "The suite can run in CPU-only CI",
-        "Backend implementations can be plugged into the same parity harness"
+        "The suite runs in CPU-only CI",
+        "Optional backend implementations plug into the same parity harness"
       ]
     },
     {
       "id": "M3",
       "name": "Apple Dense Backend",
+      "status": "complete",
       "depends_on": [
         "M2"
       ],
       "deliverables": [
         "Create amatrix.mlx package",
-        "Implement dense MLX kernels for the initial method surface",
+        "Implement dense MLX kernels for the supported surface",
         "Add backend cache lifecycle management",
         "Benchmark representative dense workloads on Apple Silicon"
       ],
       "exit_criteria": [
-        "MLX-backed methods pass backend parity tests",
+        "MLX-backed methods pass backend parity tests under the supported contract",
         "Unsupported paths realize host state and complete correctly",
-        "At least one benchmark class shows meaningful speedup versus CPU baseline"
+        "At least one benchmark class shows a meaningful speedup versus CPU baseline"
       ]
     },
     {
       "id": "M4",
       "name": "Portable Dense Backend",
+      "status": "complete",
       "depends_on": [
         "M2"
       ],
       "deliverables": [
         "Create amatrix.arrayfire package",
-        "Implement dense ArrayFire kernels for the same backend contract",
+        "Implement dense ArrayFire kernels for the backend contract",
         "Add backend-selection policy tests"
       ],
       "exit_criteria": [
-        "ArrayFire backend passes the same parity suite as CPU and MLX for covered dense operations",
+        "ArrayFire backend passes the covered dense parity suite",
         "No public API changes are required in amatrix",
         "ArrayFire remains an optional install-time dependency"
       ]
     },
     {
       "id": "M5",
-      "name": "Selective Sparse Acceleration",
+      "name": "Product Hardening And Contract Freeze",
+      "status": "complete",
       "depends_on": [
         "M3",
         "M4"
       ],
       "deliverables": [
-        "Benchmark-driven sparse kernel shortlist",
-        "Implement sparse matvec and sparse-dense matmul where support is credible",
-        "Add tested internal format conversion pathways"
+        "Make am_rsvd precision-aware so backend dispatch is fast-only",
+        "Keep the broad backend-integration and conformance slice green under the strict-by-default contract",
+        "Sync PRD, README, and roadmap docs to the implementation that actually ships",
+        "Freeze the public mode/backend story around explicit backend opt-in"
       ],
       "exit_criteria": [
-        "CSC remains the canonical public sparse format",
-        "Sparse acceleration is limited to explicitly supported operations",
-        "Fallback remains correct for all unsupported sparse cases"
+        "Broad backend-integration, conformance, and cross-backend-conformance slices pass on the supported machine",
+        "Strict precision never dispatches float32-only backend decomposition paths",
+        "README and docs no longer promise balanced auto-GPU routing",
+        "The current flagship workflow and the next frontier are documented consistently"
       ]
     },
     {
       "id": "M6",
-      "name": "ALTREP Dense Path",
+      "name": "Flagship Workflow Validation And Cold-Path Cost Reduction",
+      "status": "completed",
       "depends_on": [
-        "M3"
+        "M5"
       ],
       "deliverables": [
-        "Prototype ALTREP-backed dense payload representation",
-        "Integrate deferred host realization for supported backend chains",
-        "Add serialization and fallback tests specific to ALTREP"
+        "Add broader parity and benchmark coverage for MLX GPU Cholesky plus batched triangular solve",
+        "Reduce compact MLX QR cold factor-build cost and measure its end-to-end impact on many_lm",
+        "Publish updated flagship benchmark notes for QR and SPD solve workflows"
       ],
       "exit_criteria": [
-        "User-visible APIs remain unchanged",
-        "Dense host materialization is deferred where expected",
-        "Serialization and fallback remain deterministic"
+        "MLX chol_factor and chol_solve paths have focused tests and benchmark evidence",
+        "Compact QR cold-build cost is no longer the dominant unexplained overhead in the flagship workflow",
+        "Flagship docs point to benchmark-backed QR and Cholesky adoption guidance"
+      ]
+    },
+    {
+      "id": "M7",
+      "name": "Algebraic Surface Hardening",
+      "status": "current",
+      "depends_on": [
+        "M6"
+      ],
+      "deliverables": [
+        "Replace the current src_id-linked transpose shortcut with a proper aTransposeView or aMatrixView design",
+        "Preserve fast crossprod/tcrossprod routing for t(A) %*% B and A %*% t(B) while removing the remaining host transpose cost",
+        "Promote internal .am_gemm to a documented public am_gemm() surface for explicit alpha/beta/accumulator control",
+        "Align contract, PRD, and migration docs around structural views for common cases and explicit kernels for full control"
+      ],
+      "exit_criteria": [
+        "Docs and issue tracker agree that structural views are allowed while full GEMM control stays explicit",
+        "The transpose-view implementation path preserves distinct cache and residency identity from the source matrix",
+        "t(t(A)) has a clean collapse rule without redundant host transposition"
+      ]
+    },
+    {
+      "id": "M8",
+      "name": "Advanced Decomposition Frontier",
+      "status": "planned",
+      "depends_on": [
+        "M7"
+      ],
+      "deliverables": [
+        "Tighten and decide promotion criteria for the first block Lanczos prototype now that the initial MLX benchmark wins are landed",
+        "Decide whether ArrayFire rsvd quality and performance are product-ready or should remain experimental",
+        "Add deterministic or better-bounded testing strategy for stochastic backend decomposition paths where needed"
+      ],
+      "exit_criteria": [
+        "Block Lanczos has a benchmark-backed case for beating the current am_irlba compatibility path and at least one CPU crossover point, and the current approximation envelope is documented honestly",
+        "ArrayFire decomposition status is documented honestly",
+        "Backend-local stochastic decomposition tests are stable enough for maintenance"
       ]
     }
   ]

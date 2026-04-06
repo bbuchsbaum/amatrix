@@ -1,18 +1,18 @@
-setMethod("%*%", signature(x = "adgCMatrix", y = "ANY"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgCMatrix", y = "matrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgCMatrix", y = "Matrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgCMatrix", y = "dgeMatrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgCMatrix", y = "dgCMatrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgCMatrix", y = "adgeMatrix"), function(x, y) am_matmul(x, y))
-setMethod("%*%", signature(x = "adgCMatrix", y = "adgCMatrix"), function(x, y) am_matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "ANY"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "matrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "Matrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "dgeMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "dgCMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "adgeMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "adgCMatrix"), function(x, y) matmul(x, y))
 
 setMethod("t", "adgCMatrix", function(x) am_transpose(x))
 
 setMethod("crossprod", signature(x = "adgCMatrix", y = "ANY"), function(x, y = NULL, ...) am_crossprod(x, y = y, ...))
 setMethod("tcrossprod", signature(x = "adgCMatrix", y = "ANY"), function(x, y = NULL, ...) am_tcrossprod(x, y = y, ...))
 
-setMethod("rowSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_rowsums(x, na.rm = na.rm, dims = dims))
-setMethod("colSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_colsums(x, na.rm = na.rm, dims = dims))
+setMethod("rowSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) rowsums(x, na.rm = na.rm, dims = dims))
+setMethod("colSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) colsums(x, na.rm = na.rm, dims = dims))
 
 setMethod("[", signature(x = "adgCMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
@@ -72,49 +72,49 @@ setMethod("diag", "adgCMatrix", function(x = 1, nrow, ncol, names = TRUE) {
 })
 
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "ANY"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "numeric"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "integer"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "logical"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "matrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "Matrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "ANY", e2 = "adgCMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "numeric", e2 = "adgCMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "integer", e2 = "adgCMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "logical", e2 = "adgCMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "matrix", e2 = "adgCMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })
 
 setMethod("Ops", signature(e1 = "Matrix", e2 = "adgCMatrix"), function(e1, e2) {
-  am_ewise(.Generic, e1, e2)
+  ewise(.Generic, e1, e2)
 })

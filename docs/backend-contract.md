@@ -2,13 +2,22 @@
 
 This document defines the v1 backend plugin contract for `amatrix`.
 
-The contract is intentionally narrow. Backends are optional plugins that accelerate a small dense-first operation surface. Public `amatrix` objects remain ordinary host-side `Matrix` subclasses. Sparse semantics are CPU-native first and `Matrix` remains the official sparse backend in v1.
+The contract is intentionally narrow. Backends are optional plugins that
+accelerate a small dense-first operation surface. Public materialized matrix
+values remain Matrix-compatible S4 objects. Specialized S4 view and factor
+intermediates are allowed when they preserve ordinary matrix semantics without
+forcing host materialization. Sparse semantics are CPU-native first and
+`Matrix` remains the official sparse backend in v1.
 
 ## v1 Rules
 
-- User-visible objects are always valid `Matrix` subclasses first.
-- Backends operate on host-side inputs per call.
-- Backends do not own persistent device state in user-visible objects.
+- User-visible materialized matrix values are always valid Matrix-compatible S4
+  objects first.
+- Specialized S4 view or factor intermediates are allowed when they preserve
+  ordinary matrix semantics.
+- Backends operate on host-side inputs per cold call.
+- Backends do not own persistent device state in ordinary materialized matrix
+  objects.
 - Sparse is `Matrix`-first in v1.
 - GPU sparse is opportunistic and limited to explicitly supported kernels later.
 - Unsupported operations must fall back predictably to CPU semantics.
@@ -35,6 +44,23 @@ The current public helpers surface this directly:
 - `amatrix_execution_info(x, ops, y_map = list())`
   - returns object metadata, residency state, and per-op planning in one object
 
+## Structural Views And Explicit BLAS Control
+
+The product syntax contract is intentionally asymmetric:
+
+- Common structural cases should stay elegant under ordinary R syntax.
+  - `%*%` remains the ordinary product entry point.
+  - `crossprod()` and `tcrossprod()` remain first-class transpose-product APIs.
+  - The current code uses a `src_id`-linked transpose shortcut as a stepping
+    stone. The cleaner target is a dedicated zero-copy transpose view.
+- Full DGEMM control is explicit.
+  - `alpha`, `beta`, an accumulator `C`, and explicit transpose flags belong in
+    an `am_gemm()`-style kernel, not in a general lazy expression system behind
+    `+` and `*`.
+
+This keeps the object surface boring while still leaving room for aggressive
+kernel implementations.
+
 ## Required Backend Shape
 
 A backend is a named list registered with `amatrix_register_backend(name, backend, overwrite = FALSE)`.
@@ -56,6 +82,28 @@ list(
   colSums = function(x, na.rm = FALSE, dims = 1L) NULL
 )
 ```
+
+## Planned Optional Product Extension
+
+The current required v1 contract does not include GEMM as a separate backend
+entry point. The intended explicit power-user extension is:
+
+```r
+gemm = function(x, y, C = NULL,
+                alpha = 1, beta = 0,
+                transA = FALSE, transB = FALSE) NULL
+```
+
+and, where residency is supported:
+
+```r
+gemm_resident = function(x_key, y_key, c_key = NULL, out_key,
+                         alpha = 1, beta = 0,
+                         transA = FALSE, transB = FALSE) NULL
+```
+
+This is planned optional surface, not part of the current minimal backend
+registration contract.
 
 ### Required Fields
 
@@ -289,11 +337,11 @@ Current backend posture is intentionally asymmetric:
   - is the first backend with dense resident chaining
   - is the current path toward a transparent GPU-backed user experience
 - `amatrix.arrayfire`
-  - is currently a cold-path backend
-  - remains useful for dense `matmul`
-  - does not yet participate in dense residency or chained execution
+  - now exposes resident hooks for dense objects as well
+  - remains most compelling today for portable dense kernels such as `matmul`
+  - is still behind MLX in product validation for chained execution and flagship workflow documentation
 
-That is a deliberate product decision for now. The MLX path is the one being pushed toward transparency first. ArrayFire remains a correct portable backend, but not yet the transparent resident backend.
+That is still an intentional product posture. The MLX path is the one being pushed toward transparency first. ArrayFire remains a correct portable backend, but MLX is the more fully validated transparent resident backend today.
 
 ## What Not To Do in v1
 

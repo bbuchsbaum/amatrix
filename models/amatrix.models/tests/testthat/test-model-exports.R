@@ -18,9 +18,9 @@ test_that("amatrix.models exposes model-core workflows", {
   array_obj <- array_lm(X_am, Y_array, weights = w, method = "qr")
 
   expect_s3_class(many_obj, "am_many_lm_fit")
-  expect_s3_class(lm_obj, "am_lm_fit")
-  expect_s3_class(ridge_obj, "am_ridge_fit")
-  expect_s3_class(wls_obj, "am_wls_fit")
+  expect_s3_class(lm_obj, "lm_fit")
+  expect_s3_class(ridge_obj, "ridge_fit")
+  expect_s3_class(wls_obj, "wls_fit")
   expect_s3_class(many_weighted_obj, "am_many_lm_fit")
   expect_s3_class(array_obj, "am_array_lm_fit")
   expect_s4_class(cov_obj, "adgeMatrix")

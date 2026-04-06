@@ -10,6 +10,6 @@ make_spd <- function(n, seed = 1L) {
 # test -------------------------------------------------------------------------
 M <- make_spd(8L, seed = 42L)
 X <- as_adgeMatrix(M)
-fac <- am_chol_factor(X)
+fac <- chol_factor(X)
 expect_s4_class(fac, "amChol")
 R <- as.matrix(fac)

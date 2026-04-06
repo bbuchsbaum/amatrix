@@ -1,5 +1,6 @@
-setMethod("as.matrix", "adgeMatrix", function(x, ...) as.matrix(amatrix_materialize_host(x), ...))
-setMethod("as.matrix", "adgCMatrix", function(x, ...) as.matrix(amatrix_materialize_host(x), ...))
+setMethod("as.matrix", "adgeMatrix",      function(x, ...) as.matrix(amatrix_materialize_host(x), ...))
+setMethod("as.matrix", "adgCMatrix",      function(x, ...) as.matrix(amatrix_materialize_host(x), ...))
+setMethod("as.matrix", "aTransposeView",  function(x, ...) t(as.matrix(amatrix_materialize_dense(x@source), ...)))
 
 setMethod("as.array", "adgeMatrix", function(x, ...) as.array(as.matrix(amatrix_materialize_host(x)), ...))
 setMethod("as.array", "adgCMatrix", function(x, ...) as.array(as.matrix(amatrix_materialize_host(x)), ...))

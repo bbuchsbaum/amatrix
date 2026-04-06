@@ -1,27 +1,27 @@
 lm_fit <- function(...) {
-  amatrix::am_lm_fit(...)
+  amatrix::lm_fit(...)
 }
 
 ridge_fit <- function(...) {
-  amatrix::am_ridge_fit(...)
+  amatrix::ridge_fit(...)
 }
 
 wls_fit <- function(...) {
-  amatrix::am_wls_fit(...)
+  amatrix::wls_fit(...)
 }
 
 covariance <- function(...) {
-  amatrix::am_covariance(...)
+  amatrix::covariance(...)
 }
 
 correlation <- function(...) {
-  amatrix::am_correlation(...)
+  amatrix::correlation(...)
 }
 
 many_lm <- function(...) {
-  amatrix::am_many_lm(...)
+  amatrix::many_lm(...)
 }
 
 array_lm <- function(...) {
-  amatrix::am_array_lm(...)
+  amatrix::array_lm(...)
 }

@@ -20,6 +20,22 @@ fit <- many_lm(X, Y_many, method = "qr", cache = TRUE)
 
 This is where the current QR work is paying off most clearly.
 
+## Algebra Boundary
+
+The flagship benchmark story is not "turn every R operator chain into a lazy
+tensor graph." The intended boundary is:
+
+- ordinary products
+  - `%*%`
+- transpose-heavy products
+  - `crossprod()` and `tcrossprod()` today
+  - a proper transpose view next, replacing the current `src_id` shortcut
+- full BLAS-style control
+  - planned explicit `am_gemm()`
+
+That keeps the surface honest while leaving the real speed fight focused on
+cached QR, Cholesky, and shared-`X` many-`Y` workloads.
+
 ## Current Flagship
 
 Use `amatrix.models::many_lm()` with `method = "qr"` when the workload is one `X` and many response columns:
@@ -42,17 +58,89 @@ Why this is the flagship:
 
 Current many-RHS benchmark note on this machine for `1024x128`:
 
-- `rhs_cols = 8`
-  - base cached QR: about `0.0016 s`
-  - MLX native resident: about `0.0020 s`
-- `rhs_cols = 32`
-  - base cached QR: about `0.0058 s`
-  - MLX native resident: about `0.0018 s`
-- `rhs_cols = 128`
-  - base cached QR: about `0.0215 s`
-  - MLX native resident: about `0.0025 s`
+| rhs_cols | base cached QR | MLX native resident | speedup |
+|---|---|---|---|
+| 8   | 0.0016 s | 0.0020 s | 0.8x (CPU wins) |
+| 32  | 0.0058 s | 0.0018 s | 3.2x |
+| 128 | 0.0215 s | 0.0025 s | **8.6x** |
 
-That is the clearest current reason to adopt the model surface.
+At 128 right-hand sides the MLX resident path is **8.6× faster** than the CPU cached-QR baseline. This is the headline number for the shared-X many-Y use case.
+
+## Second Flagship: GPU Cholesky + Batched Solve
+
+The Cholesky pattern is the second highest-impact surface: factorize a symmetric positive-definite matrix once, then solve for many right-hand sides.
+
+```r
+library(amatrix)
+
+K <- adgeMatrix(
+  am_kernel(X, X, kernel = "rbf", sigma = 1.0),
+  mode = "fast",
+  backend = "mlx"
+)
+L <- am_chol_factor(K)   # GPU-backed Cholesky factor
+
+# Solve K %*% alpha = y for many y columns — one batched trsm call
+alpha <- am_chol_solve(L, Y_many)
+```
+
+Why this matters:
+- Ridge regression: factorize `(X^TX + λI)` once, solve for many λ values or Y columns
+- Gaussian process: Cholesky of kernel matrix, predict at many test points
+- lme4-style mixed models: Cholesky of precision matrix, many PIRLS solve iterations
+- Mahalanobis distance: `(x - μ)^T Σ^{-1} (x - μ)` via Cholesky of Σ
+
+Current benchmark note on this machine, using `Rscript -e 'source("tools/benchmark-cholesky-runtime.R", local = TRUE)'`:
+
+- ridge-like SPD, `768x768`, `rhs_cols = 64`
+  - CPU factor: about `0.065 s`
+  - MLX factor: about `0.019 s`
+  - CPU factor + batched solve: about `0.080 s`
+  - MLX factor + batched solve: about `0.029 s`
+- kernel-like SPD, `640x640`, `rhs_cols = 32`
+  - CPU factor: about `0.036 s`
+  - MLX factor: about `0.011 s`
+  - CPU factor + batched solve: about `0.042 s`
+  - MLX factor + batched solve: about `0.017 s`
+
+Quality stayed tight in the same run:
+
+- factor reconstruction residuals: about `2e-7`
+- solve error versus CPU reference: about `5e-7`
+
+Status: validated on native MLX for representative ridge-like and kernel-like SPD many-RHS workloads. ArrayFire is still CPU fallback/stub territory for Cholesky and triangular solve on this workflow.
+
+---
+
+## Third Flagship: GPU-Native PCA via am_rsvd
+
+For large matrices where full SVD is infeasible, `am_rsvd` provides a GPU-native randomized SVD with a single device-side evaluation:
+
+```r
+library(amatrix)
+
+X <- adgeMatrix(data_matrix, mode = "fast", backend = "mlx")
+
+# GPU-native randomized SVD — zero per-step CPU syncs
+svd_result <- am_rsvd(X, k = 50, n_iter = 3)
+
+# Cache the factor for repeated projections
+fac <- am_svd_factor(X, k = 50)
+scores  <- am_svd_project(fac, Y_new)     # project new data
+recon   <- am_svd_reconstruct(fac, scores) # reconstruct
+```
+
+Why this matters:
+- fMRI: SVD of (time × voxels) matrix, project many condition contrasts
+- GWAS: LD-adjusted regression via SVD of genotype matrix
+- Regularization path: vary λ on fixed SVD without refactoring
+- Any PCA/reduced-rank workflow replacing `prcomp()` or `irlba::irlba()`
+
+Performance: beats LAPACK rsvd at m,n≥3000 with k≤100. Does NOT beat CPU for small matrices — dispatch threshold enforced.
+
+Status: **Implemented** in MLX. ArrayFire exposes an `rsvd` path as well, but quality/performance validation is still a separate hardening task.
+
+---
 
 ## Three Surfaces
 
@@ -149,8 +237,8 @@ The constructor `adgeMatrix(x, mode=, backend=)` is the primary user API.
 | mode | semantics |
 |---|---|
 | `"exact"` | strict float64, CPU-pinned — no GPU, no silent downcast |
-| `"balanced"` | strict float64, auto routing — GPU where numerically safe (default) |
-| `"fast"` | float32-oriented, auto routing — full GPU throughput |
+| `"balanced"` | strict float64, currently conservative CPU semantics unless an explicit backend is supplied |
+| `"fast"` | float32-permitted execution; specify `backend =` to activate an accelerator path |
 
 Default (`mode` omitted) uses `"balanced"` semantics: strict precision, CPU unless a backend is specified.
 
@@ -161,7 +249,7 @@ X <- adgeMatrix(design, mode = "fast", backend = "mlx")
 fit <- am_many_lm(X, Y_many, method = "qr", cache = TRUE)
 ```
 
-The `backend=` argument is an escape hatch for users who know which accelerator they want. Without it, the system stays on CPU regardless of `mode`.
+The `backend=` argument is currently the explicit accelerator opt-in. `balanced` is kept conservative until automatic routing is hardened enough to document confidently.
 
 ## Why Cache Matters
 
@@ -194,3 +282,46 @@ If you are choosing among the current public surfaces:
 - use `amatrix.models::covariance()` or `amatrix.models::correlation()` for similarity-structure workloads
 
 That is the most mature part of the project today.
+
+---
+
+## Reproducing These Benchmarks
+
+All benchmark scripts live in `tools/`. Numbers above were collected on Apple Silicon macOS with `amatrix.mlx` installed.
+
+### Flagship 1: Shared-X Many-Y QR (8.6× at 128 RHS)
+
+```sh
+Rscript tools/benchmark-flagship-many-y.R
+```
+
+Vary `rhs_cols` in the script to reproduce the table above. The 8.6× number corresponds to `X = 1024×128`, `rhs_cols = 128`, MLX backend.
+
+### Flagship 2: GPU Cholesky + Batched Solve (3.4× factor, 2.8× end-to-end)
+
+```sh
+Rscript -e 'source("tools/benchmark-cholesky-runtime.R", local = TRUE)'
+```
+
+Direct `Rscript tools/benchmark-cholesky-runtime.R` may trip an MLX startup crash on some Apple Silicon setups — use the `-e source(...)` form. The script covers ridge-like (`768×768`, 64 RHS) and kernel-like (`640×640`, 32 RHS) SPD workloads.
+
+### Flagship 3: RSVD on Large Matrices
+
+```sh
+Rscript -e 'source("tools/benchmark-svd-factor.R", local = TRUE)'
+```
+
+For MLX steady-state SVD timing, see the commands documented in
+[docs/gpu-svd-analysis.md](gpu-svd-analysis.md). The calibration grid can be
+printed with `tools/print-svd-factor-calibration.R`.
+
+### Summary Table
+
+| Workflow | Matrix | RHS | CPU | MLX | Speedup |
+|---|---|---|---|---|---|
+| QR many-Y    | 1024×128 | 128 | 0.0215 s | 0.0025 s | **8.6×** |
+| Cholesky factor | 768×768 | 64 | 0.065 s | 0.019 s | **3.4×** |
+| Cholesky solve  | 768×768 | 64 | 0.080 s | 0.029 s | **2.8×** |
+| Cholesky factor | 640×640 | 32 | 0.036 s | 0.011 s | **3.3×** |
+
+All numbers are wall-clock single-run medians on Apple Silicon. MLX backend uses `mode = "fast"` (float32). CPU baseline uses base R `qr()` / `chol()` / `backsolve()` with the shared-X cache enabled.

@@ -18,7 +18,8 @@ test_that("mlx backend advertises dense-first capabilities", {
 test_that("mlx capability list is stable and explicit", {
   expect_identical(
     amatrix_mlx_capabilities(),
-    c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "qr")
+    c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
+      "qr", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen")
   )
 })
 
@@ -65,8 +66,8 @@ test_that("mlx bridge boundary is callable", {
   expect_length(qr_fit$q_key, 1L)
   expect_null(qr_fit$q)
   expect_equal(unname(amatrix_mlx_resident_materialize(qr_fit$q_key)), unname(qr.Q(fac_base)), tolerance = 1e-4)
-  expect_true(inherits(qr_fit$factor, "qr"))
-  expect_identical(qr_fit$factor_source, "bridge_compact")
+  expect_null(qr_fit$factor)
+  expect_identical(qr_fit$factor_source, "reconstructable")
   expect_identical(qr_fit$representation, "explicit_qr")
 })
 
@@ -77,8 +78,9 @@ test_that("mlx qr bridge can stamp compact representation mode", {
   qr_fit <- amatrix_mlx_qr(matrix(c(1, 2, 3, 4), nrow = 2))
 
   expect_identical(qr_fit$representation, "mlx_compact_qr")
-  expect_true(inherits(qr_fit$factor, "qr"))
-  expect_identical(qr_fit$factor_source, "bridge_compact")
+  expect_null(qr_fit$factor)
+  expect_true(is.function(qr_fit$factor_builder))
+  expect_identical(qr_fit$factor_source, "host_compact")
 })
 
 test_that("mlx compact qr can use tsqr-blocked factorization", {

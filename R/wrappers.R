@@ -243,7 +243,7 @@
   result
 }
 
-# solve: output is a matrix; store at out_key and bind resident.
+# am_solve: output is a matrix; store at out_key and bind resident.
 .amatrix_try_resident_solve <- function(a, b, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
   if (!.amatrix_backend_supports_resident_op(backend, "solve")) return(NULL)
@@ -278,7 +278,7 @@
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
-am_matmul <- function(x, y) {
+matmul <- function(x, y) {
   # irlba's hot path passes a plain numeric vector for v (A %*% v).
   # _prepare_resident_arg only accepts matrices, so without promotion the
   # resident path silently fails: _try_resident_matmul returns NULL,
@@ -319,6 +319,10 @@ am_matmul <- function(x, y) {
 }
 
 am_crossprod <- function(x, y = NULL, ...) {
+  if (!inherits(x, "aMatrix")) {
+    if (is.null(y)) return(base::crossprod(x, ...))
+    return(base::crossprod(x, y = y, ...))
+  }
   choice <- .amatrix_backend_for(x, "crossprod", y = y)
   resident <- .amatrix_try_resident_crossprod(x, y, choice$name)
   if (!is.null(resident)) {
@@ -345,6 +349,10 @@ am_crossprod <- function(x, y = NULL, ...) {
 }
 
 am_tcrossprod <- function(x, y = NULL, ...) {
+  if (!inherits(x, "aMatrix")) {
+    if (is.null(y)) return(base::tcrossprod(x, ...))
+    return(base::tcrossprod(x, y = y, ...))
+  }
   choice <- .amatrix_backend_for(x, "tcrossprod", y = y)
   resident <- .amatrix_try_resident_tcrossprod(x, y, choice$name)
   if (!is.null(resident)) {
@@ -370,16 +378,16 @@ am_tcrossprod <- function(x, y = NULL, ...) {
   )
 }
 
-# am_gemm: full BLAS DGEMM-style control surface.
+# gemm: full BLAS DGEMM-style control surface.
 # Computes alpha * op(A) %*% op(B) + beta * C.
 # op(X) = t(X) when transX = TRUE, otherwise X.
 # Routes each case to the most efficient resident operation:
 #   transA only  → crossprod_resident  (t(A) %*% B)
 #   transB only  → tcrossprod_resident (A %*% t(B))
-#   transA+B     → crossprod(A, t(B))  = t(A) %*% t(B), via host materialization of t(B)
+#   transA+B     → am_crossprod(A, t(B))  = t(A) %*% t(B), via host materialization of t(B)
 #   neither      → matmul_resident     (A %*% B)
-# Use am_matmul / am_crossprod / am_tcrossprod for plain operator idioms.
-am_gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
+# Use matmul / am_crossprod / am_tcrossprod for plain operator idioms.
+gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
                     transA = FALSE, transB = FALSE) {
   AB <- if (transA && transB) {
     am_crossprod(A, am_transpose(B))  # t(A) %*% t(B) via host-materialised t(B)
@@ -388,20 +396,20 @@ am_gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
   } else if (transB) {
     am_tcrossprod(A, B)
   } else {
-    am_matmul(A, B)
+    matmul(A, B)
   }
 
-  if (alpha != 1.0) AB <- am_ewise("*", AB, alpha)
+  if (alpha != 1.0) AB <- ewise("*", AB, alpha)
 
   if (!is.null(C)) {
-    C_scaled <- if (beta != 1.0) am_ewise("*", C, beta) else C
-    am_ewise("+", AB, C_scaled)
+    C_scaled <- if (beta != 1.0) ewise("*", C, beta) else C
+    ewise("+", AB, C_scaled)
   } else {
     AB
   }
 }
 
-am_rowsums <- function(x, na.rm = FALSE, dims = 1L) {
+rowsums <- function(x, na.rm = FALSE, dims = 1L) {
   choice <- .amatrix_backend_for(x, "rowSums")
   resident <- .amatrix_try_resident_rowSums(x, na.rm, dims, choice$name)
   if (!is.null(resident)) return(resident)
@@ -414,7 +422,7 @@ am_rowsums <- function(x, na.rm = FALSE, dims = 1L) {
   )
 }
 
-am_colsums <- function(x, na.rm = FALSE, dims = 1L) {
+colsums <- function(x, na.rm = FALSE, dims = 1L) {
   choice <- .amatrix_backend_for(x, "colSums")
   resident <- .amatrix_try_resident_colSums(x, na.rm, dims, choice$name)
   if (!is.null(resident)) return(resident)
@@ -449,6 +457,10 @@ am_subassign <- function(x, i, j, ..., value) {
 
 am_solve <- function(a, b = NULL, ...) {
   b_arg <- if (missing(b)) NULL else b
+  if (!inherits(a, "aMatrix")) {
+    if (is.null(b_arg)) return(base::solve(a, ...))
+    return(base::solve(a, b = b_arg, ...))
+  }
   choice <- .amatrix_backend_for(a, "solve", y = b_arg)
   resident <- .amatrix_try_resident_solve(a, b_arg, choice$name)
   if (!is.null(resident)) {
@@ -538,14 +550,14 @@ am_eigen <- function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
   )
 }
 
-am_eigh <- function(x) {
+eigh <- function(x) {
   am_eigen(x, symmetric = TRUE)
 }
 
-# ── Weighted crossprod helpers ─────────────────────────────────────────────
+# ── Weighted am_crossprod helpers ─────────────────────────────────────────────
 
 # X' diag(w) X  (p x p)
-am_crossprod_weighted <- function(X, w) {
+crossprod_weighted <- function(X, w) {
   X_arg <- .amatrix_model_dense_arg(X)
   w <- as.double(w)
   if (length(w) != nrow(X_arg)) {
@@ -558,7 +570,7 @@ am_crossprod_weighted <- function(X, w) {
 }
 
 # X diag(w) X'  (n x n)
-am_tcrossprod_weighted <- function(X, w) {
+tcrossprod_weighted <- function(X, w) {
   X_arg <- .amatrix_model_dense_arg(X)
   w <- as.double(w)
   if (length(w) != nrow(X_arg)) {
@@ -571,7 +583,7 @@ am_tcrossprod_weighted <- function(X, w) {
 }
 
 # X' diag(w) y  (p x k)
-am_xty_weighted <- function(X, w, y) {
+xty_weighted <- function(X, w, y) {
   X_arg <- .amatrix_model_dense_arg(X)
   w <- as.double(w)
   if (length(w) != nrow(X_arg)) {
@@ -594,7 +606,7 @@ am_xty_weighted <- function(X, w, y) {
 # ── Diagonal scaling ──────────────────────────────────────────────────────────
 
 # diag(d) %*% X  — scale row i by d[i]
-am_rowscale <- function(X, d) {
+rowscale <- function(X, d) {
   X_arg <- .amatrix_model_dense_arg(X)
   d <- as.double(d)
   if (length(d) != nrow(X_arg)) {
@@ -605,7 +617,7 @@ am_rowscale <- function(X, d) {
 }
 
 # X %*% diag(d)  — scale col j by d[j]
-am_colscale <- function(X, d) {
+colscale <- function(X, d) {
   X_arg <- .amatrix_model_dense_arg(X)
   d <- as.double(d)
   if (length(d) != ncol(X_arg)) {
@@ -625,7 +637,7 @@ am_diag <- function(x, nrow, ncol, names = TRUE) {
   )
 }
 
-am_ewise <- function(op, e1, e2 = NULL) {
+ewise <- function(op, e1, e2 = NULL) {
   template <- .amatrix_template(e1, e2)
   host_e1 <- .amatrix_host_arg(e1)
   host_e2 <- .amatrix_host_arg(e2)
@@ -677,7 +689,7 @@ am_set_dimnames <- function(x, value) {
 }
 
 # GPU dispatch helpers for distance/kernel computation.
-# .am_dist_sq_gpu: returns squared Euclidean distance matrix [m×n].
+# .dist_matrix_sq_gpu: returns squared Euclidean distance matrix [m×n].
 # .am_kernel_gpu:  returns kernel matrix [m×n].
 # Both use dedicated column-major AF bridges (all dims) or MLX.
 
@@ -703,7 +715,7 @@ am_set_dimnames <- function(x, value) {
 # R-level allocation overhead, so it's fast regardless of GPU vs CPU backend.
 # MLX path only does the GEMM on GPU; subsequent R ops on 3M-element matrices
 # add ~150ms overhead for large matrices — only worthwhile when AF unavailable.
-.am_dist_sq_gpu <- function(X, Y = NULL) {
+.dist_matrix_sq_gpu <- function(X, Y = NULL) {
   if (isTRUE(.am_af_ok()))
     return(.Call("am_af_dist_sq_bridge", X, Y, PACKAGE = "amatrix.arrayfire"))
   Y_eff <- if (is.null(Y)) X else Y
@@ -712,7 +724,7 @@ am_set_dimnames <- function(x, value) {
     nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
     return(pmax(outer(nx, ny, "+") - 2 * G, 0))
   }
-  G  <- tcrossprod(X, Y)
+  G  <- am_tcrossprod(X, Y)
   nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
   pmax(outer(nx, ny, "+") - 2 * G, 0)
 }
@@ -750,7 +762,7 @@ am_set_dimnames <- function(x, value) {
   }
   # CPU fallback
   Y_eff <- if (is.null(Y)) X else Y
-  G <- tcrossprod(X, Y)
+  G <- am_tcrossprod(X, Y)
 
   switch(kernel,
     linear     = G,
@@ -778,7 +790,7 @@ am_set_dimnames <- function(x, value) {
 # Tiled pairwise distance for large n (avoids GPU OOM on n > 50k).
 # Processes row-blocks of X (and Y) independently, assembling the host result
 # block by block.  Exploits symmetry when Y = NULL to halve the GEMM count.
-.am_dist_tiled <- function(X, Y, method, tile_size) {
+.dist_matrix_tiled <- function(X, Y, method, tile_size) {
   m <- nrow(X)
   symmetric <- is.null(Y)
   Y_eff <- if (symmetric) X else Y
@@ -801,7 +813,7 @@ am_set_dimnames <- function(x, value) {
       j0 <- j_breaks[jj]; j1 <- j_breaks[jj + 1L] - 1L
       Xj <- Y_eff[j0:j1, , drop = FALSE]
 
-      D_sq <- .am_dist_sq_gpu(Xi, Xj)
+      D_sq <- .dist_matrix_sq_gpu(Xi, Xj)
       D_block <- if (method == "euclidean") sqrt(D_sq) else D_sq
 
       result[i0:i1, j0:j1] <- D_block
@@ -816,7 +828,7 @@ am_set_dimnames <- function(x, value) {
 #' GPU-accelerated pairwise distance matrix
 #'
 #' Computes the pairwise distance matrix between rows of \code{X} and \code{Y}.
-#' The dominant cost (row inner-products via tcrossprod) is dispatched to the
+#' The dominant cost (row inner-products via am_tcrossprod) is dispatched to the
 #' active GPU backend (ArrayFire or MLX); norm computation and final transforms
 #' run on CPU where they are O(mp + np) — negligible versus the O(mnp) GEMM.
 #'
@@ -830,9 +842,9 @@ am_set_dimnames <- function(x, value) {
 #'   Set explicitly to process any size in row-blocks; useful when GPU memory
 #'   is limited.  Not supported for \code{method = "cosine"}.
 #' @return Numeric matrix [m, n] of pairwise distances.
-#' @seealso \code{\link{am_kernel}}
+#' @seealso \code{\link{kernel_matrix}}
 #' @export
-am_dist <- function(X, Y = NULL,
+dist_matrix <- function(X, Y = NULL,
                     method = c("euclidean", "sqeuclidean", "cosine"),
                     tile_size = NULL) {
   method <- match.arg(method)
@@ -844,13 +856,13 @@ am_dist <- function(X, Y = NULL,
     tile_size <- 10000L
 
   if (!is.null(tile_size) && method != "cosine") {
-    return(.am_dist_tiled(X_mat, Y_mat, method, as.integer(tile_size)))
+    return(.dist_matrix_tiled(X_mat, Y_mat, method, as.integer(tile_size)))
   }
 
   if (method == "cosine")
     return(.am_kernel_gpu(X_mat, Y_mat, "cosine", 1.0, 2L, 0.0))
 
-  D_sq <- .am_dist_sq_gpu(X_mat, Y_mat)
+  D_sq <- .dist_matrix_sq_gpu(X_mat, Y_mat)
   if (is.null(Y_mat)) diag(D_sq) <- 0   # fix float32/float64 diagonal mismatch
   if (method == "sqeuclidean") return(D_sq)
   sqrt(D_sq)
@@ -859,7 +871,7 @@ am_dist <- function(X, Y = NULL,
 #' GPU-accelerated pairwise kernel matrix
 #'
 #' Computes the pairwise kernel matrix between rows of \code{X} and \code{Y}.
-#' The expensive tcrossprod is GPU-dispatched; element-wise transforms (exp,
+#' The expensive am_tcrossprod is GPU-dispatched; element-wise transforms (exp,
 #' sqrt, pow) run on CPU.
 #'
 #' Kernels:
@@ -878,9 +890,9 @@ am_dist <- function(X, Y = NULL,
 #' @param degree Polynomial degree for \code{"polynomial"}.
 #' @param coef Constant term for \code{"polynomial"}: (coef + x·y)^degree.
 #' @return Numeric matrix [m, n] of kernel values.
-#' @seealso \code{\link{am_dist}}
+#' @seealso \code{\link{dist_matrix}}
 #' @export
-am_kernel <- function(X, Y = NULL,
+kernel_matrix <- function(X, Y = NULL,
                       kernel = c("linear", "rbf", "polynomial",
                                  "cosine", "laplacian"),
                       sigma = 1.0, degree = 2L, coef = 0.0) {

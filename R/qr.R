@@ -301,7 +301,7 @@ setOldClass(c("amQR", "amDenseQR"))
   factor
 }
 
-am_qr_info <- function(qr) {
+qr_info <- function(qr) {
   if (!inherits(qr, "amQR")) {
     stop("qr must inherit from amQR", call. = FALSE)
   }

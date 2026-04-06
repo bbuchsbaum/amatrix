@@ -10,12 +10,12 @@ svd_reconstruct <- function(res) {
   res$u %*% diag(res$d, nrow = length(res$d), ncol = length(res$d)) %*% t(res$v)
 }
 
-test_that("am_block_lanczos recovers a low-rank matrix accurately", {
+test_that("block_lanczos recovers a low-rank matrix accurately", {
   x <- low_rank_matrix()
   ref <- La.svd(x, nu = 5L, nv = 5L)
 
   set.seed(1001L)
-  res <- am_block_lanczos(x, nv = 5L, nu = 5L, block_size = 4L, n_steps = 6L)
+  res <- block_lanczos(x, nv = 5L, nu = 5L, block_size = 4L, n_steps = 6L)
 
   expect_identical(dim(res$u), c(nrow(x), 5L))
   expect_identical(dim(res$v), c(ncol(x), 5L))
@@ -25,13 +25,13 @@ test_that("am_block_lanczos recovers a low-rank matrix accurately", {
   expect_lt(rel_err, 1e-6)
 })
 
-test_that("am_block_svd remains an alias for am_block_lanczos", {
+test_that("block_svd remains an alias for block_lanczos", {
   x <- low_rank_matrix(n = 60L, p = 40L, rank = 4L)
 
   set.seed(1002L)
-  via_alias <- am_block_svd(x, k = 4L, block_size = 4L, n_steps = 6L)
+  via_alias <- block_svd(x, k = 4L, block_size = 4L, n_steps = 6L)
   set.seed(1002L)
-  via_named <- am_block_lanczos(x, nv = 4L, nu = 4L, block_size = 4L, n_steps = 6L)
+  via_named <- block_lanczos(x, nv = 4L, nu = 4L, block_size = 4L, n_steps = 6L)
 
   expect_equal(via_alias$d, via_named$d, tolerance = 1e-10)
   expect_equal(svd_reconstruct(via_alias), svd_reconstruct(via_named), tolerance = 1e-10)
@@ -39,12 +39,24 @@ test_that("am_block_svd remains an alias for am_block_lanczos", {
   expect_identical(via_alias$mprod, via_named$mprod)
 })
 
-test_that("am_irlba block implementation delegates to am_block_lanczos", {
+test_that("block_lanczos supports oversampled block sizes above k", {
+  x <- low_rank_matrix(n = 84L, p = 56L, rank = 6L)
+  ref <- La.svd(x, nu = 4L, nv = 4L)
+
+  set.seed(1005L)
+  fit <- block_lanczos(x, nv = 4L, nu = 4L, block_size = 6L, n_steps = 5L)
+
+  expect_identical(dim(fit$u), c(nrow(x), 4L))
+  expect_identical(dim(fit$v), c(ncol(x), 4L))
+  expect_equal(fit$d, ref$d[seq_len(4L)], tolerance = 1e-6)
+})
+
+test_that("irlba block implementation delegates to block_lanczos", {
   x <- low_rank_matrix(n = 72L, p = 48L, rank = 4L)
 
   set.seed(1003L)
   expect_warning(
-    via_irlba <- am_irlba(
+    via_irlba <- irlba(
       x,
       nv = 4L,
       nu = 3L,
@@ -56,7 +68,7 @@ test_that("am_irlba block implementation delegates to am_block_lanczos", {
     "ignores irlba-specific arguments"
   )
   set.seed(1003L)
-  via_named <- am_block_lanczos(x, nv = 4L, nu = 3L, block_size = 4L, n_steps = 6L)
+  via_named <- block_lanczos(x, nv = 4L, nu = 3L, block_size = 4L, n_steps = 6L)
 
   expect_equal(via_irlba$d, via_named$d, tolerance = 1e-10)
   expect_equal(via_irlba$u, via_named$u, tolerance = 1e-10)
@@ -65,4 +77,30 @@ test_that("am_irlba block implementation delegates to am_block_lanczos", {
   expect_identical(dim(via_irlba$v), c(ncol(x), 4L))
   expect_identical(via_irlba$iter, via_named$iter)
   expect_identical(via_irlba$mprod, via_named$mprod)
+})
+
+test_that("block_lanczos runs on MLX fast matrices", {
+  skip_if_not_installed("amatrix.mlx")
+  skip_if_not(
+    isTRUE(try(amatrix.mlx::amatrix_mlx_is_available(), silent = TRUE)),
+    "mlx backend not available"
+  )
+
+  old <- options(amatrix.mlx.available = TRUE)
+  on.exit(options(old), add = TRUE)
+  amatrix.mlx::amatrix_mlx_register(overwrite = TRUE)
+
+  x_host <- low_rank_matrix(n = 96L, p = 64L, rank = 6L)
+  x_mlx <- adgeMatrix(x_host, preferred_backend = "mlx", precision = "fast")
+
+  set.seed(1004L)
+  fit <- block_lanczos(x_mlx, nv = 6L, nu = 6L, block_size = 8L, n_steps = 5L)
+
+  expect_identical(dim(fit$u), c(nrow(x_host), 6L))
+  expect_identical(dim(fit$v), c(ncol(x_host), 6L))
+  expect_true(all(is.finite(fit$d)))
+
+  ref <- La.svd(x_host, nu = 6L, nv = 6L)$d[seq_len(6L)]
+  rel_sv_err <- max(abs(fit$d - ref) / pmax(abs(ref), 1e-12))
+  expect_lt(rel_sv_err, 0.1)
 })

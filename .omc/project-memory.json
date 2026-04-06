@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1775397085307,
+  "lastScanned": 1775487527337,
   "projectRoot": "/Users/bbuchsbaum/code/amatrix",
   "techStack": {
     "languages": [],
@@ -35,55 +35,55 @@
     "R": {
       "path": "R",
       "purpose": null,
-      "fileCount": 15,
-      "lastAccessed": 1775397085274,
+      "fileCount": 20,
+      "lastAccessed": 1775487527327,
       "keyFiles": [
         "backend-cpu.R",
         "backend-planning.R",
         "backend-registry.R",
-        "classes.R",
-        "constructors.R"
+        "chol-factor.R",
+        "classes.R"
       ]
     },
     "backends": {
       "path": "backends",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1775397085280,
+      "lastAccessed": 1775487527327,
       "keyFiles": []
     },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
-      "fileCount": 10,
-      "lastAccessed": 1775397085282,
+      "fileCount": 14,
+      "lastAccessed": 1775487527327,
       "keyFiles": [
+        "altrep-research.md",
         "amatrix-models.md",
         "backend-benchmarks.md",
         "backend-contract.md",
-        "flagship-workflows.md",
-        "kernel-model-core.md"
+        "flagship-workflows.md"
       ]
     },
     "man": {
       "path": "man",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1775397085283,
+      "lastAccessed": 1775487527327,
       "keyFiles": []
     },
     "models": {
       "path": "models",
       "purpose": "Data models",
       "fileCount": 0,
-      "lastAccessed": 1775397085284,
+      "lastAccessed": 1775487527327,
       "keyFiles": []
     },
     "paprs": {
       "path": "paprs",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1775397085287,
+      "lastAccessed": 1775487527328,
       "keyFiles": [
         "2508.11467v1.pdf",
         "Kerr_Campbell_Richards_QRD_on_GPUs.pdf"
@@ -93,7 +93,7 @@
       "path": "tests",
       "purpose": "Test files",
       "fileCount": 1,
-      "lastAccessed": 1775397085288,
+      "lastAccessed": 1775487527328,
       "keyFiles": [
         "testthat.R"
       ]
@@ -101,281 +101,263 @@
     "tools": {
       "path": "tools",
       "purpose": null,
-      "fileCount": 12,
-      "lastAccessed": 1775397085288,
+      "fileCount": 19,
+      "lastAccessed": 1775487527328,
       "keyFiles": [
         "arrayfire_qr_repro.c",
+        "benchmark-block-lanczos.R",
         "benchmark-chained-dense.R",
-        "benchmark-dense-products.R",
-        "benchmark-mlx-products.R",
-        "benchmark-model-core.R"
+        "benchmark-cholesky-runtime.R",
+        "benchmark-dense-products.R"
       ]
     },
     "vendor": {
       "path": "vendor",
       "purpose": "Third-party code",
       "fileCount": 0,
-      "lastAccessed": 1775397085289,
+      "lastAccessed": 1775487527328,
       "keyFiles": []
     }
   },
   "hotPaths": [
     {
-      "path": "R",
-      "accessCount": 23,
-      "lastAccessed": 1775405805288,
-      "type": "directory"
-    },
-    {
       "path": "R/wrappers.R",
-      "accessCount": 22,
-      "lastAccessed": 1775405965434,
-      "type": "file"
-    },
-    {
-      "path": "docs/prd.json",
-      "accessCount": 16,
-      "lastAccessed": 1775399791709,
-      "type": "file"
-    },
-    {
-      "path": "R/svd-factor.R",
-      "accessCount": 13,
-      "lastAccessed": 1775404171128,
-      "type": "file"
-    },
-    {
-      "path": "backends/amatrix.mlx/R/backend.R",
-      "accessCount": 13,
-      "lastAccessed": 1775405982203,
-      "type": "file"
-    },
-    {
-      "path": "NAMESPACE",
-      "accessCount": 11,
-      "lastAccessed": 1775404673521,
-      "type": "file"
-    },
-    {
-      "path": "R/residency.R",
-      "accessCount": 10,
-      "lastAccessed": 1775400141554,
-      "type": "file"
-    },
-    {
-      "path": "R/constructors.R",
-      "accessCount": 10,
-      "lastAccessed": 1775400776824,
+      "accessCount": 55,
+      "lastAccessed": 1775497458710,
       "type": "file"
     },
     {
       "path": "R/models-lm.R",
-      "accessCount": 10,
-      "lastAccessed": 1775400812556,
+      "accessCount": 27,
+      "lastAccessed": 1775497126805,
       "type": "file"
     },
     {
-      "path": "tests/testthat/test-residency-lifecycle.R",
-      "accessCount": 9,
-      "lastAccessed": 1775400476930,
+      "path": "NAMESPACE",
+      "accessCount": 22,
+      "lastAccessed": 1775497461996,
       "type": "file"
     },
     {
-      "path": "R/zzz.R",
-      "accessCount": 8,
-      "lastAccessed": 1775400757567,
-      "type": "file"
-    },
-    {
-      "path": "R/qr.R",
-      "accessCount": 8,
-      "lastAccessed": 1775400762442,
-      "type": "file"
-    },
-    {
-      "path": "tests/testthat/test-conformance.R",
-      "accessCount": 8,
-      "lastAccessed": 1775404207732,
-      "type": "directory"
-    },
-    {
-      "path": "R/classes.R",
-      "accessCount": 7,
-      "lastAccessed": 1775400755654,
-      "type": "file"
-    },
-    {
-      "path": "",
-      "accessCount": 6,
-      "lastAccessed": 1775403475745,
-      "type": "directory"
-    },
-    {
-      "path": "R/chol-factor.R",
-      "accessCount": 6,
-      "lastAccessed": 1775404668256,
+      "path": "R/irlba.R",
+      "accessCount": 13,
+      "lastAccessed": 1775496392181,
       "type": "file"
     },
     {
       "path": "R/methods-dense.R",
-      "accessCount": 5,
-      "lastAccessed": 1775404578630,
+      "accessCount": 13,
+      "lastAccessed": 1775497083592,
       "type": "file"
     },
     {
-      "path": "R/backend-planning.R",
-      "accessCount": 5,
-      "lastAccessed": 1775405877831,
-      "type": "file"
-    },
-    {
-      "path": "R/backend-cpu.R",
-      "accessCount": 4,
-      "lastAccessed": 1775400756076,
-      "type": "file"
-    },
-    {
-      "path": "tests/testthat/test-backend-integration.R",
-      "accessCount": 4,
-      "lastAccessed": 1775400788129,
-      "type": "file"
-    },
-    {
-      "path": "tools/benchmark-flagship-many-y.R",
-      "accessCount": 4,
-      "lastAccessed": 1775401097568,
-      "type": "file"
-    },
-    {
-      "path": "tests/testthat/test-svd-factor.R",
-      "accessCount": 4,
-      "lastAccessed": 1775403273329,
-      "type": "file"
-    },
-    {
-      "path": "backends/amatrix.mlx/src/amatrix_mlx_matmul.c",
-      "accessCount": 3,
-      "lastAccessed": 1775397314373,
-      "type": "directory"
-    },
-    {
-      "path": "tests/testthat/test-bootstrap.R",
-      "accessCount": 3,
-      "lastAccessed": 1775400146610,
-      "type": "file"
-    },
-    {
-      "path": "tests/testthat/helper-conformance.R",
-      "accessCount": 3,
-      "lastAccessed": 1775400792012,
-      "type": "file"
-    },
-    {
-      "path": "DESCRIPTION",
-      "accessCount": 2,
-      "lastAccessed": 1775397245018,
-      "type": "file"
-    },
-    {
-      "path": "R/backend-registry.R",
-      "accessCount": 2,
-      "lastAccessed": 1775397248528,
+      "path": "R/chol-factor.R",
+      "accessCount": 12,
+      "lastAccessed": 1775496231940,
       "type": "file"
     },
     {
       "path": "R/methods-sparse.R",
-      "accessCount": 2,
-      "lastAccessed": 1775397260187,
+      "accessCount": 11,
+      "lastAccessed": 1775496323194,
       "type": "file"
     },
     {
-      "path": "R/methods-coercion.R",
-      "accessCount": 2,
-      "lastAccessed": 1775397261500,
+      "path": "backends/amatrix.mlx/src/amatrix_mlx_matmul.c",
+      "accessCount": 8,
+      "lastAccessed": 1775487864482,
       "type": "file"
     },
     {
-      "path": "models/amatrix.models/R/models.R",
-      "accessCount": 2,
-      "lastAccessed": 1775397267796,
+      "path": "tools/benchmark-regression.R",
+      "accessCount": 8,
+      "lastAccessed": 1775495269604,
       "type": "file"
     },
     {
-      "path": "docs/milestones.json",
-      "accessCount": 2,
-      "lastAccessed": 1775397282756,
-      "type": "file"
-    },
-    {
-      "path": "docs/backend-contract.md",
-      "accessCount": 2,
-      "lastAccessed": 1775397283286,
-      "type": "file"
-    },
-    {
-      "path": "tests",
-      "accessCount": 2,
-      "lastAccessed": 1775399696786,
+      "path": "R",
+      "accessCount": 8,
+      "lastAccessed": 1775495573193,
       "type": "directory"
     },
     {
-      "path": "tools/benchmark-dense-products.R",
-      "accessCount": 2,
-      "lastAccessed": 1775400733940,
+      "path": "models/amatrix.models/R/models.R",
+      "accessCount": 8,
+      "lastAccessed": 1775496520056,
+      "type": "file"
+    },
+    {
+      "path": "docs/backend-benchmarks.md",
+      "accessCount": 7,
+      "lastAccessed": 1775488201853,
+      "type": "file"
+    },
+    {
+      "path": "R/svd-factor.R",
+      "accessCount": 7,
+      "lastAccessed": 1775496340734,
+      "type": "file"
+    },
+    {
+      "path": "tests/testthat/test-cross-backend-conformance.R",
+      "accessCount": 5,
+      "lastAccessed": 1775497480091,
       "type": "file"
     },
     {
       "path": "docs/flagship-workflows.md",
+      "accessCount": 4,
+      "lastAccessed": 1775490340767,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 4,
+      "lastAccessed": 1775494922413,
+      "type": "directory"
+    },
+    {
+      "path": "R/qr.R",
+      "accessCount": 4,
+      "lastAccessed": 1775496478883,
+      "type": "file"
+    },
+    {
+      "path": "docs/next-steps.json",
+      "accessCount": 3,
+      "lastAccessed": 1775491101401,
+      "type": "file"
+    },
+    {
+      "path": "backends/amatrix.mlx/R/backend.R",
+      "accessCount": 3,
+      "lastAccessed": 1775492875657,
+      "type": "directory"
+    },
+    {
+      "path": "tests/testthat/test-lmm-primitives.R",
+      "accessCount": 3,
+      "lastAccessed": 1775494979183,
+      "type": "file"
+    },
+    {
+      "path": "R/dispatch-hardening.R",
+      "accessCount": 3,
+      "lastAccessed": 1775496327500,
+      "type": "file"
+    },
+    {
+      "path": "tests/testthat/test-chol-factor.R",
+      "accessCount": 3,
+      "lastAccessed": 1775497483806,
+      "type": "file"
+    },
+    {
+      "path": "R/rsvd.R",
       "accessCount": 2,
-      "lastAccessed": 1775400734275,
+      "lastAccessed": 1775496331744,
       "type": "file"
     },
     {
-      "path": "backends/amatrix.mlx/R/zzz.R",
-      "accessCount": 1,
-      "lastAccessed": 1775397182306,
+      "path": "backends/amatrix.mlx/tests/testthat/test-chol-smoke.R",
+      "accessCount": 2,
+      "lastAccessed": 1775496504775,
       "type": "file"
     },
     {
-      "path": "backends/amatrix.arrayfire/R/zzz.R",
-      "accessCount": 1,
-      "lastAccessed": 1775397182654,
-      "type": "file"
+      "path": "tests/testthat/helper-conformance.R",
+      "accessCount": 2,
+      "lastAccessed": 1775497165405,
+      "type": "directory"
     },
     {
-      "path": "R/policy.R",
-      "accessCount": 1,
-      "lastAccessed": 1775397250578,
-      "type": "file"
-    },
-    {
-      "path": "R/generics.R",
-      "accessCount": 1,
-      "lastAccessed": 1775397255275,
+      "path": "R/backend-planning.R",
+      "accessCount": 2,
+      "lastAccessed": 1775497273371,
       "type": "file"
     },
     {
       "path": "backends/amatrix.arrayfire/R/backend.R",
       "accessCount": 1,
-      "lastAccessed": 1775397300189,
-      "type": "directory"
-    },
-    {
-      "path": "docs/next-steps.json",
-      "accessCount": 1,
-      "lastAccessed": 1775398012687,
+      "lastAccessed": 1775488104724,
       "type": "file"
     },
     {
-      "path": "backends",
+      "path": "docs/milestones.json",
       "accessCount": 1,
-      "lastAccessed": 1775400782634,
+      "lastAccessed": 1775488159685,
+      "type": "file"
+    },
+    {
+      "path": "tests",
+      "accessCount": 1,
+      "lastAccessed": 1775494929545,
       "type": "directory"
     },
     {
-      "path": "tests/testthat/test-chol-factor.R",
+      "path": "tools/benchmark-chained-dense.R",
       "accessCount": 1,
-      "lastAccessed": 1775400797943,
+      "lastAccessed": 1775495330379,
+      "type": "file"
+    },
+    {
+      "path": "tools/benchmark-flagship-many-y.R",
+      "accessCount": 1,
+      "lastAccessed": 1775495330642,
+      "type": "file"
+    },
+    {
+      "path": "tools/benchmark-cholesky-runtime.R",
+      "accessCount": 1,
+      "lastAccessed": 1775495331141,
+      "type": "file"
+    },
+    {
+      "path": "tools/benchmark-svd-factor.R",
+      "accessCount": 1,
+      "lastAccessed": 1775495331166,
+      "type": "file"
+    },
+    {
+      "path": "docs/benchmark-results.md",
+      "accessCount": 1,
+      "lastAccessed": 1775495551921,
+      "type": "file"
+    },
+    {
+      "path": "R/generics.R",
+      "accessCount": 1,
+      "lastAccessed": 1775496138997,
+      "type": "file"
+    },
+    {
+      "path": "backends/amatrix.mlx/tests/testthat/test-rsvd-smoke.R",
+      "accessCount": 1,
+      "lastAccessed": 1775496505666,
+      "type": "file"
+    },
+    {
+      "path": "tests/testthat/test-conformance.R",
+      "accessCount": 1,
+      "lastAccessed": 1775497113457,
+      "type": "file"
+    },
+    {
+      "path": "tests/testthat/test-dispatch-primitives.R",
+      "accessCount": 1,
+      "lastAccessed": 1775497185465,
+      "type": "file"
+    },
+    {
+      "path": "R/residency.R",
+      "accessCount": 1,
+      "lastAccessed": 1775497205866,
+      "type": "file"
+    },
+    {
+      "path": "R/backend-cpu.R",
+      "accessCount": 1,
+      "lastAccessed": 1775497249657,
       "type": "file"
     }
   ],

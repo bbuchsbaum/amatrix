@@ -532,6 +532,9 @@ static SEXP amatrix_mlx_solve_triangular_real(SEXP a, SEXP b, SEXP upper) {
 }
 
 static SEXP amatrix_mlx_qr_real(SEXP x, SEXP q_key) {
+  /* CPU stream is intentional: mlx_linalg_qr is not yet GPU-accelerated in
+   * MLX (as of 0.31.1 — raises "This op is not yet supported on the GPU").
+   * Switch to mlx_default_gpu_stream_new() once MLX adds GPU QR support. */
   mlx_stream stream = mlx_default_cpu_stream_new();
   mlx_array ax = mlx_array_new();
   mlx_array q = mlx_array_new();
@@ -1011,6 +1014,8 @@ static SEXP amatrix_mlx_tsqr_build_real(SEXP x, SEXP block_rows, SEXP q_keys, SE
   const int block_rows_val = INTEGER(block_rows)[0];
   const int nblocks = (nrow + block_rows_val - 1) / block_rows_val;
   const int top_nrow = nblocks * ncol;
+  /* CPU stream intentional: mlx_linalg_qr is not yet GPU-accelerated (MLX ≤0.31.1).
+   * See amatrix_mlx_qr_real comment. Switch when MLX adds GPU QR. */
   mlx_stream stream = mlx_default_cpu_stream_new();
   float* block_buf = NULL;
   float* r_stack_buf = NULL;
@@ -1307,6 +1312,36 @@ static SEXP amatrix_mlx_resident_materialize_real(SEXP key) {
   return amatrix_mlx_result_to_r_matrix(arr);
 }
 
+static SEXP amatrix_mlx_transpose_resident_real(SEXP x_key, SEXP out_key) {
+  mlx_stream stream;
+  mlx_array ax = amatrix_mlx_array_from_resident_key(x_key);
+  mlx_array at = mlx_array_new();
+  amatrix_mlx_resident_entry* entry = NULL;
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+    error("mlx GPU stream is unavailable");
+  }
+
+  if (mlx_transpose(&at, ax, stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(at);
+    error("mlx resident transpose failed");
+  }
+
+  if (mlx_synchronize(stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(at);
+    error("mlx resident transpose synchronize failed");
+  }
+
+  entry = amatrix_mlx_registry_reserve(CHAR(asChar(out_key)));
+  entry->array = at;
+
+  mlx_stream_free(stream);
+  return ScalarLogical(1);
+}
+
 static SEXP amatrix_mlx_matmul_resident_real(SEXP x_key, SEXP y_key, SEXP out_key) {
   mlx_stream stream;
   mlx_array ax = amatrix_mlx_array_from_resident_key(x_key);
@@ -1574,6 +1609,14 @@ SEXP amatrix_mlx_resident_drop_bridge(SEXP key) {
 SEXP amatrix_mlx_resident_materialize_bridge(SEXP key) {
 #ifdef HAVE_MLXC
   return amatrix_mlx_resident_materialize_real(key);
+#else
+  error("mlx residency requires mlx-c");
+#endif
+}
+
+SEXP amatrix_mlx_transpose_resident_bridge(SEXP x_key, SEXP out_key) {
+#ifdef HAVE_MLXC
+  return amatrix_mlx_transpose_resident_real(x_key, out_key);
 #else
   error("mlx residency requires mlx-c");
 #endif

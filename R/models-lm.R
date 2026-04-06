@@ -195,12 +195,12 @@
 .amatrix_model_outputs <- function(X_arg, Y_arg, coefficients, include_fitted = TRUE, include_residuals = TRUE) {
   fitted_values <- NULL
   if (isTRUE(include_fitted) || isTRUE(include_residuals)) {
-    fitted_values <- am_matmul(X_arg, coefficients)
+    fitted_values <- matmul(X_arg, coefficients)
   }
 
   residuals <- NULL
   if (isTRUE(include_residuals)) {
-    residuals <- am_ewise("-", Y_arg, fitted_values)
+    residuals <- ewise("-", Y_arg, fitted_values)
   }
 
   list(fitted_values = fitted_values, residuals = residuals)
@@ -384,7 +384,7 @@
         call = call
       )
     ),
-    class = "am_lm_fit"
+    class = "lm_fit"
   )
 }
 
@@ -556,7 +556,7 @@
   .amatrix_dense_like(cov_host, X_centered)
 }
 
-am_covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_size = NULL) {
+covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_size = NULL) {
   X_arg <- .amatrix_model_dense_arg(X)
   weights <- .amatrix_validate_weights(weights, nrow(X_arg))
 
@@ -609,8 +609,8 @@ am_covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block
   )
 }
 
-am_correlation <- function(X, center = TRUE, weights = NULL, block_size = NULL) {
-  cov_arg <- am_covariance(X, center = center, sample = TRUE, weights = weights, block_size = block_size)
+correlation <- function(X, center = TRUE, weights = NULL, block_size = NULL) {
+  cov_arg <- covariance(X, center = center, sample = TRUE, weights = weights, block_size = block_size)
   cov_host <- as.matrix(amatrix_materialize_host(cov_arg))
   sds <- sqrt(diag(cov_host))
   scale_mat <- outer(sds, sds)
@@ -626,7 +626,7 @@ am_correlation <- function(X, center = TRUE, weights = NULL, block_size = NULL) 
   )
 }
 
-am_lm_fit <- function(
+lm_fit <- function(
   X,
   Y,
   intercept = FALSE,
@@ -648,7 +648,7 @@ am_lm_fit <- function(
   .amatrix_make_lm_fit(core, X_arg, intercept = intercept, call = match.call())
 }
 
-am_ridge_fit <- function(
+ridge_fit <- function(
   X,
   Y,
   lambda,
@@ -669,7 +669,7 @@ am_ridge_fit <- function(
   XtX <- cache_value$xtx
   XtY <- am_crossprod(X_arg, Y_arg)
   penalty <- .amatrix_penalty_matrix(X_arg, lambda, penalize_intercept = penalize_intercept)
-  penalized_xtx <- am_ewise("+", XtX, penalty)
+  penalized_xtx <- ewise("+", XtX, penalty)
   coefficients <- am_solve(penalized_xtx, XtY)
   outputs <- .amatrix_model_outputs(
     X_arg,
@@ -701,11 +701,11 @@ am_ridge_fit <- function(
       backend = X_arg@preferred_backend,
       call = match.call()
     ),
-    class = "am_ridge_fit"
+    class = "ridge_fit"
   )
 }
 
-am_wls_fit <- function(
+wls_fit <- function(
   X,
   Y,
   weights,
@@ -740,8 +740,8 @@ am_wls_fit <- function(
       extra = cache_extra,
       object_id = X_arg@object_id
     )
-    xtx <- am_crossprod_weighted(X_arg, weights)
-    xty <- am_xty_weighted(X_arg, weights, Y_arg)
+    xtx <- crossprod_weighted(X_arg, weights)
+    xty <- xty_weighted(X_arg, weights, Y_arg)
     coefficients <- am_solve(xtx, xty)
     cache_value <- list(rank = ncol(X_arg), cache_key = cache_key,
                         cache_reused = FALSE)
@@ -779,7 +779,7 @@ am_wls_fit <- function(
       backend = X_arg@preferred_backend,
       call = match.call()
     ),
-    class = "am_wls_fit"
+    class = "wls_fit"
   )
 }
 
@@ -799,7 +799,7 @@ am_wls_fit <- function(
   list(rss = rss, sigma2 = sigma2)
 }
 
-am_many_lm <- function(
+many_lm <- function(
   X,
   Y,
   weights = NULL,
@@ -830,7 +830,7 @@ am_many_lm <- function(
     )
     return(.amatrix_make_many_lm_fit(core, X_arg, Y, weights = NULL, call = match.call()))
   } else {
-    fit <- am_wls_fit(
+    fit <- wls_fit(
       X,
       Y,
       weights = weights,
@@ -872,7 +872,7 @@ am_many_lm <- function(
   }
 }
 
-am_array_lm <- function(
+array_lm <- function(
   X,
   Y,
   weights = NULL,
@@ -884,7 +884,7 @@ am_array_lm <- function(
   restore_array = TRUE
 ) {
   layout <- .amatrix_response_layout(Y)
-  fit <- am_many_lm(
+  fit <- many_lm(
     X,
     layout$y_matrix,
     weights = weights,
@@ -926,15 +926,15 @@ am_array_lm <- function(
   )
 }
 
-coef.am_lm_fit <- function(object, ...) {
+coef.lm_fit <- function(object, ...) {
   object$coefficients
 }
 
-fitted.am_lm_fit <- function(object, ...) {
+fitted.lm_fit <- function(object, ...) {
   object$fitted.values
 }
 
-residuals.am_lm_fit <- function(object, ...) {
+residuals.lm_fit <- function(object, ...) {
   object$residuals
 }
 
@@ -950,15 +950,15 @@ residuals.am_many_lm_fit <- function(object, ...) {
   object$residuals
 }
 
-coef.am_wls_fit <- function(object, ...) {
+coef.wls_fit <- function(object, ...) {
   object$coefficients
 }
 
-fitted.am_wls_fit <- function(object, ...) {
+fitted.wls_fit <- function(object, ...) {
   object$fitted.values
 }
 
-residuals.am_wls_fit <- function(object, ...) {
+residuals.wls_fit <- function(object, ...) {
   object$residuals
 }
 
@@ -974,7 +974,7 @@ residuals.am_array_lm_fit <- function(object, ...) {
   object$residuals
 }
 
-print.am_lm_fit <- function(x, ...) {
+print.lm_fit <- function(x, ...) {
   cat(sprintf(
     "am_lm_fit [backend=%s|precision=%s|method=%s|rank=%d|df.residual=%d|cache=%s",
     x$backend,
@@ -1011,7 +1011,7 @@ print.am_many_lm_fit <- function(x, ...) {
   invisible(x)
 }
 
-print.am_wls_fit <- function(x, ...) {
+print.wls_fit <- function(x, ...) {
   cat(sprintf(
     "am_wls_fit [backend=%s|precision=%s|method=%s|rank=%d|df.residual=%d|cache=%s",
     x$backend,
@@ -1049,19 +1049,19 @@ print.am_array_lm_fit <- function(x, ...) {
   invisible(x)
 }
 
-coef.am_ridge_fit <- function(object, ...) {
+coef.ridge_fit <- function(object, ...) {
   object$coefficients
 }
 
-fitted.am_ridge_fit <- function(object, ...) {
+fitted.ridge_fit <- function(object, ...) {
   object$fitted.values
 }
 
-residuals.am_ridge_fit <- function(object, ...) {
+residuals.ridge_fit <- function(object, ...) {
   object$residuals
 }
 
-print.am_ridge_fit <- function(x, ...) {
+print.ridge_fit <- function(x, ...) {
   cat(sprintf(
     "am_ridge_fit [backend=%s|precision=%s|lambda=%g|rank=%d|df.residual=%d|cache=%s]\n",
     x$backend,

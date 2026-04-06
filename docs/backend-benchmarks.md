@@ -18,7 +18,7 @@ This note records the current benchmark-driven routing policy for `amatrix` dens
 - Cold single-op execution is still mostly CPU-routed on this machine.
 - Chained dense execution is where the current MLX backend starts to look like the actual end-state product.
 - `arrayfire` remains a real native dense backend, but its current value is still primarily `matmul`, not chained execution.
-- `arrayfire` is intentionally still a cold-path backend. It does not currently participate in dense residency.
+- `arrayfire` now exposes resident hooks too, but the product still leans on MLX for the better-validated chained dense story on this machine.
 - The current routed default path remains conservative:
   - `mlx` for dense `matmul` from `128x128` upward
   - `arrayfire` for dense `matmul` from `512x512` upward
@@ -145,11 +145,57 @@ Observed timings on this machine:
 
 This is the first direct evidence that the internal shared-`X` cache is doing real work for the product wedge the PRD cares about. It also shows that the QR-backed repeated-response path is already competitive on this workload while giving a more numerically robust least-squares route than normal equations.
 
+## Observed SPD Cholesky Workflow Benchmarks
+
+These come from `tools/benchmark-cholesky-runtime.R`.
+
+On this machine, the reliable invocation is:
+
+```bash
+Rscript -e 'source("tools/benchmark-cholesky-runtime.R", local = TRUE)'
+```
+
+Direct `Rscript tools/benchmark-cholesky-runtime.R` still trips an MLX startup crash on this Apple Silicon setup, so the `-e` source path is the one to use for now.
+
+Observed timings on this machine:
+
+- `ridge_spd`, `768x768`, `rhs_cols = 64`
+  - `factor`
+    - `cpu`: about `0.0653 s`
+    - `mlx`: about `0.0187 s`
+  - `batched_solve`
+    - `cpu`: about `0.0154 s`
+    - `mlx`: about `0.0084 s`
+  - `factor_plus_batched_solve`
+    - `cpu`: about `0.0800 s`
+    - `mlx`: about `0.0287 s`
+- `kernel_spd`, `640x640`, `rhs_cols = 32`
+  - `factor`
+    - `cpu`: about `0.0360 s`
+    - `mlx`: about `0.0108 s`
+  - `batched_solve`
+    - `cpu`: about `0.0062 s`
+    - `mlx`: about `0.0042 s`
+  - `factor_plus_batched_solve`
+    - `cpu`: about `0.0424 s`
+    - `mlx`: about `0.0166 s`
+
+Quality note from the same benchmark run:
+
+- factor reconstruction residuals were about `2e-7`
+- solve errors versus the CPU reference were about `5e-7`
+
+Interpretation:
+
+- On representative ridge-like and kernel-like SPD workloads, MLX is already the faster end-to-end path on this machine.
+- The biggest win is the factor step; the many-RHS triangular solve also helps, but less dramatically.
+- ArrayFire remains explicit CPU-backed fallback/stub territory for this workflow.
+
 ## Observed Similarity Workload Benchmarks
 
 These also come from `tools/benchmark-model-core.R`. They are meant to answer:
 
-- what does the second flagship workload cost on the current substrate?
+- what does the similarity / covariance workload cost on the current substrate?
 
 Current script setup:
 
@@ -178,7 +224,7 @@ These come from `tools/benchmark-qr-runtime.R`. They compare four QR-related reg
 - `mlx_compact`
   - the compact MLX QR path
   - on tall-skinny matrices this now means a TSQR-style blocked compact factor prototype
-  - on other shapes it still falls back to the cached bridge-compact factor
+  - on other shapes it now keeps a lazy host compact factor and only materializes it if a compact helper actually needs it
 
 The benchmark now also varies the number of right-hand sides (`rhs_cols`) to answer the practical question:
 
@@ -339,10 +385,22 @@ Interpretation:
 - `solve`: about `0.027 s`
 - `assemble`: about `0.001 s`
 
-So the next QR speed target is clear:
+Source-loaded spot checks after the lazy-factor cleanup in `R/qr.R` and `backends/amatrix.mlx/R/backend.R` show the current state more clearly:
 
-- the hot compact many-RHS solve path is now in good shape
-- the cold compact factor build is still the largest remaining compact-path cost, but it has come down materially
+- `768x256` non-TSQR `qr.factor_cold`
+  - `mlx_resident_qr`: about `0.004 s`
+  - `mlx_compact`: about `0.004 s`
+  - both now leave the compact factor unmaterialized at `qr(x)` time
+- `4096x128`, `rhs=128`, `block_rows=512` via `tools/profile-many-lm-qr.R`
+  - native resident path: `cache ≈ 0.066 s`, `solve ≈ 0.005 s`, `assemble ≈ 0.003 s`
+  - compact TSQR path: `cache ≈ 0.122 s`, `solve ≈ 0.017 s`, `assemble ≈ 0.014 s`
+
+Current conclusion:
+
+- the eager host compact-factor work is no longer the hidden cold-path cost on the MLX QR boundary
+- the remaining compact cold cost on the flagship tall-skinny workflow is the TSQR build itself
+- the resident-`Q` MLX path is still the premium QR implementation today
+- the compact TSQR path is still structurally credible, but it is no longer the next blocking flagship issue
 
 ## Inspecting Execution Mode
 
@@ -376,7 +434,29 @@ Rscript /Users/bbuchsbaum/code/amatrix/tools/benchmark-chained-dense.R
 Rscript /Users/bbuchsbaum/code/amatrix/tools/benchmark-model-core.R
 Rscript /Users/bbuchsbaum/code/amatrix/tools/benchmark-qr-runtime.R
 Rscript /Users/bbuchsbaum/code/amatrix/tools/benchmark-qr-tsqr.R
+Rscript /Users/bbuchsbaum/code/amatrix/tools/benchmark-svd-factor.R
 ```
 
 The first script reports cold single-op routing and timings. The second reports chained steady-state behavior on persistent dense objects.
 The third reports repeated shared-`X` model-core workloads with cache reuse enabled and disabled.
+`benchmark-svd-factor.R` currently reports CPU/reference factor timings only; for Apple Silicon MLX steady-state SVD timing, use the direct `Rscript -e` commands documented in [gpu-svd-analysis.md](/Users/bbuchsbaum/code/amatrix/docs/gpu-svd-analysis.md). `tools/print-svd-factor-calibration.R` prints a small calibration grid of those commands.
+
+## ArrayFire rsvd Product Status: Experimental
+
+**Decision (2026-04-06): experimental — correct algorithm, unvalidated in CI.**
+
+### Evidence
+
+- The implementation (`backends/amatrix.arrayfire/R/backend.R:234`) is a standard randomized SVD with power iteration. The algorithm is algebraically correct.
+- The large matmuls (sketch, power iterations, projection) use `amatrix_arrayfire_matmul_correct_bridge` and `amatrix_arrayfire_crossprod_correct_bridge` — the "correct" bridge variants that were fixed in commit c21561d (June 2026).
+- The conformance test (`tests/testthat/test-cross-backend-conformance.R:296`) is guarded by `skip_if_not(amatrix_arrayfire_is_available())` and therefore always skips on this machine and in CI. The quality checks have not run against real AF hardware.
+- No performance benchmark comparing AF rsvd vs MLX rsvd has been collected.
+- The active threshold is `min(nrow, ncol) >= 400` (configurable via `amatrix.arrayfire.rsvd_min_dim`).
+
+### Status
+
+- **Not fallback-only**: the path is real — it will activate when AF hardware is present and the threshold is met.
+- **Not product-ready**: no real-hardware quality or performance validation.
+- **Experimental**: users with AF hardware can enable and exercise it; the recommended path for Apple Silicon is the MLX backend.
+
+No roadmap document should claim ArrayFire rsvd as either "not implemented" or "fully validated at parity with MLX". It is a functioning but unvalidated feature gate.

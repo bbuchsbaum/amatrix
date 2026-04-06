@@ -23,7 +23,7 @@ setMethod("crossprod",
   function(x, y, ...) {
     x_wrapped <- new_adgeMatrix(x, preferred_backend = y@preferred_backend,
                                 policy = y@policy, precision = y@precision)
-    am_crossprod(x_wrapped, y, ...)
+    crossprod(x_wrapped, y, ...)
   }
 )
 
@@ -35,7 +35,7 @@ setMethod("tcrossprod",
   function(x, y, ...) {
     x_wrapped <- new_adgeMatrix(x, preferred_backend = y@preferred_backend,
                                 policy = y@policy, precision = y@precision)
-    am_tcrossprod(x_wrapped, y, ...)
+    tcrossprod(x_wrapped, y, ...)
   }
 )
 
@@ -49,6 +49,6 @@ setMethod("crossprod",
     x_mat <- matrix(x, ncol = 1L)
     x_wrapped <- new_adgeMatrix(x_mat, preferred_backend = y@preferred_backend,
                                 policy = y@policy, precision = y@precision)
-    am_crossprod(x_wrapped, y, ...)
+    crossprod(x_wrapped, y, ...)
   }
 )
