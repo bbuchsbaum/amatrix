@@ -720,27 +720,31 @@ am_wls_fit <- function(
   method <- match.arg(method)
   weights <- .amatrix_validate_weights(weights, nrow(X_arg))
 
-  weighted_X <- .amatrix_apply_row_weights(X_arg, weights)
   cache_extra <- .amatrix_weights_signature(weights)
   if (identical(method, "qr")) {
+    weighted_X <- .amatrix_apply_row_weights(X_arg, weights)
     cache_extra <- paste(cache_extra, .amatrix_qr_cache_signature(weighted_X), sep = "|")
-  }
-  cache_key <- .amatrix_lm_cache_key(
-    weighted_X,
-    extra = cache_extra,
-    object_id = X_arg@object_id
-  )
-
-  if (identical(method, "qr")) {
+    cache_key <- .amatrix_lm_cache_key(
+      weighted_X,
+      extra = cache_extra,
+      object_id = X_arg@object_id
+    )
     weighted_Y <- .amatrix_model_response_host(Y_arg) * sqrt(as.double(weights))
     cache_value <- .amatrix_lm_cache_value(weighted_X, cache = cache, need_xtx = FALSE, need_qr = TRUE, cache_key = cache_key)
     qr_fit <- cache_value$qr
     coefficients <- .amatrix_rewrap_like(weighted_X, .amatrix_qr_solve_value(qr_fit, b = weighted_Y))
     qr_meta <- .amatrix_qr_fit_metadata(qr_fit)
   } else {
-    weighted_Y <- .amatrix_apply_row_weights(Y_arg, weights)
-    cache_value <- .amatrix_lm_cache_value(weighted_X, cache = cache, need_xtx = TRUE, need_qr = FALSE, cache_key = cache_key)
-    coefficients <- am_solve(cache_value$xtx, am_crossprod(weighted_X, weighted_Y))
+    cache_key <- .amatrix_lm_cache_key(
+      X_arg,
+      extra = cache_extra,
+      object_id = X_arg@object_id
+    )
+    xtx <- am_crossprod_weighted(X_arg, weights)
+    xty <- am_xty_weighted(X_arg, weights, Y_arg)
+    coefficients <- am_solve(xtx, xty)
+    cache_value <- list(rank = ncol(X_arg), cache_key = cache_key,
+                        cache_reused = FALSE)
     qr_meta <- .amatrix_qr_fit_metadata(NULL)
   }
 
