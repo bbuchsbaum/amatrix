@@ -119,51 +119,6 @@
   invisible(NULL)
 }
 
-# t(A) %*% B fast path: use A's live resident key for crossprod_resident,
-# avoiding a re-upload of the (already resident) source data.
-# Uses the backend where A is resident, bypassing backend_for so that the fast
-# path works even when the planner would not normally choose that backend for a
-# standalone "crossprod" operation.
-.amatrix_try_crossprod_via_src <- function(x, y) {
-  src_entry <- .amatrix_src_resident_entry(x)
-  if (is.null(src_entry)) return(NULL)
-
-  backend_name <- src_entry$backend
-  backend <- .amatrix_get_backend(backend_name)
-  if (!.amatrix_backend_supports_resident_op(backend, "crossprod")) return(NULL)
-  if (!isTRUE(backend$resident_has(src_entry$resident_key))) return(NULL)
-
-  rhs <- .amatrix_prepare_resident_arg(y, backend_name)
-  if (is.null(rhs)) return(NULL)
-
-  out_key <- .amatrix_next_resident_key(backend_name)
-  value <- backend$crossprod_resident(src_entry$resident_key, rhs$key, out_key)
-  .amatrix_cleanup_temp_resident(list(rhs), backend_name)
-  if (is.null(value)) return(NULL)
-  list(value = value, backend = backend_name, resident_key = out_key)
-}
-
-# A %*% t(B) fast path: use B's live resident key for tcrossprod_resident.
-# Same reasoning as above: use the backend where B is resident.
-.amatrix_try_tcrossprod_via_src <- function(x, y) {
-  src_entry <- .amatrix_src_resident_entry(y)
-  if (is.null(src_entry)) return(NULL)
-
-  backend_name <- src_entry$backend
-  backend <- .amatrix_get_backend(backend_name)
-  if (!.amatrix_backend_supports_resident_op(backend, "tcrossprod")) return(NULL)
-  if (!isTRUE(backend$resident_has(src_entry$resident_key))) return(NULL)
-
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
-  if (is.null(lhs)) return(NULL)
-
-  out_key <- .amatrix_next_resident_key(backend_name)
-  value <- backend$tcrossprod_resident(lhs$key, src_entry$resident_key, out_key)
-  .amatrix_cleanup_temp_resident(list(lhs), backend_name)
-  if (is.null(value)) return(NULL)
-  list(value = value, backend = backend_name, resident_key = out_key)
-}
-
 .amatrix_try_resident_matmul <- function(x, y, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
   if (!.amatrix_backend_supports_resident_op(backend, "matmul")) {
@@ -332,33 +287,6 @@ am_matmul <- function(x, y) {
   y_vec <- is.numeric(y) && is.null(dim(y))
   y_eff <- if (y_vec) matrix(y, ncol = 1L) else y
 
-  # t(A) %*% B: x carries src_id pointing to A's object_id. Route to
-  # crossprod_resident(A_key, B_key) — no re-upload of the transposed data.
-  if (inherits(x, "adgeMatrix") && nzchar(x@src_id)) {
-    resident <- .amatrix_try_crossprod_via_src(x, y_eff)
-    if (!is.null(resident)) {
-      if (y_vec) {
-        bk <- .amatrix_get_backend(resident$backend)
-        mat_result <- bk$resident_materialize(resident$resident_key)
-        if (isTRUE(bk$resident_has(resident$resident_key))) bk$resident_drop(resident$resident_key)
-        return(drop(mat_result))
-      }
-      value <- .amatrix_rewrap_like(x, resident$value)
-      return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
-    }
-    # src is no longer resident — fall through to normal matmul with x's @x
-  }
-
-  # A %*% t(B): y carries src_id pointing to B's object_id. Route to
-  # tcrossprod_resident(A_key, B_key).
-  if (inherits(y_eff, "adgeMatrix") && nzchar(y_eff@src_id)) {
-    resident <- .amatrix_try_tcrossprod_via_src(x, y_eff)
-    if (!is.null(resident)) {
-      value <- .amatrix_rewrap_like(x, resident$value)
-      return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
-    }
-  }
-
   choice <- .amatrix_backend_for(x, "matmul", y = y_eff)
   resident <- .amatrix_try_resident_matmul(x, y_eff, choice$name)
   if (!is.null(resident)) {
@@ -442,18 +370,23 @@ am_tcrossprod <- function(x, y = NULL, ...) {
   )
 }
 
-# Internal fused GEMM: alpha * op(A) %*% op(B) + beta * C.
-# Routes to the most efficient matmul variant (crossprod, tcrossprod, matmul).
-# MLX's lazy evaluation graph fuses the scale, matmul, and add automatically.
-# Never exported — callers use am_matmul / am_crossprod / am_tcrossprod directly.
-.am_gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
-                     transA = FALSE, transB = FALSE) {
+# am_gemm: full BLAS DGEMM-style control surface.
+# Computes alpha * op(A) %*% op(B) + beta * C.
+# op(X) = t(X) when transX = TRUE, otherwise X.
+# Routes each case to the most efficient resident operation:
+#   transA only  → crossprod_resident  (t(A) %*% B)
+#   transB only  → tcrossprod_resident (A %*% t(B))
+#   transA+B     → crossprod(A, t(B))  = t(A) %*% t(B), via host materialization of t(B)
+#   neither      → matmul_resident     (A %*% B)
+# Use am_matmul / am_crossprod / am_tcrossprod for plain operator idioms.
+am_gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
+                    transA = FALSE, transB = FALSE) {
   AB <- if (transA && transB) {
-    am_matmul(am_transpose(A), am_transpose(B))
+    am_crossprod(A, am_transpose(B))  # t(A) %*% t(B) via host-materialised t(B)
   } else if (transA) {
-    am_crossprod(A, B)          # t(A) %*% B — uses crossprod_resident fast path
+    am_crossprod(A, B)
   } else if (transB) {
-    am_tcrossprod(A, B)         # A %*% t(B) — uses tcrossprod_resident fast path
+    am_tcrossprod(A, B)
   } else {
     am_matmul(A, B)
   }
@@ -495,21 +428,10 @@ am_col_sums <- function(x, na.rm = FALSE, dims = 1L) {
 }
 
 am_transpose <- function(x) {
-  # For GPU-resident matrices: create a transposed view that remembers the
-  # original object_id (src_id). When the result is used in %*%, am_matmul
-  # will detect src_id and route to crossprod_resident(A_key, B_key) without
-  # re-uploading the transposed data to the device.
-  src_backend <- .amatrix_live_resident_backend(x)
-  if (!is.null(src_backend)) {
-    t_data <- t(as.matrix(amatrix_materialize_host(x)))
-    return(new_adgeMatrix(
-      t_data,
-      preferred_backend = x@preferred_backend,
-      policy = x@policy,
-      precision = x@precision,
-      src_id = x@object_id
-    ))
+  if (inherits(x, "adgeMatrix")) {
+    return(.new_aTransposeView(x))
   }
+  # Sparse and other types: materialize and transpose on host
   .amatrix_rewrap_like(x, t(as.matrix(amatrix_materialize_host(x))))
 }
 
@@ -613,6 +535,59 @@ am_eigen <- function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
     method = "eigen",
     args = list(symmetric = symmetric, only.values = only.values, EISPACK = EISPACK),
     fallback = function() base::eigen(as.matrix(amatrix_materialize_host(x)), symmetric = symmetric, only.values = only.values, EISPACK = EISPACK)
+  )
+}
+
+am_eigh <- function(x) {
+  am_eigen(x, symmetric = TRUE)
+}
+
+# ── Weighted crossprod helpers ─────────────────────────────────────────────
+
+# X' diag(w) X  (p x p)
+am_crossprod_weighted <- function(X, w) {
+  X_arg <- .amatrix_model_dense_arg(X)
+  w <- as.double(w)
+  if (length(w) != nrow(X_arg)) {
+    stop("length(w) must equal nrow(X)", call. = FALSE)
+  }
+  sqrt_w <- sqrt(w)
+  x_host <- as.matrix(amatrix_materialize_host(X_arg))
+  x_scaled <- x_host * sqrt_w
+  am_crossprod(.amatrix_rewrap_like(X_arg, x_scaled))
+}
+
+# X diag(w) X'  (n x n)
+am_tcrossprod_weighted <- function(X, w) {
+  X_arg <- .amatrix_model_dense_arg(X)
+  w <- as.double(w)
+  if (length(w) != nrow(X_arg)) {
+    stop("length(w) must equal nrow(X)", call. = FALSE)
+  }
+  sqrt_w <- sqrt(w)
+  x_host <- as.matrix(amatrix_materialize_host(X_arg))
+  x_scaled <- x_host * sqrt_w
+  am_tcrossprod(.amatrix_rewrap_like(X_arg, x_scaled))
+}
+
+# X' diag(w) y  (p x k)
+am_xty_weighted <- function(X, w, y) {
+  X_arg <- .amatrix_model_dense_arg(X)
+  w <- as.double(w)
+  if (length(w) != nrow(X_arg)) {
+    stop("length(w) must equal nrow(X)", call. = FALSE)
+  }
+  sqrt_w <- sqrt(w)
+  x_host <- as.matrix(amatrix_materialize_host(X_arg))
+  y_mat <- if (is.vector(y)) matrix(y, ncol = 1L) else as.matrix(y)
+  if (nrow(y_mat) != nrow(X_arg)) {
+    stop("nrow(y) must equal nrow(X)", call. = FALSE)
+  }
+  x_scaled <- x_host * sqrt_w
+  y_scaled <- y_mat * sqrt_w
+  am_crossprod(
+    .amatrix_rewrap_like(X_arg, x_scaled),
+    .amatrix_rewrap_like(X_arg, y_scaled)
   )
 }
 

@@ -111,3 +111,29 @@ am_chol_solve <- function(factor, B) {
 chol_solve <- function(factor, B) {
   am_chol_solve(factor, B)
 }
+
+am_chol_diag <- function(factor) {
+  if (!inherits(factor, "amChol")) {
+    stop("factor must be an amChol object", call. = FALSE)
+  }
+  diag(factor@factor)
+}
+
+am_chol_logdet <- function(factor) {
+  if (!inherits(factor, "amChol")) {
+    stop("factor must be an amChol object", call. = FALSE)
+  }
+  2 * sum(log(diag(factor@factor)))
+}
+
+am_quad_form <- function(factor, v) {
+  if (!inherits(factor, "amChol")) {
+    stop("factor must be an amChol object", call. = FALSE)
+  }
+  z <- am_chol_solve(factor, v)
+  if (is.vector(v)) {
+    as.double(crossprod(v, z))
+  } else {
+    crossprod(as.matrix(v), as.matrix(z))
+  }
+}
