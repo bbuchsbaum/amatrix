@@ -143,9 +143,20 @@ setMethod("svd", "adgeMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), L
   am_svd(x, nu = nu, nv = nv, LINPACK = LINPACK, ...)
 })
 
+# Fallback: keep base::svd working for plain matrix after we take the generic
+setMethod("svd", "matrix", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
+  base::svd(x, nu = nu, nv = nv)
+})
+
 setMethod("eigen", "adgeMatrix", function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
   sym <- if (missing(symmetric)) NULL else symmetric
   am_eigen(x, symmetric = sym, only.values = only.values, EISPACK = EISPACK)
+})
+
+# Fallback: keep base::eigen working for plain matrix
+setMethod("eigen", "matrix", function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
+  sym <- if (missing(symmetric)) isSymmetric(x) else symmetric
+  base::eigen(x, symmetric = sym, only.values = only.values, EISPACK = EISPACK)
 })
 
 setMethod("diag", "adgeMatrix", function(x = 1, nrow, ncol, names = TRUE) {
