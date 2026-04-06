@@ -27,6 +27,8 @@ extern SEXP amatrix_mlx_tcrossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP 
 extern SEXP amatrix_mlx_ewise_resident_bridge(SEXP lhs_key, SEXP rhs, SEXP op, SEXP out_key);
 extern SEXP amatrix_mlx_rsvd_bridge(SEXP x_r, SEXP k_r, SEXP n_oversamples_r, SEXP n_iter_r);
 extern SEXP amatrix_mlx_chol_solve_bridge(SEXP A_r, SEXP B_r);
+extern SEXP amatrix_mlx_chol_factor_bridge(SEXP X_r);
+extern SEXP amatrix_mlx_eigh_bridge(SEXP A_r);
 
 static const R_CallMethodDef call_methods[] = {
     {"amatrix_mlx_native_available_bridge", (DL_FUNC) &amatrix_mlx_native_available_bridge, 0},
@@ -54,6 +56,8 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_mlx_ewise_resident_bridge", (DL_FUNC) &amatrix_mlx_ewise_resident_bridge, 4},
     {"amatrix_mlx_rsvd_bridge",           (DL_FUNC) &amatrix_mlx_rsvd_bridge,           4},
     {"amatrix_mlx_chol_solve_bridge",     (DL_FUNC) &amatrix_mlx_chol_solve_bridge,     2},
+    {"amatrix_mlx_chol_factor_bridge",    (DL_FUNC) &amatrix_mlx_chol_factor_bridge,    1},
+    {"amatrix_mlx_eigh_bridge",           (DL_FUNC) &amatrix_mlx_eigh_bridge,           1},
     {NULL, NULL, 0}
 };
 

@@ -1,9 +1,11 @@
 amatrix_mlx_capabilities <- function() {
-  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "qr", "rsvd")
+  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
+    "qr", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen")
 }
 
 amatrix_mlx_features <- function() {
-  c("dense_f32", "resident_dense", "unified_memory", "custom_ops", "qr", "rsvd")
+  c("dense_f32", "resident_dense", "unified_memory", "custom_ops",
+    "qr", "rsvd", "chol_gpu", "batched_trsm", "eigen_sym")
 }
 
 amatrix_mlx_precision_modes <- function() {
@@ -641,9 +643,35 @@ amatrix_mlx_solve_resident <- function(a_key, b_key = NULL, out_key) {
 
 amatrix_mlx_chol_resident <- function(x_key, out_key) {
   x_host <- amatrix_mlx_resident_materialize(x_key)
-  result <- base::chol(x_host)
+  result <- tryCatch(
+    {
+      storage.mode(x_host) <- "double"
+      R <- .Call("amatrix_mlx_chol_factor_bridge", x_host, PACKAGE = "amatrix.mlx")
+      # MLX does not zero the non-triangular half; enforce upper triangular
+      # convention to match base::chol and satisfy the amChol validator.
+      R[lower.tri(R)] <- 0
+      R
+    },
+    error = function(e) base::chol(x_host)
+  )
   amatrix_mlx_resident_store(out_key, result)
   result
+}
+
+# GPU-accelerated triangular solve for am_chol_solve: two trsm calls on the
+# cached upper-triangular R factor.  Both calls stay on the MLX GPU stream.
+amatrix_mlx_chol_solve_factor <- function(R, B) {
+  R_mat <- as.matrix(R)
+  B_mat <- as.matrix(B)
+  storage.mode(R_mat) <- "double"
+  storage.mode(B_mat) <- "double"
+  # forward substitution: L z = B  where L = R^T
+  Rt <- t(R_mat)
+  z <- .Call("amatrix_mlx_solve_triangular_bridge", Rt, B_mat, FALSE,
+             PACKAGE = "amatrix.mlx")
+  # backward substitution: R x = z
+  .Call("amatrix_mlx_solve_triangular_bridge", R_mat, z, TRUE,
+        PACKAGE = "amatrix.mlx")
 }
 
 amatrix_mlx_ewise_resident <- function(lhs_key, rhs, op, out_key) {
@@ -684,6 +712,12 @@ amatrix_mlx_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L) {
         as.integer(k),
         as.integer(n_oversamples),
         as.integer(n_iter))
+}
+
+amatrix_mlx_eigh <- function(x) {
+  mat <- if (is(x, "adgeMatrix") || is(x, "dgeMatrix")) as.matrix(x) else x
+  storage.mode(mat) <- "double"
+  .Call("amatrix_mlx_eigh_bridge", mat, PACKAGE = "amatrix.mlx")
 }
 
 amatrix_mlx_backend <- function() {
@@ -733,6 +767,12 @@ amatrix_mlx_backend <- function() {
 
       if (identical(op, "qr")) {
         return(.amatrix_mlx_meets_threshold(x, thresholds$qr_min_dim))
+      }
+
+      if (identical(op, "eigen")) {
+        dims <- dim(x)
+        return(!is.null(dims) && length(dims) == 2L && dims[1L] == dims[2L] &&
+               dims[1L] >= getOption("amatrix.mlx.eigen_min_dim", 200L))
       }
 
       TRUE
@@ -800,8 +840,23 @@ amatrix_mlx_backend <- function() {
     chol_resident = function(x_key, out_key) {
       amatrix_mlx_chol_resident(x_key, out_key = out_key)
     },
+    chol_solve_factor = function(R, B) {
+      amatrix_mlx_chol_solve_factor(R, B)
+    },
     rsvd = function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
       amatrix_mlx_rsvd(x, k = k, n_oversamples = n_oversamples, n_iter = n_iter)
+    },
+    eigen = function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
+      # x is already a host matrix (materialized by amatrix_dispatch_op)
+      if (!isTRUE(symmetric)) {
+        return(base::eigen(x, symmetric = FALSE, only.values = only.values))
+      }
+      res <- amatrix_mlx_eigh(x)
+      if (isTRUE(only.values)) {
+        list(values = res$values, vectors = NULL)
+      } else {
+        res
+      }
     }
   )
 }

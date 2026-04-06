@@ -2787,3 +2787,216 @@ SEXP amatrix_mlx_chol_solve_bridge(SEXP A_r, SEXP B_r) {
   return R_NilValue;
 #endif
 }
+
+/* -------------------------------------------------------------------------
+ * amatrix_mlx_chol_factor_bridge(X_r)
+ *
+ * GPU Cholesky factorization: R = chol(X) for symmetric positive-definite X.
+ * Returns upper-triangular R, matching base::chol convention.
+ *
+ * Algorithm:
+ *   1. L = chol(X, lower=true)   [n×n lower triangular] on GPU
+ *   2. R = transpose(L)          [n×n upper triangular]
+ *
+ * Falls back to CPU stream on GPU failure.
+ * -------------------------------------------------------------------------*/
+#ifdef HAVE_MLXC
+static SEXP amatrix_mlx_chol_factor_real(SEXP X_r) {
+  mlx_stream stream     = {0};
+  mlx_stream cpu_stream = {0};
+  mlx_array  X  = mlx_array_new();
+  mlx_array  R  = mlx_array_new();
+  SEXP result   = R_NilValue;
+  bool used_gpu = false;
+  bool failed   = false;
+  const char *fail_msg = "amatrix_mlx_chol_factor: operation failed";
+
+  amatrix_mlx_install_error_handler();
+
+  cpu_stream = mlx_default_cpu_stream_new();
+  if (amatrix_mlx_gpu_stream_ok(&stream)) {
+    used_gpu = true;
+  } else {
+    stream = cpu_stream;
+  }
+
+  X = amatrix_mlx_matrix_from_r(X_r);
+
+  /* Compute upper Cholesky directly: X = R^T R.
+   * Using upper=true avoids mlx_transpose, whose lazy strided view causes
+   * mlx_array_data_float32 to read L's un-transposed buffer — giving wrong
+   * results.  upper=true produces a contiguous R array directly. */
+  if (mlx_linalg_cholesky(&R, X, /*upper=*/true, stream) != 0) {
+    if (used_gpu) {
+      mlx_stream_free(stream);
+      stream = cpu_stream; used_gpu = false;
+      amatrix_mlx_free_array_if_needed(R); R = mlx_array_new();
+      if (mlx_linalg_cholesky(&R, X, true, stream) != 0) {
+        failed = true; fail_msg = "amatrix_mlx_chol_factor: cholesky failed";
+        goto done;
+      }
+    } else {
+      failed = true; fail_msg = "amatrix_mlx_chol_factor: cholesky failed";
+      goto done;
+    }
+  }
+
+  if (mlx_synchronize(stream) != 0) {
+    failed = true; fail_msg = "amatrix_mlx_chol_factor: synchronize failed";
+    goto done;
+  }
+
+  result = amatrix_mlx_result_to_r_matrix(R);
+
+done:
+  amatrix_mlx_free_array_if_needed(X);
+  amatrix_mlx_free_array_if_needed(R);
+  if (used_gpu && cpu_stream.ctx != NULL) mlx_stream_free(cpu_stream);
+  if (stream.ctx != NULL) mlx_stream_free(stream);
+
+  if (failed) error("%s", fail_msg);
+  return result;
+}
+#endif /* HAVE_MLXC */
+
+SEXP amatrix_mlx_chol_factor_bridge(SEXP X_r) {
+  if (!isReal(X_r) || !isMatrix(X_r)) {
+    error("X must be a numeric matrix");
+  }
+#ifdef HAVE_MLXC
+  return amatrix_mlx_chol_factor_real(X_r);
+#else
+  error("amatrix_mlx_chol_factor requires mlx-c (HAVE_MLXC not defined)");
+  return R_NilValue;
+#endif
+}
+
+/* =========================================================================
+ * MLX symmetric eigendecomposition bridge (mlx_linalg_eigh)
+ * Input:  symmetric real n×n R matrix
+ * Output: list(values = numeric(n), vectors = matrix(n,n))
+ *         eigenvalues in DESCENDING order (matching base::eigen convention)
+ *         eigenvectors as columns
+ * ========================================================================= */
+#ifdef HAVE_MLXC
+static SEXP amatrix_mlx_eigh_real(SEXP A_r) {
+  int n = INTEGER(getAttrib(A_r, R_DimSymbol))[0];
+  mlx_stream gpu_stream;
+  mlx_stream cpu_stream = mlx_default_cpu_stream_new();
+  bool has_gpu = false;
+  mlx_array A    = mlx_array_new();
+  mlx_array vals = mlx_array_new();
+  mlx_array vecs = mlx_array_new();
+  SEXP result = R_NilValue;
+
+  amatrix_mlx_install_error_handler();
+  has_gpu = amatrix_mlx_gpu_stream_ok(&gpu_stream);
+
+  /* Convert input: use GPU stream if available (async upload) */
+  A = amatrix_mlx_matrix_from_r(A_r);
+
+  /* Force evaluation of A before eigh — mlx_array_eval makes the array concrete */
+  if (mlx_array_eval(A) != 0) {
+    amatrix_mlx_free_array_if_needed(A);
+    amatrix_mlx_free_array_if_needed(vals);
+    amatrix_mlx_free_array_if_needed(vecs);
+    if (has_gpu) mlx_stream_free(gpu_stream);
+    mlx_stream_free(cpu_stream);
+    error("amatrix_mlx_eigh: eval of input matrix failed");
+  }
+
+  /* eigh on cpu_stream: eigenvalues ascending, eigenvectors as columns */
+  if (mlx_linalg_eigh(&vals, &vecs, A, "L", cpu_stream) != 0) {
+    amatrix_mlx_free_array_if_needed(A);
+    amatrix_mlx_free_array_if_needed(vals);
+    amatrix_mlx_free_array_if_needed(vecs);
+    if (has_gpu) mlx_stream_free(gpu_stream);
+    mlx_stream_free(cpu_stream);
+    error("amatrix_mlx_eigh: mlx_linalg_eigh failed");
+  }
+
+  /* Materialize output arrays before reading data.
+   * Use two separate evals (matching rsvd pattern) — do NOT call synchronize
+   * on cpu_stream (undefined behaviour on this platform). */
+  if (mlx_array_eval(vals) != 0 || mlx_array_eval(vecs) != 0) {
+    amatrix_mlx_free_array_if_needed(A);
+    amatrix_mlx_free_array_if_needed(vals);
+    amatrix_mlx_free_array_if_needed(vecs);
+    if (has_gpu) mlx_stream_free(gpu_stream);
+    mlx_stream_free(cpu_stream);
+    error("amatrix_mlx_eigh: eval of eigh outputs failed");
+  }
+
+  /* Read eigenvalue buffer (1-D, ascending order) */
+  const float *val_ptr = mlx_array_data_float32(vals);
+  if (!val_ptr) {
+    amatrix_mlx_free_array_if_needed(A);
+    amatrix_mlx_free_array_if_needed(vals);
+    amatrix_mlx_free_array_if_needed(vecs);
+    if (has_gpu) mlx_stream_free(gpu_stream);
+    mlx_stream_free(cpu_stream);
+    error("amatrix_mlx_eigh: eigenvalue data pointer is NULL");
+  }
+
+  /* Read eigenvector buffer directly — avoid extra mlx_array_eval that
+   * amatrix_mlx_result_to_r_matrix would trigger, which can re-run eigh.
+   * MLX row-major layout: vec_ptr[i*n + j] = element (row=i, col=j).
+   * Eigenvectors are stored as columns: col j = j-th eigenvector (ascending). */
+  const float *vec_ptr = mlx_array_data_float32(vecs);
+  if (!vec_ptr) {
+    amatrix_mlx_free_array_if_needed(A);
+    amatrix_mlx_free_array_if_needed(vals);
+    amatrix_mlx_free_array_if_needed(vecs);
+    if (has_gpu) mlx_stream_free(gpu_stream);
+    mlx_stream_free(cpu_stream);
+    error("amatrix_mlx_eigh: eigenvector data pointer is NULL");
+  }
+
+  /* Build descending eigenvalues and eigenvectors in a single pass.
+   * R col j (descending) = MLX col (n-1-j) (ascending): vm[i + n*j] = vec_ptr[i*n + (n-1-j)] */
+  SEXP vals_r = PROTECT(allocVector(REALSXP, n));
+  SEXP vecs_r = PROTECT(allocMatrix(REALSXP, n, n));
+  double *vp = REAL(vals_r);
+  double *vm = REAL(vecs_r);
+  for (int j = 0; j < n; j++) {
+    int j_asc = n - 1 - j;           /* ascending index for j-th descending eigenpair */
+    vp[j] = (double)val_ptr[j_asc];
+    /* MLX stores eigenvectors as ROWS: row j_asc = j_asc-th eigenvector (ascending).
+     * R convention: column j = j-th eigenvector (descending).
+     * vm[i + n*j] = component i of eigvec j_asc = vec_ptr[j_asc*n + i] */
+    for (int i = 0; i < n; i++) {
+      vm[i + n * j] = (double)vec_ptr[j_asc * n + i];
+    }
+  }
+
+  /* Assemble list(values = vals_r, vectors = vecs_r) */
+  SEXP names = PROTECT(allocVector(STRSXP, 2));
+  SET_STRING_ELT(names, 0, mkChar("values"));
+  SET_STRING_ELT(names, 1, mkChar("vectors"));
+  result = PROTECT(allocVector(VECSXP, 2));
+  SET_VECTOR_ELT(result, 0, vals_r);
+  SET_VECTOR_ELT(result, 1, vecs_r);
+  setAttrib(result, R_NamesSymbol, names);
+
+  amatrix_mlx_free_array_if_needed(A);
+  amatrix_mlx_free_array_if_needed(vals);
+  amatrix_mlx_free_array_if_needed(vecs);
+  if (has_gpu) mlx_stream_free(gpu_stream);
+  mlx_stream_free(cpu_stream);
+
+  UNPROTECT(4);
+  return result;
+}
+#endif /* HAVE_MLXC (eigh) */
+
+SEXP amatrix_mlx_eigh_bridge(SEXP A_r) {
+  if (!isReal(A_r) || !isMatrix(A_r)) {
+    error("A must be a real square matrix");
+  }
+#ifdef HAVE_MLXC
+  return amatrix_mlx_eigh_real(A_r);
+#else
+  error("amatrix_mlx_eigh requires mlx-c (HAVE_MLXC not defined)");
+  return R_NilValue;
+#endif
+}
