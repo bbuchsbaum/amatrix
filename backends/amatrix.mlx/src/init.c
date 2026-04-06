@@ -23,6 +23,7 @@ extern SEXP amatrix_mlx_resident_drop_bridge(SEXP key);
 extern SEXP amatrix_mlx_resident_materialize_bridge(SEXP key);
 extern SEXP amatrix_mlx_transpose_resident_bridge(SEXP x_key, SEXP out_key);
 extern SEXP amatrix_mlx_matmul_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
+extern SEXP amatrix_mlx_matmul_resident_host_bridge(SEXP x_key, SEXP y);
 extern SEXP amatrix_mlx_crossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
 extern SEXP amatrix_mlx_tcrossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
 extern SEXP amatrix_mlx_ewise_resident_bridge(SEXP lhs_key, SEXP rhs, SEXP op, SEXP out_key);
@@ -54,6 +55,7 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_mlx_resident_materialize_bridge", (DL_FUNC) &amatrix_mlx_resident_materialize_bridge, 1},
     {"amatrix_mlx_transpose_resident_bridge", (DL_FUNC) &amatrix_mlx_transpose_resident_bridge, 2},
     {"amatrix_mlx_matmul_resident_bridge", (DL_FUNC) &amatrix_mlx_matmul_resident_bridge, 3},
+    {"amatrix_mlx_matmul_resident_host_bridge", (DL_FUNC) &amatrix_mlx_matmul_resident_host_bridge, 2},
     {"amatrix_mlx_crossprod_resident_bridge", (DL_FUNC) &amatrix_mlx_crossprod_resident_bridge, 3},
     {"amatrix_mlx_tcrossprod_resident_bridge", (DL_FUNC) &amatrix_mlx_tcrossprod_resident_bridge, 3},
     {"amatrix_mlx_ewise_resident_bridge", (DL_FUNC) &amatrix_mlx_ewise_resident_bridge, 4},

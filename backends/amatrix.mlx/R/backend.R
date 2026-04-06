@@ -620,6 +620,14 @@ amatrix_mlx_matmul_resident <- function(x_key, y_key, out_key) {
   .Call("amatrix_mlx_matmul_resident_bridge", as.character(x_key), as.character(y_key), as.character(out_key))
 }
 
+amatrix_mlx_matmul_resident_host <- function(x_key, y) {
+  y_mat <- as.matrix(y)
+  if (!is.double(y_mat)) {
+    storage.mode(y_mat) <- "double"
+  }
+  .Call("amatrix_mlx_matmul_resident_host_bridge", as.character(x_key), y_mat)
+}
+
 amatrix_mlx_crossprod_resident <- function(x_key, y_key = NULL, out_key) {
   rhs_key <- if (is.null(y_key)) NULL else as.character(y_key)
   .Call("amatrix_mlx_crossprod_resident_bridge", as.character(x_key), rhs_key, as.character(out_key))
@@ -849,6 +857,9 @@ amatrix_mlx_backend <- function() {
     },
     matmul_resident = function(x_key, y_key, out_key) {
       amatrix_mlx_matmul_resident(x_key, y_key, out_key)
+    },
+    matmul_resident_host = function(x_key, y) {
+      amatrix_mlx_matmul_resident_host(x_key, y)
     },
     crossprod_resident = function(x_key, y_key = NULL, out_key) {
       amatrix_mlx_crossprod_resident(x_key, y_key = y_key, out_key = out_key)

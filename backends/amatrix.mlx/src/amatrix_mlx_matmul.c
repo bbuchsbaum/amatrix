@@ -1374,6 +1374,35 @@ static SEXP amatrix_mlx_matmul_resident_real(SEXP x_key, SEXP y_key, SEXP out_ke
   return result;
 }
 
+static SEXP amatrix_mlx_matmul_resident_host_real(SEXP x_key, SEXP y) {
+  mlx_stream stream;
+  mlx_array ax = amatrix_mlx_array_from_resident_key(x_key);
+  mlx_array ay = mlx_array_new();
+  mlx_array out = mlx_array_new();
+  SEXP result = R_NilValue;
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+    error("mlx GPU stream is unavailable");
+  }
+
+  ay = amatrix_mlx_matrix_from_r(y);
+
+  if (mlx_matmul(&out, ax, ay, stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(ay);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx resident-host matmul failed");
+  }
+
+  result = amatrix_mlx_result_to_r_matrix(out);
+
+  mlx_stream_free(stream);
+  amatrix_mlx_free_array_if_needed(ay);
+  amatrix_mlx_free_array_if_needed(out);
+  return result;
+}
+
 static SEXP amatrix_mlx_crossprod_resident_real(SEXP x_key, SEXP y_key, SEXP out_key) {
   mlx_stream stream;
   mlx_array ax = amatrix_mlx_array_from_resident_key(x_key);
@@ -1625,6 +1654,14 @@ SEXP amatrix_mlx_transpose_resident_bridge(SEXP x_key, SEXP out_key) {
 SEXP amatrix_mlx_matmul_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key) {
 #ifdef HAVE_MLXC
   return amatrix_mlx_matmul_resident_real(x_key, y_key, out_key);
+#else
+  error("mlx residency requires mlx-c");
+#endif
+}
+
+SEXP amatrix_mlx_matmul_resident_host_bridge(SEXP x_key, SEXP y) {
+#ifdef HAVE_MLXC
+  return amatrix_mlx_matmul_resident_host_real(x_key, y);
 #else
   error("mlx residency requires mlx-c");
 #endif
