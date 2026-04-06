@@ -16,6 +16,15 @@ amatrix_mlx_native_available <- function() {
   .Call("amatrix_mlx_native_available_bridge")
 }
 
+# Activate the Metal GPU probe for the current session.  Safe to call from
+# Rscript -e / interactive / testthat contexts.  Do NOT call from the body
+# of a plain `Rscript file.R` script — Metal device init crashes in that
+# launch mode (upstream MLX bug: https://github.com/ml-explore/mlx/issues/2691).
+amatrix_mlx_enable_gpu_probe <- function() {
+  Sys.setenv(AMATRIX_MLX_PROBE_GPU = "1")
+  invisible(amatrix_mlx_native_available())
+}
+
 amatrix_mlx_is_available <- function() {
   isTRUE(getOption("amatrix.mlx.available", FALSE)) || isTRUE(amatrix_mlx_native_available())
 }
