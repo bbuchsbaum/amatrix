@@ -148,12 +148,11 @@
 }
 
 .amatrix_lm_cache_get <- function(cache_key) {
-  get0(cache_key, envir = .amatrix_state$model_cache, inherits = FALSE)
+  .amatrix_cache_get(cache_key)
 }
 
 .amatrix_lm_cache_set <- function(cache_key, value) {
-  assign(cache_key, value, envir = .amatrix_state$model_cache)
-  invisible(value)
+  .amatrix_cache_set(cache_key, value)
 }
 
 .amatrix_lm_cache_value <- function(X_arg, cache = TRUE, need_xtx = TRUE, need_qr = FALSE, cache_key = NULL) {

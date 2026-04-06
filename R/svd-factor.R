@@ -491,7 +491,7 @@ svd_factor <- function(X,
   )
 
   cache_key <- .amatrix_svd_cache_key(X, k, plan)
-  cached <- get0(cache_key, envir = .amatrix_state$model_cache, inherits = FALSE)
+  cached <- .amatrix_cache_get(cache_key)
   if (!is.null(cached)) {
     return(cached)
   }
@@ -550,7 +550,7 @@ svd_factor <- function(X,
     v_am = v_am
   )
 
-  assign(cache_key, factor, envir = .amatrix_state$model_cache)
+  .amatrix_cache_set(cache_key, factor)
   factor
 }
 

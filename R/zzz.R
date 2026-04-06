@@ -13,5 +13,6 @@
     format(Sys.time(), "%Y%m%d%H%M%OS6"), "-",
     as.hexmode(sample.int(2^31 - 1L, 1L))
   )
+  .amatrix_cache_init()
   amatrix_register_backend("cpu", .amatrix_cpu_backend(), overwrite = TRUE)
 }
