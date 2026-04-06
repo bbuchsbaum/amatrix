@@ -83,7 +83,7 @@ chol_solve <- function(factor, B) {
   x <- if (isTRUE(factor@precision == "fast") &&
            nzchar(factor@backend) && factor@backend != "cpu") {
     backend <- tryCatch(
-      amatrix:::.amatrix_get_backend(factor@backend),
+      .amatrix_get_backend(factor@backend),
       error = function(e) NULL
     )
     if (!is.null(backend) && is.function(backend$chol_solve_factor)) {

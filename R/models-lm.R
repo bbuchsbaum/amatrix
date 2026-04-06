@@ -574,18 +574,16 @@ covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_si
   # Only available when weights and block_size are NULL (unweighted, non-blockwise).
   if (is.null(weights) && is.null(block_size)) {
     bk_name <- X_arg@preferred_backend
-    if (bk_name %in% amatrix_backend_names()) {
-      bk <- .amatrix_get_backend(bk_name)
-      if (is.function(bk[["covariance"]]) && isTRUE(bk$supports("covariance", X_arg))) {
-        x_mat <- as.matrix(amatrix_materialize_host(X_arg))
-        cov_mat <- bk$covariance(x_mat, center = center, denom = denom)
-        return(adgeMatrix(
-          cov_mat,
-          preferred_backend = X_arg@preferred_backend,
-          policy = X_arg@policy,
-          precision = X_arg@precision
-        ))
-      }
+    bk <- tryCatch(.amatrix_get_backend(bk_name), error = function(e) NULL)
+    if (!is.null(bk) && is.function(bk[["covariance"]]) && isTRUE(bk$supports("covariance", X_arg))) {
+      x_mat <- as.matrix(amatrix_materialize_host(X_arg))
+      cov_mat <- bk$covariance(x_mat, center = center, denom = denom)
+      return(adgeMatrix(
+        cov_mat,
+        preferred_backend = X_arg@preferred_backend,
+        policy = X_arg@policy,
+        precision = X_arg@precision
+      ))
     }
   }
 

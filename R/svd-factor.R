@@ -5,6 +5,8 @@ setClass(
     d = "numeric",
     v = "matrix",
     k = "integer",
+    method = "character",
+    engine = "character",
     source_id = "character",
     precision = "character",
     backend = "character",
@@ -27,8 +29,9 @@ setClass(
 
 setMethod("show", "amSVD", function(object) {
   cat(sprintf(
-    "amSVD [%dx%d -> rank %d | %s | source: %s]\n  d[1:min(3,k)]: %s\n",
-    nrow(object@u), nrow(object@v), object@k, object@precision, object@source_id,
+    "amSVD [%dx%d -> rank %d | %s | %s/%s@%s | source: %s]\n  d[1:min(3,k)]: %s\n",
+    nrow(object@u), nrow(object@v), object@k, object@precision,
+    object@method, object@engine, object@backend, object@source_id,
     paste(round(object@d[seq_len(min(3L, object@k))], 4), collapse = ", ")
   ))
   invisible(object)
@@ -62,10 +65,6 @@ setMethod("show", "amSVD", function(object) {
 
 .amatrix_backend_supports_capability <- function(name, capability, precision = NULL) {
   if (!is.character(name) || length(name) != 1L || !nzchar(name)) {
-    return(FALSE)
-  }
-
-  if (!(name %in% amatrix_backend_names())) {
     return(FALSE)
   }
 
@@ -260,6 +259,27 @@ setMethod("show", "amSVD", function(object) {
   min_dim <- min(dims)
 
   target_rank <- min(as.integer(k + n_oversamples), min_dim)
+
+  if (inherits(work_x, "adgeMatrix") && !is.null(target_backend)) {
+    backend <- tryCatch(.amatrix_get_backend(target_backend), error = function(e) NULL)
+    if (!is.null(backend) && isTRUE(backend$available()) && is.function(backend$rsvd)) {
+      fast_res <- backend$rsvd(
+        work_x,
+        k = as.integer(k),
+        n_oversamples = as.integer(n_oversamples),
+        n_iter = as.integer(n_iter)
+      )
+      return(list(
+        u = fast_res$u,
+        d = as.numeric(fast_res$d),
+        v = fast_res$v,
+        rank_discovered = length(fast_res$d),
+        core_solver = "backend_rsvd",
+        diag_history = as.numeric(fast_res$d)
+      ))
+    }
+  }
+
   Omega <- .amatrix_subspace_rademacher(n = n, r = target_rank)
 
   phase <- .amatrix_subspace_qr(work_x %*% Omega)
@@ -390,6 +410,52 @@ setMethod("show", "amSVD", function(object) {
   )
 }
 
+.amatrix_svd_factor_engine <- function(plan, svd_result) {
+  if (identical(plan$method, "exact")) {
+    return("exact_svd")
+  }
+
+  if (identical(plan$method, "rsvd")) {
+    if (!is.null(plan$rsvd_backend)) {
+      return("backend_rsvd")
+    }
+    if (requireNamespace("irlba", quietly = TRUE)) {
+      return("irlba_svdr")
+    }
+    return("base_svd")
+  }
+
+  engine <- svd_result$core_solver
+  if (is.null(engine) || !nzchar(as.character(engine[[1L]]))) {
+    return("subspace_fallback")
+  }
+
+  as.character(engine[[1L]])
+}
+
+.amatrix_svd_factor_backend <- function(X, plan, svd_result) {
+  if (identical(plan$method, "exact")) {
+    return(amatrix_backend_plan(X, "svd")$chosen)
+  }
+
+  if (identical(plan$method, "rsvd")) {
+    if (!is.null(plan$rsvd_backend)) {
+      return(plan$rsvd_backend)
+    }
+    return("cpu")
+  }
+
+  if (!is.null(plan$subspace_backend) && nzchar(plan$subspace_backend)) {
+    return(plan$subspace_backend)
+  }
+
+  if (!is.null(svd_result$core_solver) && identical(as.character(svd_result$core_solver[[1L]]), "backend_rsvd")) {
+    return("cpu")
+  }
+
+  "cpu"
+}
+
 svd_factor <- function(X,
                           k = min(dim(X)),
                           method = c("auto", "exact", "rsvd", "subspace"),
@@ -461,7 +527,8 @@ svd_factor <- function(X,
   u <- as.matrix(svd_result$u)
   v <- as.matrix(svd_result$v)
 
-  backend <- plan$factor_backend
+  engine <- .amatrix_svd_factor_engine(plan, svd_result)
+  backend <- .amatrix_svd_factor_backend(X, plan, svd_result)
   use_gpu <- nzchar(backend) && backend != "cpu" && X@precision == "fast"
   # Pre-transpose u so matmul(ut_am, Y) routes through the matmul path
   # (min_dim threshold 128) instead of crossprod (threshold 2048).
@@ -474,6 +541,8 @@ svd_factor <- function(X,
     d = d,
     v = v,
     k = k,
+    method = plan$method,
+    engine = engine,
     source_id = X@object_id,
     precision = X@precision,
     backend = backend,

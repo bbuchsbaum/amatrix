@@ -51,7 +51,7 @@ if (!isGeneric("qr.resid")) {
 }
 
 if (!isGeneric("svd")) {
-  setGeneric("svd", function(x, nu = min(n, p), nv = min(n, p), LINPACK = FALSE, ...) standardGeneric("svd"))
+  setGeneric("svd", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) standardGeneric("svd"))
 }
 
 if (!isGeneric("eigen")) {

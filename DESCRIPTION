@@ -7,7 +7,6 @@ Description: Matrix-compatible S4 classes with backend-dispatch hooks for
     accelerated execution and predictable CPU fallback.
 License: MIT + file LICENSE
 Encoding: UTF-8
-LazyData: true
 Depends:
     R (>= 4.3)
 Imports:
@@ -15,5 +14,7 @@ Imports:
     Matrix
 Suggests:
     testthat (>= 3.0.0),
-    irlba
+    irlba,
+    amatrix.mlx,
+    amatrix.arrayfire
 Config/testthat/edition: 3

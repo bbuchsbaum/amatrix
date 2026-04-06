@@ -1,0 +1,10 @@
+^vendor$
+^backends$
+^docs$
+^models$
+^\.omc$
+^\.beads$
+^CLAUDE\.md$
+^AGENTS\.md$
+^tools/baseline\.csv$
+^README\.md$

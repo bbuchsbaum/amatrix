@@ -34,9 +34,10 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
 
   for (idx in seq_along(preferred)) {
     candidate_name <- preferred[[idx]]
+    backend <- tryCatch(.amatrix_get_backend(candidate_name), error = function(e) NULL)
     entry <- list(
       name = candidate_name,
-      registered = candidate_name %in% amatrix_backend_names(),
+      registered = !is.null(backend),
       capabilities = character(),
       features = character(),
       precision_modes = character(),
@@ -45,13 +46,13 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
       resident_active = FALSE,
       supported_cold = FALSE,
       supported_resident = FALSE,
+      calibration_ok = TRUE,
       supported = FALSE,
       chosen_path = NA_character_,
       chosen = FALSE
     )
 
     if (entry$registered) {
-      backend <- .amatrix_get_backend(candidate_name)
       entry$capabilities <- unique(backend$capabilities())
       entry$features <- unique(backend$features())
       entry$precision_modes <- unique(backend$precision_modes())
@@ -65,7 +66,15 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
             .amatrix_backend_residency_capable(backend) &&
             .amatrix_backend_supports_resident_op(backend, op)
         )
-        entry$supported <- isTRUE(entry$supported_cold || entry$supported_resident)
+        # Calibration gates the cold path only. Resident path is always ok
+        # because the upload cost has already been paid.
+        entry$calibration_ok <- (
+          entry$supported_resident ||
+          .amatrix_calibration_ok(x, op, candidate_name)
+        )
+        entry$supported <- isTRUE(
+          (entry$supported_cold || entry$supported_resident) && entry$calibration_ok
+        )
         if (entry$supported) {
           entry$chosen_path <- if (isTRUE(entry$supported_cold)) "cold" else "resident"
         }
@@ -94,6 +103,7 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
         resident_active = FALSE,
         supported_cold = TRUE,
         supported_resident = FALSE,
+        calibration_ok = TRUE,
         supported = TRUE,
         chosen_path = "cold",
         chosen = TRUE
@@ -109,6 +119,7 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
       candidates[[cpu_idx]]$resident_active <- FALSE
       candidates[[cpu_idx]]$supported_cold <- TRUE
       candidates[[cpu_idx]]$supported_resident <- FALSE
+      candidates[[cpu_idx]]$calibration_ok <- TRUE
       candidates[[cpu_idx]]$supported <- TRUE
       candidates[[cpu_idx]]$chosen_path <- "cold"
     }
@@ -160,8 +171,9 @@ amatrix_backend_matrix <- function(
               if (candidate$resident_active) "r" else "-",
               if (candidate$supported_cold) "C" else "-",
               if (candidate$supported_resident) "D" else "-",
+              if (isTRUE(candidate$calibration_ok)) "K" else "-",
               if (candidate$supported) "S" else "-",
-              if (candidate$chosen) "C" else "-",
+              if (candidate$chosen) "X" else "-",
               "]"
             )
           },

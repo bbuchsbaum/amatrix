@@ -310,13 +310,19 @@ irlba_native <- function(A,
     return(z)
   }
 
-  z_mat <- as.matrix(z)
-  basis_mat <- as.matrix(basis)
-  if (!is.double(z_mat)) {
-    storage.mode(z_mat) <- "double"
+  z_mat <- if (is.matrix(z) && is.double(z)) z else {
+    z_out <- as.matrix(z)
+    if (!is.double(z_out)) {
+      storage.mode(z_out) <- "double"
+    }
+    z_out
   }
-  if (!is.double(basis_mat)) {
-    storage.mode(basis_mat) <- "double"
+  basis_mat <- if (is.matrix(basis) && is.double(basis)) basis else {
+    basis_out <- as.matrix(basis)
+    if (!is.double(basis_out)) {
+      storage.mode(basis_out) <- "double"
+    }
+    basis_out
   }
 
   compiled <- tryCatch(
@@ -333,16 +339,15 @@ irlba_native <- function(A,
   }
 
   z_norm <- norm(z_mat, type = "F")
-  coeff <- crossprod(basis_mat, z_mat)
+  coeff <- base::crossprod(basis_mat, z_mat)
   z_mat <- z_mat - basis_mat %*% coeff
 
-  # The second CGS pass is only needed when the first pass loses too much
-  # norm. This keeps the current accuracy envelope while avoiding work on
-  # already-well-separated blocks.
+  # On the current block path, a 0.5 norm-retention trigger trims late
+  # redundant passes while preserving the observed singular-value envelope.
   if (is.finite(z_norm) && z_norm > 0) {
     z_reorth_norm <- norm(z_mat, type = "F")
-    if (z_reorth_norm <= 0.717 * z_norm) {
-      coeff2 <- crossprod(basis_mat, z_mat)
+    if (z_reorth_norm <= 0.5 * z_norm) {
+      coeff2 <- base::crossprod(basis_mat, z_mat)
       z_mat <- z_mat - basis_mat %*% coeff2
       coeff <- coeff + coeff2
     }
@@ -355,16 +360,138 @@ irlba_native <- function(A,
   z_mat
 }
 
+.amatrix_block_reorth_prefix <- function(z, basis, basis_cols, return_projection = FALSE) {
+  basis_cols <- as.integer(basis_cols)
+  if (is.na(basis_cols) || basis_cols < 0L) {
+    stop("basis_cols must be a non-negative integer", call. = FALSE)
+  }
+
+  if (basis_cols == 0L) {
+    if (isTRUE(return_projection)) {
+      return(list(z = z, coeff = NULL))
+    }
+    return(z)
+  }
+
+  z_mat <- if (is.matrix(z) && is.double(z)) z else {
+    z_out <- as.matrix(z)
+    if (!is.double(z_out)) {
+      storage.mode(z_out) <- "double"
+    }
+    z_out
+  }
+  basis_mat <- if (is.matrix(basis) && is.double(basis)) basis else {
+    basis_out <- as.matrix(basis)
+    if (!is.double(basis_out)) {
+      storage.mode(basis_out) <- "double"
+    }
+    basis_out
+  }
+
+  compiled <- tryCatch(
+    .Call(
+      "amatrix_block_reorth_prefix_bridge",
+      z_mat,
+      basis_mat,
+      basis_cols,
+      as.logical(return_projection)
+    ),
+    error = function(e) NULL
+  )
+  if (!is.null(compiled)) {
+    return(compiled)
+  }
+
+  .amatrix_block_reorth(
+    z_mat,
+    basis_mat[, seq_len(basis_cols), drop = FALSE],
+    return_projection = return_projection
+  )
+}
+
 .amatrix_block_basis_needs_final_qr <- function(q_basis, tol = 1e-8) {
   if (is.null(q_basis) || ncol(q_basis) == 0L) {
     return(FALSE)
   }
 
-  gram <- crossprod(q_basis)
+  gram <- base::crossprod(q_basis)
   max(abs(gram - diag(ncol(q_basis)))) > tol
 }
 
-.amatrix_block_lanczos_right_operator <- function(A) {
+.amatrix_block_thin_qr <- function(z) {
+  z_mat <- if (is.matrix(z) && is.double(z)) z else {
+    z_out <- as.matrix(z)
+    if (!is.double(z_out)) {
+      storage.mode(z_out) <- "double"
+    }
+    z_out
+  }
+
+  compiled <- tryCatch(
+    .Call("amatrix_block_thin_qr_bridge", z_mat),
+    error = function(e) NULL
+  )
+  if (!is.null(compiled)) {
+    return(compiled)
+  }
+
+  qr_obj <- qr(z_mat)
+  list(
+    q = qr.Q(qr_obj),
+    r = qr.R(qr_obj, complete = FALSE)
+  )
+}
+
+.amatrix_block_lanczos_source_operator <- function(A) {
+  if (!inherits(A, "adgeMatrix")) {
+    return(NULL)
+  }
+  if (!identical(A@preferred_backend, "mlx") || !identical(A@precision, "fast")) {
+    return(NULL)
+  }
+
+  backend <- tryCatch(
+    .amatrix_get_backend("mlx"),
+    error = function(e) {
+      if (!requireNamespace("amatrix.mlx", quietly = TRUE)) {
+        return(NULL)
+      }
+      getExportedValue("amatrix.mlx", "amatrix_mlx_register")(overwrite = TRUE)
+      tryCatch(.amatrix_get_backend("mlx"), error = function(e2) NULL)
+    }
+  )
+  if (is.null(backend)) {
+    return(NULL)
+  }
+  if (!.amatrix_backend_residency_capable(backend) ||
+      !.amatrix_backend_supports_resident_op(backend, "matmul")) {
+    return(NULL)
+  }
+
+  source_arg <- .amatrix_prepare_resident_arg(A, "mlx")
+  if (is.null(source_arg)) {
+    return(NULL)
+  }
+
+  list(
+    backend = "mlx",
+    resident_key = source_arg$key,
+    temporary = isTRUE(source_arg$temporary)
+  )
+}
+
+.amatrix_block_lanczos_numeric_matrix <- function(x) {
+  x_mat <- if (is.matrix(x) && is.double(x)) x else {
+    x_out <- as.matrix(x)
+    if (!is.double(x_out)) {
+      storage.mode(x_out) <- "double"
+    }
+    x_out
+  }
+  x_mat
+}
+
+.amatrix_block_lanczos_right_operator <- function(A, source_operator = NULL) {
   if (!inherits(A, "adgeMatrix")) {
     return(NULL)
   }
@@ -391,15 +518,19 @@ irlba_native <- function(A,
     return(NULL)
   }
 
-  source_arg <- .amatrix_prepare_resident_arg(A, "mlx")
-  if (is.null(source_arg)) {
-    return(NULL)
+  source_key <- if (is.list(source_operator)) source_operator$resident_key else NULL
+  if (is.null(source_key) || !nzchar(source_key)) {
+    source_arg <- .amatrix_prepare_resident_arg(A, "mlx")
+    if (is.null(source_arg)) {
+      return(NULL)
+    }
+    source_key <- source_arg$key
   }
 
   out_key <- .amatrix_next_resident_key("mlx")
   success <- tryCatch(
     {
-      backend$transpose_resident(source_arg$key, out_key)
+      backend$transpose_resident(source_key, out_key)
       TRUE
     },
     error = function(e) FALSE
@@ -411,7 +542,33 @@ irlba_native <- function(A,
     return(NULL)
   }
 
-  list(backend = "mlx", resident_key = out_key)
+  list(
+    backend = "mlx",
+    resident_key = out_key
+  )
+}
+
+.amatrix_block_lanczos_drop_source_operator <- function(operator) {
+  resident_key <- if (is.list(operator)) operator$resident_key else NULL
+  if (is.null(operator) || !is.list(operator) || is.null(resident_key) || !nzchar(resident_key) ||
+      !isTRUE(operator$temporary)) {
+    return(invisible(FALSE))
+  }
+
+  backend <- tryCatch(
+    .amatrix_get_backend(operator$backend),
+    error = function(e) NULL
+  )
+  if (is.null(backend) || !.amatrix_backend_residency_capable(backend)) {
+    return(invisible(FALSE))
+  }
+
+  if (isTRUE(backend$resident_has(resident_key))) {
+    backend$resident_drop(resident_key)
+    return(invisible(TRUE))
+  }
+
+  invisible(FALSE)
 }
 
 .amatrix_block_lanczos_drop_right_operator <- function(operator) {
@@ -458,6 +615,16 @@ irlba_native <- function(A,
   if (!.amatrix_backend_supports_resident_op(backend, "matmul")) {
     return(as.matrix(crossprod(A, q_block)))
   }
+  if (is.function(backend$matmul_resident_host)) {
+    q_mat <- .amatrix_block_lanczos_numeric_matrix(q_block)
+    value <- tryCatch(
+      backend$matmul_resident_host(operator$resident_key, q_mat),
+      error = function(e) NULL
+    )
+    if (!is.null(value)) {
+      return(as.matrix(value))
+    }
+  }
 
   rhs <- .amatrix_prepare_resident_arg(q_block, backend_name)
   if (is.null(rhs)) {
@@ -486,7 +653,10 @@ irlba_native <- function(A,
   as.matrix(.amatrix_host_arg(value))
 }
 
-.amatrix_block_lanczos_left_product <- function(A, q_block, backend_name = NULL) {
+.amatrix_block_lanczos_left_product <- function(A, q_block, operator = NULL, backend_name = NULL) {
+  if (is.list(operator) && !is.null(operator$backend) && !is.null(operator$resident_key)) {
+    backend_name <- operator$backend
+  }
   if (is.null(backend_name)) {
     if (!inherits(A, "adgeMatrix") ||
         !identical(A@preferred_backend, "mlx") ||
@@ -503,8 +673,23 @@ irlba_native <- function(A,
   if (is.null(backend) || !.amatrix_backend_supports_resident_op(backend, "matmul")) {
     return(as.matrix(A %*% q_block))
   }
+  if (is.list(operator) && !is.null(operator$resident_key) && nzchar(operator$resident_key) &&
+      is.function(backend$matmul_resident_host)) {
+    q_mat <- .amatrix_block_lanczos_numeric_matrix(q_block)
+    value <- tryCatch(
+      backend$matmul_resident_host(operator$resident_key, q_mat),
+      error = function(e) NULL
+    )
+    if (!is.null(value)) {
+      return(as.matrix(value))
+    }
+  }
 
-  lhs <- .amatrix_prepare_resident_arg(A, backend_name)
+  lhs <- if (is.list(operator) && !is.null(operator$resident_key) && nzchar(operator$resident_key)) {
+    list(key = operator$resident_key, temporary = FALSE, tracked = !isTRUE(operator$temporary))
+  } else {
+    .amatrix_prepare_resident_arg(A, backend_name)
+  }
   rhs <- .amatrix_prepare_resident_arg(q_block, backend_name)
   if (is.null(lhs) || is.null(rhs)) {
     .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
@@ -574,57 +759,66 @@ block_lanczos <- function(A,
   # Block Krylov iteration: GEMM-per-block instead of sequential GEMVs
   m <- NROW(A)
   n <- NCOL(A)
-  A_right <- .amatrix_block_lanczos_right_operator(A)
+  A_left <- .amatrix_block_lanczos_source_operator(A)
+  A_right <- .amatrix_block_lanczos_right_operator(A, source_operator = A_left)
+  on.exit(.amatrix_block_lanczos_drop_source_operator(A_left), add = TRUE)
   on.exit(.amatrix_block_lanczos_drop_right_operator(A_right), add = TRUE)
 
-  Q_left_blocks  <- vector("list", J)
-  Q_right_blocks <- vector("list", J)
+  Q_left_basis <- matrix(0, nrow = m, ncol = J * b)
+  Q_right_basis <- matrix(0, nrow = n, ncol = J * b)
   B_proj <- matrix(0, nrow = J * b, ncol = J * b)
 
   # Starting right block: random n×b, orthonormalized
-  Q_cur <- qr.Q(qr(matrix(rnorm(n * b), n, b)))
+  Q_cur <- .amatrix_block_thin_qr(matrix(rnorm(n * b), n, b))$q
   storage.mode(Q_cur) <- "double"
 
   for (j in seq_len(J)) {
-    QL_prev <- if (j > 1L) do.call(cbind, Q_left_blocks[seq_len(j - 1L)]) else NULL
-    QR_prev <- if (j > 1L) do.call(cbind, Q_right_blocks[seq_len(j - 1L)]) else NULL
+    prev_cols <- (j - 1L) * b
+    cur_cols <- ((j - 1L) * b + 1L):(j * b)
 
     # Z = A %*% Q_cur  — GPU GEMM (b columns, not b sequential GEMVs)
-    Z_left_raw <- .amatrix_block_lanczos_left_product(A, Q_cur)  # m × b
-    left_reorth <- .amatrix_block_reorth(Z_left_raw, QL_prev, return_projection = TRUE)
+    Z_left_raw <- .amatrix_block_lanczos_left_product(A, Q_cur, operator = A_left)  # m × b
+    left_reorth <- .amatrix_block_reorth_prefix(
+      Z_left_raw,
+      Q_left_basis,
+      prev_cols,
+      return_projection = TRUE
+    )
     Z_left <- left_reorth$z
-    left_qr <- qr(Z_left)
-    QL_j    <- qr.Q(left_qr)               # m × b, CPU thin factor (b << m)
+    left_factor <- .amatrix_block_thin_qr(Z_left)
+    QL_j    <- left_factor$q               # m × b, CPU thin factor (b << m)
     storage.mode(QL_j) <- "double"
-    R_left_j <- qr.R(left_qr, complete = FALSE)
+    R_left_j <- left_factor$r
     storage.mode(R_left_j) <- "double"
-    Q_left_blocks[[j]] <- QL_j
+    Q_left_basis[, cur_cols] <- QL_j
+    left_coeff <- left_reorth$coeff
 
     # A %*% Q_{R,j-1} lives entirely in span(Q_{L,1:j}) after reorthogonalization,
     # so we can assemble that projected block from the same coefficients instead of
     # issuing a second full projection pass later.
     if (j > 1L) {
-      col_idx <- ((j - 2L) * b + 1L):((j - 1L) * b)
-      if (!is.null(left_reorth$coeff) && nrow(left_reorth$coeff) > 0L) {
-        B_proj[seq_len(nrow(left_reorth$coeff)), col_idx] <- left_reorth$coeff
+      col_idx <- (prev_cols - b + 1L):prev_cols
+      if (!is.null(left_coeff) && nrow(left_coeff) > 0L) {
+        B_proj[seq_len(nrow(left_coeff)), col_idx] <- left_coeff
       }
-      row_idx <- ((j - 1L) * b + 1L):(j * b)
+      row_idx <- cur_cols
       B_proj[row_idx, col_idx] <- R_left_j[seq_len(b), seq_len(b), drop = FALSE]
     }
 
     # W = t(A) %*% Q_j  — GPU GEMM
     Z_right_raw <- .amatrix_block_lanczos_right_product(A, QL_j, operator = A_right)
-    Z_right <- .amatrix_block_reorth(Z_right_raw, QR_prev)
-    QR_j    <- qr.Q(qr(Z_right))  # n × b, CPU thin factor
+    Z_right <- .amatrix_block_reorth_prefix(Z_right_raw, Q_right_basis, prev_cols)
+    QR_j    <- .amatrix_block_thin_qr(Z_right)$q
     storage.mode(QR_j) <- "double"
-    Q_right_blocks[[j]] <- QR_j
+    Q_right_basis[, cur_cols] <- QR_j
 
     Q_cur <- QR_j
   }
 
   # Collect and re-orthogonalize bases (CPU; J*b << m,n for typical settings)
-  Q_L <- do.call(cbind, Q_left_blocks)    # m × (J*b)
-  Q_R <- do.call(cbind, Q_right_blocks)   # n × (J*b)
+  total_cols <- J * b
+  Q_L <- Q_left_basis[, seq_len(total_cols), drop = FALSE]    # m × (J*b)
+  Q_R <- Q_right_basis[, seq_len(total_cols), drop = FALSE]   # n × (J*b)
   needs_final_left_qr <- J > 1L && .amatrix_block_basis_needs_final_qr(Q_L)
   if (needs_final_left_qr) {
     Q_L <- qr.Q(qr(Q_L))
@@ -640,12 +834,12 @@ block_lanczos <- function(A,
     # If a final global QR changes the basis, fall back to the explicit
     # projection so the small matrix still matches the re-orthogonalized basis.
     AQ_R <- as.matrix(A %*% Q_R)           # m × (J*b), GPU GEMM
-    B    <- crossprod(Q_L, AQ_R)           # (J*b) × (J*b), CPU
+    B    <- base::crossprod(Q_L, AQ_R)           # (J*b) × (J*b), CPU
   } else {
     last_col_idx <- ((J - 1L) * b + 1L):(J * b)
-    AQ_last <- .amatrix_block_lanczos_left_product(A, Q_cur)  # A %*% Q_{R,J}
+    AQ_last <- .amatrix_block_lanczos_left_product(A, Q_cur, operator = A_left)  # A %*% Q_{R,J}
     B <- B_proj
-    B[, last_col_idx] <- crossprod(Q_L, AQ_last)
+    B[, last_col_idx] <- base::crossprod(Q_L, AQ_last)
   }
 
   k_out <- min(k, ncol(Q_L), ncol(Q_R), nrow(B), ncol(B))
