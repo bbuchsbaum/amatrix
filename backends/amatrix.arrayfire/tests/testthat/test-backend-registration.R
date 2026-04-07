@@ -97,6 +97,72 @@ test_that("arrayfire availability can be enabled for routing tests", {
   expect_identical(sparse_plan$chosen, "cpu")
 })
 
+test_that("bdc_svd gives accurate reconstruction for square and rectangular matrices", {
+  old_backend <- amatrix_arrayfire_active_backend()
+  amatrix_arrayfire_set_backend("cpu")
+  on.exit(amatrix_arrayfire_set_backend(
+    if (identical(old_backend, 4L)) "opencl" else "cpu"), add = TRUE)
+
+  # Square matrix
+  set.seed(42)
+  A <- matrix(rnorm(64 * 64), 64, 64); storage.mode(A) <- "double"
+  res <- amatrix_arrayfire_bdc_svd(A, nu = 64L, nv = 64L)
+  recon_err <- max(abs(res$u %*% diag(res$d) %*% t(res$v) - A)) /
+               max(abs(A), 1e-12)
+  expect_lt(recon_err, 1e-4, label = "bdc_svd reconstruction (square)")
+  ref_d <- base::svd(A, nu = 0L, nv = 0L)$d
+  expect_equal(sort(res$d, decreasing = TRUE), ref_d, tolerance = 1e-4,
+               label = "bdc_svd singular values (square)")
+
+  # Near-square tall matrix (aspect 2:1 — still routed to BDC by dispatcher)
+  set.seed(7)
+  B <- matrix(rnorm(80 * 48), 80, 48); storage.mode(B) <- "double"
+  res2 <- amatrix_arrayfire_bdc_svd(B, nu = 48L, nv = 48L)
+  recon2 <- res2$u %*% diag(res2$d) %*% t(res2$v)
+  recon_err2 <- max(abs(recon2 - B)) / max(abs(B), 1e-12)
+  expect_lt(recon_err2, 1e-4, label = "bdc_svd reconstruction (near-square)")
+
+  # Thin SVD: nu=nv=5 only
+  set.seed(3)
+  C <- matrix(rnorm(64 * 64), 64, 64); storage.mode(C) <- "double"
+  res3 <- amatrix_arrayfire_bdc_svd(C, nu = 5L, nv = 5L)
+  expect_equal(length(res3$d), 5L)
+  expect_equal(dim(res3$u), c(64L, 5L))
+  expect_equal(dim(res3$v), c(64L, 5L))
+  ref_d5 <- base::svd(C, nu = 0L, nv = 0L)$d[seq_len(5L)]
+  expect_equal(sort(res3$d, decreasing = TRUE), ref_d5, tolerance = 1e-4,
+               label = "bdc_svd top-5 singular values")
+})
+
+test_that("svd dispatcher routes square-ish matrices to bdc_svd when native unsafe", {
+  old_probe <- getOption("amatrix.arrayfire.native_svd_available")
+  options(amatrix.arrayfire.native_svd_available = FALSE)
+  old_bdc_n <- getOption("amatrix.arrayfire.bdc_min_n")
+  options(amatrix.arrayfire.bdc_min_n = 32L)   # lower threshold for fast test
+  old_backend <- amatrix_arrayfire_active_backend()
+  amatrix_arrayfire_set_backend("cpu")
+  on.exit({
+    options(amatrix.arrayfire.native_svd_available = old_probe)
+    options(amatrix.arrayfire.bdc_min_n = old_bdc_n)
+    amatrix_arrayfire_set_backend(if (identical(old_backend, 4L)) "opencl" else "cpu")
+  }, add = TRUE)
+
+  set.seed(99)
+  x <- matrix(rnorm(64 * 64), 64, 64); storage.mode(x) <- "double"
+  res <- amatrix_arrayfire_svd(x, nu = 64L, nv = 64L)
+  ref_d <- base::svd(x, nu = 0L, nv = 0L)$d
+  expect_equal(sort(res$d, decreasing = TRUE), ref_d, tolerance = 1e-4,
+               label = "dispatcher BDC path singular values")
+
+  # Tall-thin should still go to ts_svd (aspect >= 4 bypasses BDC)
+  set.seed(11)
+  y <- matrix(rnorm(256 * 16), 256, 16); storage.mode(y) <- "double"
+  res_ts <- amatrix_arrayfire_svd(y, nu = 16L, nv = 16L)
+  ref_ts <- base::svd(y, nu = 0L, nv = 0L)$d
+  expect_equal(sort(res_ts$d, decreasing = TRUE), ref_ts, tolerance = 1e-4,
+               label = "dispatcher ts_svd path (tall-thin)")
+})
+
 test_that("forced availability bypasses size heuristics for backend tests", {
   old <- getOption("amatrix.arrayfire.available")
   options(amatrix.arrayfire.available = TRUE)

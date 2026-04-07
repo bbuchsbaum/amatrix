@@ -76,32 +76,28 @@ amatrix_arrayfire_matmul <- function(x, y) {
 
 amatrix_arrayfire_crossprod <- function(x, y = NULL) {
   x_mat <- as.matrix(x)
-  y_mat <- if (is.null(y)) NULL else as.matrix(y)
+  y_mat <- if (is.null(y)) x_mat else as.matrix(y)
 
-  if (!is.double(x_mat)) {
-    storage.mode(x_mat) <- "double"
-  }
+  if (!is.double(x_mat)) storage.mode(x_mat) <- "double"
+  if (!is.double(y_mat)) storage.mode(y_mat) <- "double"
 
-  if (!is.null(y_mat) && !is.double(y_mat)) {
-    storage.mode(y_mat) <- "double"
-  }
-
-  .Call("amatrix_arrayfire_crossprod_bridge", x_mat, y_mat)
+  # Use the correct column-major bridge (amatrix_af_from_r + AF_MAT_TRANS, AF_MAT_NONE).
+  # The old crossprod_bridge used a row-major staging trick that only works for square
+  # matrices; for non-square (n≠p), AF_MAT_TRANS on the y vector causes a dimension
+  # mismatch.  The "correct" bridge handles all shapes correctly.
+  .Call("amatrix_arrayfire_crossprod_correct_bridge", x_mat, y_mat,
+        PACKAGE = "amatrix.arrayfire")
 }
 
 amatrix_arrayfire_tcrossprod <- function(x, y = NULL) {
   x_mat <- as.matrix(x)
-  y_mat <- if (is.null(y)) NULL else as.matrix(y)
+  y_mat <- if (is.null(y)) x_mat else as.matrix(y)
 
-  if (!is.double(x_mat)) {
-    storage.mode(x_mat) <- "double"
-  }
+  if (!is.double(x_mat)) storage.mode(x_mat) <- "double"
+  if (!is.double(y_mat)) storage.mode(y_mat) <- "double"
 
-  if (!is.null(y_mat) && !is.double(y_mat)) {
-    storage.mode(y_mat) <- "double"
-  }
-
-  .Call("amatrix_arrayfire_tcrossprod_bridge", x_mat, y_mat)
+  .Call("amatrix_arrayfire_tcrossprod_correct_bridge", x_mat, y_mat,
+        PACKAGE = "amatrix.arrayfire")
 }
 
 amatrix_arrayfire_ewise <- function(lhs, rhs = NULL, op) {
@@ -291,6 +287,167 @@ amatrix_arrayfire_qr_Q_resident <- function(x_key, q_out_key) {
   !is.null(dims) && length(dims) == 2L && max(dims) >= threshold
 }
 
+# ── WY-blocked Householder application ──────────────────────────────────────
+#
+# Apply Q = H_1 H_2 ... H_nb to C[start_row:(start_row+m_sub-1), ] and return
+# the updated C.  Uses the WY representation:  Q = I + Y T Y^T
+#
+# Arguments:
+#   Y_sub    m_sub × nb Householder vectors; col p has zeros in rows 1..p-1
+#            (lower-triangular structure from Golub-Kahan storage).
+#   tau_sub  length-nb tau values corresponding to H_1 ... H_nb.
+#   C        m_full × p matrix — rows start_row..(start_row+m_sub-1) updated.
+#   start_row  1-based row offset of Y_sub within C.
+#   bdc_min  minimum dimension for GPU GEMM dispatch.
+#
+# The big GEMM  Y_sub %*% V2  routes to GPU when both m_sub and ncol(C) ≥ bdc_min.
+.bdc_wy_apply_left <- function(Y_sub, tau_sub, C, start_row, bdc_min) {
+  nb_blk <- length(tau_sub)
+  m_sub  <- nrow(Y_sub)
+  rows   <- start_row:(start_row + m_sub - 1L)
+  if (!any(tau_sub != 0)) return(C)
+
+  # Build T (dlarft column-by-column): H = I + Y T Y^T
+  T_mat <- matrix(0, nb_blk, nb_blk)
+  for (p in seq_len(nb_blk)) {
+    if (tau_sub[p] == 0) next
+    T_mat[p, p] <- -tau_sub[p]
+    if (p > 1L) {
+      prev <- seq_len(p - 1L)
+      # Only rows p..m_sub are nonzero in col p (lower-triangular structure)
+      T_mat[prev, p] <- -tau_sub[p] *
+        T_mat[prev, prev, drop = FALSE] %*%
+        crossprod(Y_sub[p:m_sub, prev, drop = FALSE],
+                  Y_sub[p:m_sub, p,    drop = FALSE])
+    }
+  }
+
+  C_sub  <- C[rows, , drop = FALSE]
+  V1     <- crossprod(Y_sub, C_sub)   # nb × p  — small
+  V2     <- T_mat %*% V1              # nb × p  — small
+  # Y_sub %*% V2 : m_sub × p — GPU when large
+  update <- if (m_sub >= bdc_min && ncol(C_sub) >= bdc_min)
+    .Call("amatrix_arrayfire_matmul_correct_bridge", Y_sub, V2,
+          PACKAGE = "amatrix.arrayfire")
+  else
+    Y_sub %*% V2
+  C[rows, ] <- C_sub + update
+  C
+}
+
+# ── BDC SVD: Golub-Kahan bidiagonalization + CPU BDC + WY back-transform ────
+#
+# For large square / near-square matrices (aspect ratio < 4) where ts_svd
+# (m >> n) gives no advantage.  GPU is used for:
+#   Phase 1: trailing-block updates in bidiagonalization when the block
+#            has max(rows,cols) >= bdc_gemm_min (default 256).
+#   Phase 3: the final Y_sub %*% V2 GEMM in each WY panel (GPU when
+#            m_sub * nu_eff >= bdc_gemm_min²).
+#
+# Returns list(u, d, v) matching base::svd convention.
+amatrix_arrayfire_bdc_svd <- function(x, nu, nv) {
+  mat <- if (is.matrix(x)) x else as.matrix(x)
+  storage.mode(mat) <- "double"
+  m <- nrow(mat); n <- ncol(mat); k <- min(m, n)
+  nu_eff <- min(as.integer(nu), k)
+  nv_eff <- min(as.integer(nv), k)
+  bdc_min <- as.integer(getOption("amatrix.arrayfire.bdc_gemm_min",  256L))
+  nb      <- as.integer(getOption("amatrix.arrayfire.bdc_panel_width", 64L))
+
+  # Storage:  left_U[j:m, j] = u_j   right_V[(j+1):n, j] = v_j
+  left_U    <- matrix(0, m, k)
+  left_tau  <- numeric(k)
+  n_right   <- max(k - 1L, 0L)
+  right_V   <- matrix(0, n, n_right)
+  right_tau <- numeric(n_right)
+
+  A <- mat   # working copy — destroyed during bidiagonalization
+
+  # ── Phase 1: Golub-Kahan bidiagonalization ─────────────────────────────
+  for (j in seq_len(k)) {
+
+    # Left Householder: zero A[(j+1):m, j]
+    col  <- A[j:m, j]
+    nrm2 <- sum(col^2)
+    if (nrm2 > .Machine$double.eps^2) {
+      alpha <- -sign(col[1L] + (col[1L] == 0L)) * sqrt(nrm2)
+      u     <- col; u[1L] <- u[1L] - alpha
+      tau   <- 2 / sum(u^2)
+      trail <- A[j:m, j:n, drop = FALSE]
+      w <- if (max(m - j + 1L, n - j + 1L) >= bdc_min)
+        .Call("amatrix_arrayfire_crossprod_correct_bridge",
+              matrix(u, ncol = 1L), trail, PACKAGE = "amatrix.arrayfire")
+      else crossprod(matrix(u, ncol = 1L), trail)
+      A[j:m, j:n]    <- trail - tau * (matrix(u, ncol = 1L) %*% w)
+      left_U[j:m, j] <- u
+      left_tau[j]     <- tau
+    }
+
+    # Right Householder: zero A[j, (j+2):n]
+    if (j < n) {
+      row  <- A[j, (j + 1L):n]
+      nrm2 <- sum(row^2)
+      if (nrm2 > .Machine$double.eps^2) {
+        alpha <- -sign(row[1L] + (row[1L] == 0L)) * sqrt(nrm2)
+        v     <- row; v[1L] <- v[1L] - alpha
+        tau   <- 2 / sum(v^2)
+        trail <- A[j:m, (j + 1L):n, drop = FALSE]
+        w <- if (max(m - j + 1L, n - j) >= bdc_min)
+          .Call("amatrix_arrayfire_matmul_correct_bridge",
+                trail, matrix(v, ncol = 1L), PACKAGE = "amatrix.arrayfire")
+        else trail %*% matrix(v, ncol = 1L)
+        A[j:m, (j + 1L):n]     <- trail - tau * (w %*% matrix(v, nrow = 1L))
+        right_V[(j + 1L):n, j] <- v
+        right_tau[j]            <- tau
+      }
+    }
+  }
+
+  # ── Phase 2: Extract bidiagonal + CPU BDC (O(k²)) ──────────────────────
+  B <- matrix(0, k, k)
+  diag(B) <- A[cbind(seq_len(k), seq_len(k))]
+  if (k > 1L)
+    B[cbind(seq_len(k - 1L), seq_len(k - 1L) + 1L)] <-
+      A[cbind(seq_len(k - 1L), seq_len(k - 1L) + 1L)]
+  # base::svd always returns all k singular values regardless of nu/nv.
+  # Truncate $d so its length equals max(nu_eff, nv_eff) — consistent with
+  # base::svd behaviour when called with truncated nu/nv on a rectangular input.
+  k_out <- max(nu_eff, nv_eff, 1L)
+  sv_B  <- base::svd(B, nu = nu_eff, nv = nv_eff)
+  sv_B$d <- sv_B$d[seq_len(min(k_out, k))]
+
+  # ── Phase 3: WY-blocked back-transform ─────────────────────────────────
+  # U = Q_L * sv_B$u  (H_1..H_k applied last-to-first to [sv_B$u; 0_{m-k}])
+  U_out <- matrix(0, m, nu_eff)
+  if (nu_eff > 0L) {
+    U_out[seq_len(k), ] <- sv_B$u
+    for (j_start in rev(seq(1L, k, by = nb))) {
+      j_end   <- min(j_start + nb - 1L, k)
+      panel   <- j_start:j_end
+      Y_sub   <- left_U[j_start:m, panel, drop = FALSE]
+      tau_sub <- left_tau[panel]
+      U_out   <- .bdc_wy_apply_left(Y_sub, tau_sub, U_out, j_start, bdc_min)
+    }
+  }
+
+  # V = Q_R * sv_B$v  (G_1..G_{k-1} applied last-to-first to [sv_B$v; 0_{n-k}])
+  V_out <- matrix(0, n, nv_eff)
+  if (nv_eff > 0L && n_right > 0L) {
+    V_out[seq_len(k), ] <- sv_B$v
+    for (j_start in rev(seq(1L, n_right, by = nb))) {
+      j_end   <- min(j_start + nb - 1L, n_right)
+      panel   <- j_start:j_end
+      # Right reflectors: v_j stored in right_V[(j+1):n, j]; panel submatrix
+      # starts at global row j_start+1 with lower-triangular structure.
+      Y_sub   <- right_V[(j_start + 1L):n, panel, drop = FALSE]
+      tau_sub <- right_tau[panel]
+      V_out   <- .bdc_wy_apply_left(Y_sub, tau_sub, V_out, j_start + 1L, bdc_min)
+    }
+  }
+
+  list(u = U_out, d = sv_B$d, v = V_out)
+}
+
 # Layer 1: R-QR + GPU matmul SVD — always safe.
 # af_qr crashes on Metal/OpenCL for matrices >= ~90 rows, so QR is done on CPU.
 # Only the two large matmuls (projection B = Q^T A, back-transform U = Q * U_R)
@@ -425,8 +582,17 @@ amatrix_arrayfire_ts_svd <- function(x, nu, nv) {
   )
 }
 
-# Top-level SVD dispatcher: prefer native af_svd when known safe (Layers 3→2),
-# fall back to QR→SVD(R) (Layer 1) otherwise.
+# Top-level SVD dispatcher.
+#
+# Priority:
+#   1. Native af_svd when known safe (Layer 3: CUDA/oneAPI, or Layer 2: probe).
+#   2. BDC path for large square-ish matrices (aspect < 4, min(m,n) >= bdc_min_n).
+#   3. ts_svd fallback (QR→SVD(R)) for tall-thin or small matrices.
+#
+# Shape routing rationale:
+#   ts_svd is optimal when m >> n (QR reduces the problem cheaply).
+#   For square / near-square (aspect < 4), ts_svd offers no reduction;
+#   the BDC path amortizes bidiagonalization via GPU trailing-block GEMMs.
 amatrix_arrayfire_svd <- function(x, nu, nv) {
   use_native <- .amatrix_arrayfire_svd_safe_backend() ||
                 .amatrix_arrayfire_probe_native_svd()
@@ -437,7 +603,15 @@ amatrix_arrayfire_svd <- function(x, nu, nv) {
           as.integer(nu), as.integer(nv),
           PACKAGE = "amatrix.arrayfire")
   } else {
-    amatrix_arrayfire_ts_svd(x, nu = nu, nv = nv)
+    mat    <- if (is.matrix(x)) x else as.matrix(x)
+    m      <- nrow(mat); n <- ncol(mat)
+    aspect <- max(m, n) / max(min(m, n), 1L)
+    bdc_n  <- as.integer(getOption("amatrix.arrayfire.bdc_min_n", 512L))
+    if (min(m, n) >= bdc_n && aspect < 4) {
+      amatrix_arrayfire_bdc_svd(mat, nu = nu, nv = nv)
+    } else {
+      amatrix_arrayfire_ts_svd(mat, nu = nu, nv = nv)
+    }
   }
 }
 
