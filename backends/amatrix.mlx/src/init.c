@@ -32,6 +32,7 @@ extern SEXP amatrix_mlx_argreduce_bridge(SEXP lhs_key, SEXP axis, SEXP is_max);
 extern SEXP amatrix_mlx_scatter_mean_bridge(SEXP lhs_key, SEXP labels, SEXP K);
 extern SEXP amatrix_mlx_segment_sum_bridge(SEXP x_key, SEXP labels, SEXP K, SEXP out_key);
 extern SEXP amatrix_mlx_segment_mean_bridge(SEXP x_key, SEXP labels, SEXP K, SEXP out_key);
+extern SEXP amatrix_mlx_addmm_bridge(SEXP a_key, SEXP b_r, SEXP c_r, SEXP alpha_r, SEXP beta_r, SEXP out_key);
 extern SEXP amatrix_mlx_rsvd_bridge(SEXP x_r, SEXP k_r, SEXP n_oversamples_r, SEXP n_iter_r);
 extern SEXP amatrix_mlx_chol_solve_bridge(SEXP A_r, SEXP B_r);
 extern SEXP amatrix_mlx_chol_factor_bridge(SEXP X_r);
@@ -71,6 +72,7 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_mlx_scatter_mean_bridge",            (DL_FUNC) &amatrix_mlx_scatter_mean_bridge,            3},
     {"amatrix_mlx_segment_sum_bridge",             (DL_FUNC) &amatrix_mlx_segment_sum_bridge,             4},
     {"amatrix_mlx_segment_mean_bridge",            (DL_FUNC) &amatrix_mlx_segment_mean_bridge,            4},
+    {"amatrix_mlx_addmm_bridge",                   (DL_FUNC) &amatrix_mlx_addmm_bridge,                   6},
     {"amatrix_mlx_rsvd_bridge",           (DL_FUNC) &amatrix_mlx_rsvd_bridge,           4},
     {"amatrix_mlx_chol_solve_bridge",     (DL_FUNC) &amatrix_mlx_chol_solve_bridge,     2},
     {"amatrix_mlx_chol_factor_bridge",    (DL_FUNC) &amatrix_mlx_chol_factor_bridge,    1},

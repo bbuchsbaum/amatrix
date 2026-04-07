@@ -2083,6 +2083,79 @@ SEXP amatrix_mlx_segment_mean_bridge(SEXP x_key, SEXP labels, SEXP K, SEXP out_k
 #endif
 }
 
+/* ── am_addmm (amatrix-uaj) ───────────────────────────────────────────────
+ * alpha*(A@B) + beta*C  where A is resident, B and C are R matrices.
+ * C = NULL is treated as a zeros matrix of shape {nrow(A), ncol(B)}.
+ * Returns the materialized R matrix and stores result under out_key.
+ */
+#ifdef HAVE_MLXC
+static SEXP amatrix_mlx_addmm_real(SEXP a_key, SEXP b_r, SEXP c_r,
+                                    SEXP alpha_r, SEXP beta_r, SEXP out_key) {
+  mlx_stream stream;
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream))
+    error("mlx addmm: GPU stream unavailable");
+
+  mlx_array a = amatrix_mlx_array_from_resident_key(a_key);
+  int m = mlx_array_dim(a, 0);
+
+  mlx_array b = amatrix_mlx_matrix_from_r(b_r);
+  int k = mlx_array_dim(b, 1);
+
+  float alpha = (float)REAL(alpha_r)[0];
+  float beta  = (float)REAL(beta_r)[0];
+
+  /* c: zeros({m,k}) when C=NULL, else upload from R */
+  mlx_array c;
+  if (isNull(c_r)) {
+    int c_shape[2] = {m, k};
+    c = mlx_array_new();
+    if (mlx_zeros(&c, c_shape, 2, MLX_FLOAT32, stream) != 0) {
+      mlx_array_free(b);
+      mlx_stream_free(stream);
+      amatrix_mlx_free_array_if_needed(c);
+      error("mlx addmm: zeros failed");
+    }
+  } else {
+    c = amatrix_mlx_matrix_from_r(c_r);
+  }
+
+  /* result = alpha*(a@b) + beta*c */
+  mlx_array result = mlx_array_new();
+  if (mlx_addmm(&result, c, a, b, alpha, beta, stream) != 0) {
+    mlx_array_free(b);
+    mlx_array_free(c);
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(result);
+    error("mlx addmm failed");
+  }
+  mlx_array_free(b);
+  mlx_array_free(c);
+
+  if (mlx_synchronize(stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(result);
+    error("mlx addmm: synchronize failed");
+  }
+
+  amatrix_mlx_resident_entry* entry = amatrix_mlx_registry_reserve(CHAR(asChar(out_key)));
+  entry->array = result;
+  SEXP r_out = amatrix_mlx_result_to_r_matrix(entry->array);
+  mlx_stream_free(stream);
+  return r_out;
+}
+#endif
+
+SEXP amatrix_mlx_addmm_bridge(SEXP a_key, SEXP b_r, SEXP c_r,
+                               SEXP alpha_r, SEXP beta_r, SEXP out_key) {
+#ifdef HAVE_MLXC
+  return amatrix_mlx_addmm_real(a_key, b_r, c_r, alpha_r, beta_r, out_key);
+#else
+  error("mlx addmm requires mlx-c");
+  return R_NilValue;
+#endif
+}
+
 SEXP amatrix_mlx_matmul_bridge(SEXP x, SEXP y) {
   if (!isReal(x) || !isMatrix(x)) {
     error("x must be a numeric matrix");

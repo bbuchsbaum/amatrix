@@ -872,6 +872,61 @@ am_segment_mean <- function(x, labels, K) {
   .am_segment_resident_wrap(x, resident, choice$name)
 }
 
+# ── am_addmm (amatrix-uaj) ─────────────────────────────────────────────────
+# alpha*(A%*%B) + beta*C  — BLAS-3 fused scaled matmul with optional bias.
+# A: n×p adgeMatrix (resident if GPU); B: p×k R matrix; C: n×k R matrix or NULL.
+# GPU path uses mlx_addmm directly; CPU path uses plain R arithmetic.
+
+.am_addmm_cpu <- function(A_mat, B_mat, C_mat, alpha, beta) {
+  result <- alpha * (A_mat %*% B_mat)
+  if (!is.null(C_mat) && beta != 0) result <- result + beta * C_mat
+  result
+}
+
+.am_try_addmm_gpu <- function(A, B_mat, C_mat, alpha, beta, backend_name) {
+  backend <- .amatrix_get_backend(backend_name)
+  if (!is.function(backend$addmm_resident)) return(NULL)
+  lhs <- .amatrix_prepare_resident_arg(A, backend_name)
+  if (is.null(lhs)) return(NULL)
+  out_key <- .amatrix_next_resident_key(backend_name)
+  value   <- backend$addmm_resident(lhs$key, B_mat, C_mat, alpha, beta, out_key)
+  .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+  if (!is.matrix(value)) value <- backend$resident_materialize(out_key)
+  list(value = value, key = out_key)
+}
+
+#' Scaled matrix multiply with optional bias: alpha*(A\%*\%B) + beta*C
+#'
+#' @param A  n×p \code{adgeMatrix} or plain matrix.
+#' @param B  p×k numeric matrix.
+#' @param C  n×k numeric matrix or \code{NULL} (treated as zeros).
+#' @param alpha Scalar multiplier for \code{A\%*\%B} (default 1).
+#' @param beta  Scalar multiplier for \code{C} (default 1).
+#' @return \code{adgeMatrix} if A is resident, otherwise plain matrix.
+#' @export
+am_addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
+  B_mat <- as.matrix(B); storage.mode(B_mat) <- "double"
+  C_mat <- if (!is.null(C)) { m <- as.matrix(C); storage.mode(m) <- "double"; m } else NULL
+
+  if (!inherits(A, "adgeMatrix")) {
+    A_mat <- as.matrix(A); storage.mode(A_mat) <- "double"
+    return(.am_addmm_cpu(A_mat, B_mat, C_mat, alpha, beta))
+  }
+
+  choice   <- .amatrix_backend_for(A, "addmm")
+  resident <- .am_try_addmm_gpu(A, B_mat, C_mat, alpha, beta, choice$name)
+  if (!is.null(resident)) {
+    wrapped <- new_adgeMatrix(resident$value,
+                              preferred_backend = A@preferred_backend,
+                              precision = A@precision,
+                              policy = A@policy)
+    return(.amatrix_bind_resident(wrapped, choice$name, resident$key))
+  }
+
+  A_mat <- as.matrix(amatrix_materialize_host(A)); storage.mode(A_mat) <- "double"
+  .am_addmm_cpu(A_mat, B_mat, C_mat, alpha, beta)
+}
+
 # ── pairwise_sqdist_argmin (amatrix-zas) ───────────────────────────────────
 # Fused nearest-centroid assignment via the squared-distance identity:
 #   D[i,k] = ||xi||^2 - 2*(X@Ct)[i,k] + ||ck||^2
