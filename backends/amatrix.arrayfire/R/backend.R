@@ -359,11 +359,12 @@ amatrix_arrayfire_qr_Q_resident <- function(x_key, q_out_key) {
 # ── BDC SVD: Golub-Kahan bidiagonalization + CPU BDC + WY back-transform ────
 #
 # For large square / near-square matrices (aspect ratio < 4) where ts_svd
-# (m >> n) gives no advantage.  GPU is used for:
-#   Phase 1: trailing-block updates in bidiagonalization when the block
-#            has max(rows,cols) >= bdc_gemm_min (default 256).
-#   Phase 3: the final Y_sub %*% V2 GEMM in each WY panel (GPU when
-#            m_sub * nu_eff >= bdc_gemm_min²).
+# (m >> n) gives no advantage.  GPU is used only in Phase 3 (2 GEMMs total):
+#   Phase 1: LAPACK dgebrd (blocked, entirely on CPU) — replaces k unblocked
+#            GPU round-trips with a single optimised LAPACK call.
+#   Phase 2: base::svd on the small k×k bidiagonal B (CPU, O(k²)).
+#   Phase 3: dorgbr forms Q (m×k) and P^T (k×n) on CPU, then
+#            U = Q %*% sv_B$u and V = t(P^T) %*% sv_B$v via 2 GPU GEMMs.
 #
 # Returns list(u, d, v) matching base::svd convention.
 amatrix_arrayfire_bdc_svd <- function(x, nu, nv) {
@@ -372,99 +373,70 @@ amatrix_arrayfire_bdc_svd <- function(x, nu, nv) {
   m <- nrow(mat); n <- ncol(mat); k <- min(m, n)
   nu_eff <- min(as.integer(nu), k)
   nv_eff <- min(as.integer(nv), k)
-  bdc_min <- as.integer(getOption("amatrix.arrayfire.bdc_gemm_min",  256L))
-  nb      <- as.integer(getOption("amatrix.arrayfire.bdc_panel_width", 64L))
 
-  # Storage:  left_U[j:m, j] = u_j   right_V[(j+1):n, j] = v_j
-  # For wide matrices (n > k = m) the last bidiag step j=k still has a right
-  # Householder (zeros A[k, (k+2):n]); so we need k right reflector columns.
-  # For square/tall (n == k) step j=k gives j < n = FALSE — no right reflector.
-  left_U    <- matrix(0, m, k)
-  left_tau  <- numeric(k)
-  n_right   <- if (n > k) k else max(k - 1L, 0L)
-  right_V   <- matrix(0, n, n_right)
-  right_tau <- numeric(n_right)
+  # ── Phase 1: LAPACK dgebrd — blocked bidiagonalization, 0 GPU calls ────
+  # Returns list(a, d, e, tauq, taup) where a holds packed reflectors.
+  # Q^T * mat * P = B  (upper bidiagonal if m >= n, lower if m < n)
+  brd <- .Call("amatrix_arrayfire_bdc_bidiag_bridge", mat,
+               PACKAGE = "amatrix.arrayfire")
 
-  A <- mat   # working copy — destroyed during bidiagonalization
-
-  # ── Phase 1: Golub-Kahan bidiagonalization ─────────────────────────────
-  for (j in seq_len(k)) {
-
-    # Left Householder: zero A[(j+1):m, j]
-    col  <- A[j:m, j]
-    nrm2 <- sum(col^2)
-    if (nrm2 > .Machine$double.eps^2) {
-      alpha <- -sign(col[1L] + (col[1L] == 0L)) * sqrt(nrm2)
-      u     <- col; u[1L] <- u[1L] - alpha
-      tau   <- 2 / sum(u^2)
-      trail <- A[j:m, j:n, drop = FALSE]
-      w <- if (max(m - j + 1L, n - j + 1L) >= bdc_min)
-        .Call("amatrix_arrayfire_crossprod_correct_bridge",
-              matrix(u, ncol = 1L), trail, PACKAGE = "amatrix.arrayfire")
-      else crossprod(matrix(u, ncol = 1L), trail)
-      A[j:m, j:n]    <- trail - tau * (matrix(u, ncol = 1L) %*% w)
-      left_U[j:m, j] <- u
-      left_tau[j]     <- tau
-    }
-
-    # Right Householder: zero A[j, (j+2):n]
-    if (j < n) {
-      row  <- A[j, (j + 1L):n]
-      nrm2 <- sum(row^2)
-      if (nrm2 > .Machine$double.eps^2) {
-        alpha <- -sign(row[1L] + (row[1L] == 0L)) * sqrt(nrm2)
-        v     <- row; v[1L] <- v[1L] - alpha
-        tau   <- 2 / sum(v^2)
-        trail <- A[j:m, (j + 1L):n, drop = FALSE]
-        w <- if (max(m - j + 1L, n - j) >= bdc_min)
-          .Call("amatrix_arrayfire_matmul_correct_bridge",
-                trail, matrix(v, ncol = 1L), PACKAGE = "amatrix.arrayfire")
-        else trail %*% matrix(v, ncol = 1L)
-        A[j:m, (j + 1L):n]     <- trail - tau * (w %*% matrix(v, nrow = 1L))
-        right_V[(j + 1L):n, j] <- v
-        right_tau[j]            <- tau
-      }
+  # ── Phase 2: Build k×k bidiagonal B and compute its SVD on CPU ─────────
+  B <- matrix(0, k, k)
+  diag(B) <- brd$d
+  if (k > 1L) {
+    idx <- seq_len(k - 1L)
+    if (m >= n) {
+      B[cbind(idx, idx + 1L)] <- brd$e   # upper bidiagonal
+    } else {
+      B[cbind(idx + 1L, idx)] <- brd$e   # lower bidiagonal
     }
   }
-
-  # ── Phase 2: Extract bidiagonal + CPU BDC (O(k²)) ──────────────────────
-  # For wide matrices (n > k) the last right Householder creates element
-  # B[k, k+1], so B is k×(k+1).  For square/tall (n = k) B is k×k.
-  B_cols <- if (n > k) k + 1L else k
-  B      <- matrix(0, k, B_cols)
-  diag(B) <- A[cbind(seq_len(k), seq_len(k))]
-  n_super <- min(k, n - 1L)   # number of superdiagonal entries that exist
-  if (n_super > 0L)
-    B[cbind(seq_len(n_super), seq_len(n_super) + 1L)] <-
-      A[cbind(seq_len(n_super), seq_len(n_super) + 1L)]
-  # $d follows base::svd convention: length k = min(m, n).
   sv_B <- base::svd(B, nu = nu_eff, nv = nv_eff)
 
-  # ── Phase 3: WY-blocked back-transform ─────────────────────────────────
-  # U = Q_L * sv_B$u  (H_1..H_k applied last-to-first to [sv_B$u; 0_{m-k}])
-  U_out <- matrix(0, m, nu_eff)
+  # ── Phase 3: Form Q and P^T via dorgbr, back-transform ──────────────────
+  #
+  # LAPACK dorgbr K parameter semantics (critical for wide matrices):
+  #   vect="Q": K = number of COLUMNS of the original matrix passed to dgebrd = n
+  #   vect="P": K = number of ROWS    of the original matrix passed to dgebrd = m
+  #
+  # For square/tall (m >= n), k = n so K_Q = n = k (coincides).
+  # For wide (m < n), k = m so K_Q = n ≠ k — using k here takes the wrong LAPACK
+  # branch (reads one extra unset reflector), producing garbage.
+  #
+  # dorgbr("Q", M=m, N=k, K=n) → m×k  Q
+  # dorgbr("P", M=k, N=n, K=m) → k×n  P^T
+  #
+  # GPU GEMM threshold: for small matrices (m*nu_eff or n*nv_eff < gemm_min²)
+  # fall back to CPU `%*%` to preserve float64 precision; large matrices use
+  # GPU (float32, ~1e-7) which is well within the 1e-4 cross-backend tolerance.
+  gemm_min <- as.integer(getOption("amatrix.arrayfire.bdc_gemm_min", 256L))
+
+  U_out <- matrix(0, m, 0L)
   if (nu_eff > 0L) {
-    U_out[seq_len(k), ] <- sv_B$u
-    for (j_start in rev(seq(1L, k, by = nb))) {
-      j_end   <- min(j_start + nb - 1L, k)
-      panel   <- j_start:j_end
-      Y_sub   <- left_U[j_start:m, panel, drop = FALSE]
-      tau_sub <- left_tau[panel]
-      U_out   <- .bdc_wy_apply_left(Y_sub, tau_sub, U_out, j_start, bdc_min)
+    Q_brd <- .Call("amatrix_arrayfire_bdc_orgbr_bridge",
+                   "Q", brd$a, brd$tauq, m, k, n,   # K = n (cols of original)
+                   PACKAGE = "amatrix.arrayfire")
+    storage.mode(Q_brd) <- "double"
+    if (m * nu_eff >= gemm_min * gemm_min) {
+      U_out <- .Call("amatrix_arrayfire_matmul_correct_bridge",
+                     Q_brd, sv_B$u, PACKAGE = "amatrix.arrayfire")
+    } else {
+      U_out <- Q_brd %*% sv_B$u
     }
   }
 
-  # V = Q_R * sv_B$v  (G_j applied last-to-first to [sv_B$v; 0_{n-B_cols}])
-  # sv_B$v has B_cols rows (k for square/tall, k+1 for wide).
-  V_out <- matrix(0, n, nv_eff)
-  if (nv_eff > 0L && n_right > 0L) {
-    V_out[seq_len(B_cols), ] <- sv_B$v
-    for (j_start in rev(seq(1L, n_right, by = nb))) {
-      j_end   <- min(j_start + nb - 1L, n_right)
-      panel   <- j_start:j_end
-      Y_sub   <- right_V[(j_start + 1L):n, panel, drop = FALSE]
-      tau_sub <- right_tau[panel]
-      V_out   <- .bdc_wy_apply_left(Y_sub, tau_sub, V_out, j_start + 1L, bdc_min)
+  V_out <- matrix(0, n, 0L)
+  if (nv_eff > 0L) {
+    Pt_brd <- .Call("amatrix_arrayfire_bdc_orgbr_bridge",
+                    "P", brd$a, brd$taup, k, n, m,   # K = m (rows of original)
+                    PACKAGE = "amatrix.arrayfire")
+    storage.mode(Pt_brd) <- "double"
+    # crossprod(A, B) = t(A) %*% B, so t(P^T) %*% sv_B$v = P %*% sv_B$v
+    if (n * nv_eff >= gemm_min * gemm_min) {
+      V_out <- .Call("amatrix_arrayfire_crossprod_correct_bridge",
+                     Pt_brd, sv_B$v, PACKAGE = "amatrix.arrayfire")
+    } else {
+      V_out <- crossprod(Pt_brd, sv_B$v)
     }
   }
 

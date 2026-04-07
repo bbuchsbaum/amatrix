@@ -1,5 +1,6 @@
 #include <R.h>
 #include <Rinternals.h>
+#include <R_ext/Lapack.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -2109,4 +2110,146 @@ SEXP amatrix_arrayfire_qr_q_correct_bridge(SEXP A_r) {
   error("amatrix_arrayfire_qr_q_correct requires ArrayFire");
   return R_NilValue;
 #endif
+}
+
+/* ── LAPACK dgebrd: bidiagonal reduction ────────────────────────────────────
+ *
+ * Reduces an m×n real matrix A to bidiagonal form B via orthogonal
+ * transformations:  Q^T * A * P = B
+ *   m >= n → B is n×n upper bidiagonal
+ *   m <  n → B is m×m lower bidiagonal
+ *
+ * Returns a named list: list(a, d, e, tauq, taup)
+ *   a    — m×n packed reflectors (overwrites input)
+ *   d    — k = min(m,n) diagonal elements of B
+ *   e    — k-1 off-diagonal elements of B
+ *   tauq — k scalars for the left Householder reflectors (Q)
+ *   taup — k scalars for the right Householder reflectors (P)
+ * ─────────────────────────────────────────────────────────────────────────── */
+SEXP amatrix_arrayfire_bdc_bidiag_bridge(SEXP A_r) {
+  if (!isReal(A_r) || !isMatrix(A_r))
+    error("bdc_bidiag: A must be a real matrix");
+  SEXP dim = getAttrib(A_r, R_DimSymbol);
+  int m = INTEGER(dim)[0], n = INTEGER(dim)[1];
+  int k = (m < n) ? m : n;
+
+  /* Working copy of A — dgebrd overwrites it in place */
+  SEXP a_sexp = PROTECT(allocMatrix(REALSXP, m, n));
+  memcpy(REAL(a_sexp), REAL(A_r), (size_t)m * n * sizeof(double));
+
+  /* Output vectors */
+  int e_len = (k > 1) ? k - 1 : 0;
+  SEXP d_sexp    = PROTECT(allocVector(REALSXP, k));
+  SEXP e_sexp    = PROTECT(allocVector(REALSXP, e_len));
+  SEXP tauq_sexp = PROTECT(allocVector(REALSXP, k));
+  SEXP taup_sexp = PROTECT(allocVector(REALSXP, k));
+
+  /* Workspace query */
+  int lwork = -1, info = 0;
+  double work_query = 0.0;
+  F77_CALL(dgebrd)(&m, &n, REAL(a_sexp), &m,
+                   REAL(d_sexp), REAL(e_sexp),
+                   REAL(tauq_sexp), REAL(taup_sexp),
+                   &work_query, &lwork, &info);
+  lwork = (work_query > 1.0) ? (int)work_query : (m + n) * 64;
+  double *work = (double *) R_alloc((size_t)lwork, sizeof(double));
+
+  /* dgebrd call */
+  F77_CALL(dgebrd)(&m, &n, REAL(a_sexp), &m,
+                   REAL(d_sexp), REAL(e_sexp),
+                   REAL(tauq_sexp), REAL(taup_sexp),
+                   work, &lwork, &info);
+  if (info != 0)
+    error("dgebrd failed with INFO = %d", info);
+
+  /* Build named return list */
+  SEXP result = PROTECT(allocVector(VECSXP, 5));
+  SEXP names  = PROTECT(allocVector(STRSXP, 5));
+  SET_STRING_ELT(names, 0, mkChar("a"));
+  SET_STRING_ELT(names, 1, mkChar("d"));
+  SET_STRING_ELT(names, 2, mkChar("e"));
+  SET_STRING_ELT(names, 3, mkChar("tauq"));
+  SET_STRING_ELT(names, 4, mkChar("taup"));
+  setAttrib(result, R_NamesSymbol, names);
+  SET_VECTOR_ELT(result, 0, a_sexp);
+  SET_VECTOR_ELT(result, 1, d_sexp);
+  SET_VECTOR_ELT(result, 2, e_sexp);
+  SET_VECTOR_ELT(result, 3, tauq_sexp);
+  SET_VECTOR_ELT(result, 4, taup_sexp);
+  UNPROTECT(7); /* a, d, e, tauq, taup, result, names */
+  return result;
+}
+
+/* ── LAPACK dorgbr: form Q or P^T from dgebrd output ───────────────────────
+ *
+ * Arguments:
+ *   vect_r — "Q" to generate the left orthogonal factor Q,
+ *             "P" to generate the right orthogonal factor P^T
+ *   A_r    — the packed-reflector matrix returned by bdc_bidiag (m×n)
+ *   tau_r  — tauq (for "Q") or taup (for "P") from bdc_bidiag
+ *   M_r    — number of rows of the matrix to generate
+ *   N_r    — number of columns of the matrix to generate
+ *   K_r    — min(orig_m, orig_n) from the dgebrd call
+ *
+ * Returns: M×N real matrix (Q or truncated P^T).
+ *
+ * Standard parameter choices for an orig_m × orig_n input matrix with
+ * k = min(orig_m, orig_n):
+ *   dorgbr("Q", M=orig_m, N=k, K=k, ...)  → orig_m × k  Q
+ *   dorgbr("P", M=k,      N=orig_n, K=k, ...) → k × orig_n P^T
+ * ─────────────────────────────────────────────────────────────────────────── */
+SEXP amatrix_arrayfire_bdc_orgbr_bridge(SEXP vect_r, SEXP A_r, SEXP tau_r,
+                                         SEXP M_r, SEXP N_r, SEXP K_r) {
+  if (TYPEOF(vect_r) != STRSXP || length(vect_r) < 1)
+    error("bdc_orgbr: vect must be a length-1 character string");
+  const char *vect = CHAR(STRING_ELT(vect_r, 0));
+  if (vect[0] != 'Q' && vect[0] != 'P')
+    error("bdc_orgbr: vect must be \"Q\" or \"P\"");
+  if (!isReal(A_r) || !isMatrix(A_r))
+    error("bdc_orgbr: A must be a real matrix");
+  if (!isReal(tau_r))
+    error("bdc_orgbr: tau must be a real vector");
+
+  SEXP dim = getAttrib(A_r, R_DimSymbol);
+  int lda   = INTEGER(dim)[0];   /* leading dimension = original m from dgebrd */
+  int n_col = INTEGER(dim)[1];   /* original n from dgebrd */
+  int M = asInteger(M_r);
+  int N = asInteger(N_r);
+  int K = asInteger(K_r);
+
+  if (M < 0 || N < 0 || K < 0)
+    error("bdc_orgbr: M, N, K must be non-negative");
+
+  /* Working copy of the full m×n packed-reflector matrix.
+   * dorgbr reads the embedded reflectors from A and overwrites the first
+   * M×N block; we keep the full array so the leading dimension stays lda. */
+  size_t full_sz = (size_t)lda * n_col;
+  double *a_work = (double *) R_alloc(full_sz, sizeof(double));
+  memcpy(a_work, REAL(A_r), full_sz * sizeof(double));
+
+  double *tau = REAL(tau_r);
+
+  /* Workspace query */
+  int lwork = -1, info = 0;
+  double work_query = 0.0;
+  F77_CALL(dorgbr)(vect, &M, &N, &K, a_work, &lda, tau,
+                   &work_query, &lwork, &info, (size_t)1);
+  lwork = (work_query > 1.0) ? (int)work_query : (M + N + K) * 64;
+  double *work = (double *) R_alloc((size_t)lwork, sizeof(double));
+
+  /* dorgbr call — result overwrites the leading M×N block of a_work */
+  F77_CALL(dorgbr)(vect, &M, &N, &K, a_work, &lda, tau,
+                   work, &lwork, &info, (size_t)1);
+  if (info != 0)
+    error("dorgbr failed with INFO = %d", info);
+
+  /* Extract the M×N result from the leading portion (a_work has stride lda) */
+  SEXP out = PROTECT(allocMatrix(REALSXP, M, N));
+  double *out_data = REAL(out);
+  for (int j = 0; j < N; j++)
+    for (int i = 0; i < M; i++)
+      out_data[i + (size_t)j * M] = a_work[i + (size_t)j * lda];
+
+  UNPROTECT(1);
+  return out;
 }
