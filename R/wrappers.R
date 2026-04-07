@@ -963,11 +963,26 @@ rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
 # Avoids densifying the full matrix — uses Matrix::rowsum on the dgCMatrix host.
 
 rowsum.adgCMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
-  # Result is always dense (K × p); densification of the n × p input is
-  # unavoidable here since base::rowsum requires a matrix. For large matrices,
-  # prefer segment_sum() which uses a sparse indicator-matrix multiply.
-  base::rowsum(as.matrix(amatrix_materialize_host(x)), group,
-               reorder = reorder, na.rm = na.rm, ...)
+  host <- amatrix_materialize_host(x)   # dgCMatrix
+
+  if (isTRUE(na.rm)) {
+    return(base::rowsum(as.matrix(host), group, reorder = reorder, na.rm = TRUE, ...))
+  }
+
+  # Match base::rowsum behavior: unique groups in first-occurrence order
+  ugrp <- unique(group)
+  if (isTRUE(reorder)) ugrp <- sort(ugrp)
+  K <- length(ugrp)
+  # Map each row to 1-based group index
+  labels <- match(group, ugrp)
+
+  result <- .Call("am_sparse_segment_sum_c",
+                  as.double(host@x), as.integer(host@p), as.integer(host@i),
+                  as.integer(host@Dim), as.integer(labels), as.integer(K))
+  rownames(result) <- as.character(ugrp)
+  colnames(result) <- colnames(host)
+
+  result
 }
 
 # ── sweep / max.col S3 dispatch for adgeMatrix ────────────────────────────────

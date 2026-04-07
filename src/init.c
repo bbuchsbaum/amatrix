@@ -5,11 +5,13 @@
 extern SEXP amatrix_block_reorth_bridge(SEXP z, SEXP basis, SEXP return_projection);
 extern SEXP amatrix_block_reorth_prefix_bridge(SEXP z, SEXP basis, SEXP basis_cols, SEXP return_projection);
 extern SEXP amatrix_block_thin_qr_bridge(SEXP z);
+extern SEXP am_sparse_segment_sum_c(SEXP values_r, SEXP p_r, SEXP i_r, SEXP dim_r, SEXP labels_r, SEXP K_r);
 
 static const R_CallMethodDef call_methods[] = {
   {"amatrix_block_reorth_bridge", (DL_FUNC) &amatrix_block_reorth_bridge, 3},
   {"amatrix_block_reorth_prefix_bridge", (DL_FUNC) &amatrix_block_reorth_prefix_bridge, 4},
   {"amatrix_block_thin_qr_bridge", (DL_FUNC) &amatrix_block_thin_qr_bridge, 1},
+  {"am_sparse_segment_sum_c", (DL_FUNC) &am_sparse_segment_sum_c, 6},
   {NULL, NULL, 0}
 };
 
