@@ -115,7 +115,7 @@ benchmark_case <- function(n, p, rhs_cols = 8L) {
     many_lm = data.frame(
       case = sprintf("%dx%d", n, p),
       rhs_cols = rhs_cols,
-      workload = "am_many_lm_qr_hot",
+      workload = "many_lm_qr_hot",
       runtime = c("base_qr_cached", "mlx_native_resident", "mlx_compact"),
       elapsed = c(
         benchmark_elapsed(
@@ -123,13 +123,13 @@ benchmark_case <- function(n, p, rhs_cols = 8L) {
           iterations = iterations
         ),
         benchmark_elapsed(
-          function() with_qr_mode("native", am_many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
-          warmup = function() with_qr_mode("native", am_many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
+          function() with_qr_mode("native", many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
+          warmup = function() with_qr_mode("native", many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
           iterations = iterations
         ),
         benchmark_elapsed(
-          function() with_qr_mode("compact", am_many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
-          warmup = function() with_qr_mode("compact", am_many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
+          function() with_qr_mode("compact", many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
+          warmup = function() with_qr_mode("compact", many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
           iterations = iterations
         )
       ),

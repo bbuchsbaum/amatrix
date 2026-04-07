@@ -22,12 +22,20 @@
       x %*% y
     },
     crossprod = function(x, y = NULL, ...) {
+      if (inherits(x, "sparseMatrix")) {
+        result <- if (is.null(y)) Matrix::crossprod(x) else Matrix::crossprod(x, y)
+        return(as.matrix(result))
+      }
       if (is.null(y)) {
         return(base::crossprod(as.matrix(x), ...))
       }
       base::crossprod(as.matrix(x), y = .amatrix_host_arg(y), ...)
     },
     tcrossprod = function(x, y = NULL, ...) {
+      if (inherits(x, "sparseMatrix")) {
+        result <- if (is.null(y)) Matrix::tcrossprod(x) else Matrix::tcrossprod(x, y)
+        return(as.matrix(result))
+      }
       if (is.null(y)) {
         return(base::tcrossprod(as.matrix(x), ...))
       }

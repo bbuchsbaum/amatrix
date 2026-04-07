@@ -73,11 +73,16 @@ spectral_cluster <- function(X_mat, K, sigma = NULL, n_iter_km = 30L,
   }
 
   # Step 1: affinity matrix W [n×n] ──────────────────────────────────────────
-  W <- kernel_matrix(X_mat, kernel = "rbf", sigma = sigma)
-  diag(W) <- 0                                  # zero self-loops
+  # kernel_matrix with preferred_backend returns a GPU-resident adgeMatrix and
+  # zeros the diagonal on device — no CPU round-trip needed.
+  W_gpu  <- kernel_matrix(X_mat, kernel = "rbf", sigma = sigma,
+                          preferred_backend = backend, zero_diag = TRUE)
+  if (!inherits(W_gpu, "adgeMatrix")) {
+    diag(W_gpu) <- 0
+    W_gpu <- adgeMatrix(W_gpu, preferred_backend = backend, precision = "fast")
+  }
 
   # Step 2 & 3: normalized Laplacian L = D^{-1/2} W D^{-1/2} ───────────────
-  W_gpu  <- adgeMatrix(W, preferred_backend = backend, precision = "fast")
   d      <- rowSums(W_gpu)                      # n-vector, GPU rowSums
   d_inv  <- 1 / sqrt(pmax(d, 1e-12))            # D^{-1/2}, avoid /0
   L_gpu  <- am_sweep(W_gpu, 1L, d_inv, "*")     # D^{-1/2} W
@@ -238,11 +243,16 @@ cat("\n── Step profiling  (1500×20  K=5) ───────────�
   cents   <- V_n[sample.int(1500L, K), ]
 
   steps <- bench::mark(
-    kernel_matrix   = { w <- kernel_matrix(X, kernel="rbf"); diag(w) <- 0; w },
-    laplacian_sweep = { Wg <- adgeMatrix(W_plain, preferred_backend=bk,
-                                          precision="fast");
-                        dv <- 1/sqrt(pmax(rowSums(Wg), 1e-12));
-                        am_sweep(am_sweep(Wg, 1L, dv, "*"), 2L, dv, "*") },
+    # Old path: compute kernel → download → diag<-0 → re-upload
+    kernel_dl_upload = { w <- kernel_matrix(X, kernel="rbf");
+                         diag(w) <- 0;
+                         adgeMatrix(w, preferred_backend=bk, precision="fast") },
+    # New path: compute + zero_diag on GPU → one download (for host copy) → resident
+    kernel_resident  = kernel_matrix(X, kernel="rbf",
+                                     preferred_backend=bk, zero_diag=TRUE),
+    # Laplacian sweep using already-warm resident W
+    laplacian_sweep  = { dv <- 1/sqrt(pmax(rowSums(W_gpu), 1e-12));
+                         am_sweep(am_sweep(W_gpu, 1L, dv, "*"), 2L, dv, "*") },
     rsvd_L          = rsvd(L_gpu, k = K),
     row_normalize   = { rn <- sqrt(rowSums(V^2)); V / pmax(rn, 1e-12) },
     km_assign       = pairwise_sqdist_argmin(V_n, t(cents)),

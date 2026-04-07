@@ -47,27 +47,27 @@ bench_shared_lm <- function(n = 2000L, p = 32L, k = 8L, responses = 8L, reps = 3
     elapsed = c(
       bench_expr(function() {
         for (y in case$Ys) {
-          am_many_lm(x_am, y, include_residuals = FALSE, cache = FALSE, method = "normal")
+          many_lm(x_am, y, include_residuals = FALSE, cache = FALSE, method = "normal")
         }
       }, reps = reps),
       bench_expr(function() {
         for (y in case$Ys) {
-          am_many_lm(x_am, y, include_residuals = FALSE, cache = TRUE, method = "normal")
+          many_lm(x_am, y, include_residuals = FALSE, cache = TRUE, method = "normal")
         }
       }, reps = reps),
       bench_expr(function() {
         for (y in case$Ys) {
-          am_many_lm(x_am, y, include_residuals = FALSE, cache = FALSE, method = "qr")
+          many_lm(x_am, y, include_residuals = FALSE, cache = FALSE, method = "qr")
         }
       }, reps = reps),
       bench_expr(function() {
         for (y in case$Ys) {
-          am_many_lm(x_am, y, include_residuals = FALSE, cache = TRUE, method = "qr")
+          many_lm(x_am, y, include_residuals = FALSE, cache = TRUE, method = "qr")
         }
       }, reps = reps),
       bench_expr(function() {
         for (y in case$Ys) {
-          am_many_lm(x_am, y, weights = w, include_residuals = FALSE, cache = TRUE, method = "qr")
+          many_lm(x_am, y, weights = w, include_residuals = FALSE, cache = TRUE, method = "qr")
         }
       }, reps = reps)
     )
@@ -89,7 +89,7 @@ bench_shared_ridge <- function(n = 2000L, p = 32L, k = 8L, responses = 8L, reps 
     elapsed = c(
       bench_expr(function() {
         for (y in case$Ys) {
-          am_ridge_fit(
+          ridge_fit(
             x_am,
             y,
             lambda = lambda,
@@ -101,7 +101,7 @@ bench_shared_ridge <- function(n = 2000L, p = 32L, k = 8L, responses = 8L, reps 
       }, reps = reps),
       bench_expr(function() {
         for (y in case$Ys) {
-          am_ridge_fit(
+          ridge_fit(
             x_am,
             y,
             lambda = lambda,
@@ -131,13 +131,13 @@ bench_similarity <- function(n = 4000L, p = 64L, reps = 3L) {
     lambda = NA_real_,
     elapsed = c(
       bench_expr(function() {
-        am_covariance(x_am)
+        covariance(x_am)
       }, reps = reps),
       bench_expr(function() {
-        am_covariance(x_am, weights = w)
+        covariance(x_am, weights = w)
       }, reps = reps),
       bench_expr(function() {
-        am_correlation(x_am)
+        correlation(x_am)
       }, reps = reps)
     )
   )

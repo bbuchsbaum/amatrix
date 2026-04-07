@@ -57,8 +57,10 @@ kmeans_amatrix <- function(X_mat, K, max_iter = 20L, backend = "cpu", seed = 1L)
     if (identical(new_labels, labels)) break
     labels <- new_labels
 
-    centroids  <- as.matrix(segment_mean(X_gpu, labels, K))
-    empty <- which(is.na(centroids[, 1L]))
+    counts     <- tabulate(labels, nbins = K)
+    centroids  <- as.matrix(rowsum(X_gpu, factor(labels, levels = seq_len(K)))) /
+                    pmax(counts, 1L)
+    empty <- which(counts == 0L)
     if (length(empty) > 0L)
       centroids[empty, ] <- X_mat[sample.int(n, length(empty), replace = TRUE), ]
   }

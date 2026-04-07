@@ -8,8 +8,10 @@ setMethod("%*%", signature(x = "adgCMatrix", y = "adgCMatrix"), function(x, y) m
 
 setMethod("t", "adgCMatrix", function(x) am_transpose(x))
 
-setMethod("crossprod", signature(x = "adgCMatrix", y = "ANY"), function(x, y = NULL, ...) am_crossprod(x, y = y, ...))
-setMethod("tcrossprod", signature(x = "adgCMatrix", y = "ANY"), function(x, y = NULL, ...) am_tcrossprod(x, y = y, ...))
+setMethod("crossprod",  signature(x = "adgCMatrix", y = "missing"), function(x, y, ...) am_crossprod(x,  y = NULL, ...))
+setMethod("crossprod",  signature(x = "adgCMatrix", y = "ANY"),     function(x, y = NULL, ...) am_crossprod(x,  y = y, ...))
+setMethod("tcrossprod", signature(x = "adgCMatrix", y = "missing"), function(x, y, ...) am_tcrossprod(x, y = NULL, ...))
+setMethod("tcrossprod", signature(x = "adgCMatrix", y = "ANY"),     function(x, y = NULL, ...) am_tcrossprod(x, y = y, ...))
 
 setMethod("rowSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) rowsums(x, na.rm = na.rm, dims = dims))
 setMethod("colSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) colsums(x, na.rm = na.rm, dims = dims))

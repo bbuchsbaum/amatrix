@@ -440,7 +440,11 @@ am_transpose <- function(x) {
   if (inherits(x, "adgeMatrix")) {
     return(.new_aTransposeView(x))
   }
-  # Sparse and other types: materialize and transpose on host
+  if (inherits(x, "adgCMatrix")) {
+    host <- amatrix_materialize_host(x)   # dgCMatrix
+    return(new_adgCMatrix(t(host), preferred_backend = x@preferred_backend,
+                          precision = x@precision, policy = x@policy))
+  }
   .amatrix_rewrap_like(x, t(as.matrix(amatrix_materialize_host(x))))
 }
 
@@ -886,14 +890,40 @@ segment_mean <- function(x, labels, K) {
 # group can be integer, numeric, character, or factor — we map to 1..K labels.
 
 rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
-  g_chr <- as.character(group)
-  lvls  <- if (reorder) sort(unique(g_chr)) else unique(g_chr)
-  grp   <- factor(g_chr, levels = lvls)
+  if (is.factor(group)) {
+    # reorder=TRUE: honour factor's own level ordering (user-defined, preserves
+    #   all levels including unoccupied ones — e.g. empty k-means clusters).
+    # reorder=FALSE: first-occurrence order, matching base::rowsum semantics.
+    lvls <- if (reorder) levels(group) else unique(as.character(group))
+    grp  <- factor(as.character(group), levels = lvls)
+  } else {
+    g_chr <- as.character(group)
+    if (reorder) {
+      u     <- unique(g_chr)
+      num   <- suppressWarnings(as.numeric(u))
+      lvls  <- if (!anyNA(num)) u[order(num)] else sort(u)
+    } else {
+      lvls  <- unique(g_chr)
+    }
+    grp   <- factor(g_chr, levels = lvls)
+  }
   labels <- as.integer(grp)
   K      <- nlevels(grp)
   result <- segment_sum(x, labels, K)
   if (is.matrix(result)) rownames(result) <- lvls
   result
+}
+
+# ── rowsum.adgCMatrix ──────────────────────────────────────────────────────────
+# Group row sums for sparse matrices. Result is always dense (K × p).
+# Avoids densifying the full matrix — uses Matrix::rowsum on the dgCMatrix host.
+
+rowsum.adgCMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
+  # Result is always dense (K × p); densification of the n × p input is
+  # unavoidable here since base::rowsum requires a matrix. For large matrices,
+  # prefer segment_sum() which uses a sparse indicator-matrix multiply.
+  base::rowsum(as.matrix(amatrix_materialize_host(x)), group,
+               reorder = reorder, na.rm = na.rm, ...)
 }
 
 # ── sweep / max.col S3 dispatch for adgeMatrix ────────────────────────────────
@@ -1438,11 +1468,28 @@ dist_matrix <- function(X, Y = NULL,
 kernel_matrix <- function(X, Y = NULL,
                       kernel = c("linear", "rbf", "polynomial",
                                  "cosine", "laplacian"),
-                      sigma = 1.0, degree = 2L, coef = 0.0) {
+                      sigma = 1.0, degree = 2L, coef = 0.0,
+                      preferred_backend = NULL, zero_diag = FALSE) {
   kernel <- match.arg(kernel)
   X_mat  <- .am_as_double_matrix(X)
   Y_mat  <- if (!is.null(Y)) .am_as_double_matrix(Y) else NULL
-  Y_eff  <- if (is.null(Y_mat)) X_mat else Y_mat
+
+  # Resident path: compute on GPU and store directly, skipping CPU round-trip.
+  # Returns an adgeMatrix with a live resident key bound, so the next GPU op
+  # uses the in-device array without re-uploading.
+  if (!is.null(preferred_backend)) {
+    backend <- .amatrix_get_backend(preferred_backend)
+    if (!is.null(backend) && is.function(backend[["kernel_resident"]])) {
+      out_key    <- .amatrix_next_resident_key(preferred_backend)
+      result_mat <- backend$kernel_resident(
+        out_key, X_mat, Y_mat, kernel,
+        as.double(sigma), as.integer(degree), as.double(coef),
+        isTRUE(zero_diag) && is.null(Y_mat)
+      )
+      obj <- new_adgeMatrix(result_mat, preferred_backend = preferred_backend)
+      return(.amatrix_bind_resident(obj, preferred_backend, out_key))
+    }
+  }
 
   .am_kernel_gpu(X_mat, Y_mat, kernel,
                  sigma = sigma, degree = degree, coef = coef)

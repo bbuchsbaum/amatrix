@@ -67,18 +67,18 @@ benchmark_case <- function(n, p, rhs_cols, block_rows = NULL) {
       case = sprintf("%dx%d", n, p),
       rhs_cols = rhs_cols,
       block_rows = if (is.null(block_rows)) NA_integer_ else as.integer(block_rows),
-      workload = "am_many_lm_qr_hot",
+      workload = "many_lm_qr_hot",
       runtime = c("base_qr_cached", "mlx_native_resident", "mlx_compact_tsqr"),
       elapsed = c(
         benchmark_elapsed(function() base::qr.solve(base_fac, y), iterations = iterations),
         benchmark_elapsed(
-          function() with_qr_options("native", expr = am_many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
-          warmup = function() with_qr_options("native", expr = am_many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
+          function() with_qr_options("native", expr = many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
+          warmup = function() with_qr_options("native", expr = many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
           iterations = iterations
         ),
         benchmark_elapsed(
-          function() with_qr_options("compact", compact_method = "tsqr", block_rows = block_rows, expr = am_many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
-          warmup = function() with_qr_options("compact", compact_method = "tsqr", block_rows = block_rows, expr = am_many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
+          function() with_qr_options("compact", compact_method = "tsqr", block_rows = block_rows, expr = many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
+          warmup = function() with_qr_options("compact", compact_method = "tsqr", block_rows = block_rows, expr = many_lm(x_mlx, y, include_residuals = FALSE, cache = TRUE, method = "qr")),
           iterations = iterations
         )
       ),
@@ -116,5 +116,5 @@ cat("Notes:\n")
 cat("- This harness isolates tall-skinny shared-X many-RHS QR.\n")
 cat("- mlx_compact_tsqr forces the compact TSQR path.\n")
 cat("- base_qr_cached measures the cached base QR helper path.\n")
-cat("- am_many_lm_qr_hot is the flagship workload and excludes fitted/residual reconstruction.\n\n")
+cat("- many_lm_qr_hot is the flagship workload and excludes fitted/residual reconstruction.\n\n")
 print(rows)

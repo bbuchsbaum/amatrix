@@ -11,7 +11,7 @@
 #   5. Project X onto discriminant axes              [GPU n×p gemm]
 #
 # Key primitives exercised:
-#   segment_mean, crossprod, am_sweep, matmul, chol, solve
+#   segment_mean, crossprod, sweep, matmul, chol, solve
 #
 # Correctness reference: MASS::lda() (if available) or manual base-R path.
 #
@@ -59,11 +59,11 @@ lda_amatrix <- function(X_mat, labels, n_components = NULL, backend = "cpu",
   if (!is.null(n_components)) d <- min(d, n_components)
 
   X_gpu  <- adgeMatrix(X_mat, preferred_backend = backend, precision = "fast")
-  counts <- tabulate(labels, nbins = K)          # n_k per class
 
-  # Step 1: class means [K×p] via GPU segment mean ─────────────────────────
-  means_gpu <- segment_mean(X_gpu, labels, K) # adgeMatrix K×p
-  means_mat <- as.matrix(means_gpu)
+  # Step 1: class means [K×p] — rowsum / tabulate, GPU-accelerated
+  counts    <- tabulate(labels, nbins = K)
+  means_mat <- as.matrix(rowsum(X_gpu, factor(labels, levels = seq_len(K)))) /
+                 pmax(counts, 1L)
 
   # Step 2: within-class scatter Sw via one-pass algebraic identity ────────
   #   Sw = X^T X − C^T diag(n_k) C
