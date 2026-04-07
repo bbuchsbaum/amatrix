@@ -58,6 +58,10 @@ setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", valu
   am_subassign(x, i, j, ..., value = value)
 })
 
+setMethod("norm", "adgCMatrix", function(x, type = "1", ...) {
+  Matrix::norm(amatrix_materialize_host(x), type = type)
+})
+
 setMethod("solve", signature(a = "adgCMatrix", b = "missing"), function(a, b, ...) am_solve(a, ...))
 setMethod("solve", signature(a = "adgCMatrix", b = "ANY"), function(a, b, ...) am_solve(a, b = b, ...))
 setMethod("chol", "adgCMatrix", function(x, ...) am_chol(x, ...))

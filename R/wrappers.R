@@ -993,6 +993,35 @@ sweep.adgeMatrix <- function(x, MARGIN, STATS, FUN = "-",
   am_sweep(x, MARGIN, STATS, FUN)
 }
 
+sweep.adgCMatrix <- function(x, MARGIN, STATS, FUN = "-",
+                             check.margin = TRUE, ...) {
+  if (identical(as.integer(MARGIN), 2L) && is.character(FUN) &&
+      FUN %in% c("*", "/") && length(STATS) == ncol(x)) {
+    # Column-scale/divide: multiply/divide @x values by the appropriate STATS entry
+    host <- amatrix_materialize_host(x)   # dgCMatrix
+    new_x <- host@x
+    nc <- ncol(host)
+    for (j in seq_len(nc)) {
+      start <- host@p[j] + 1L
+      end   <- host@p[j + 1L]
+      if (end >= start) {
+        idx <- start:end
+        if (identical(FUN, "*")) {
+          new_x[idx] <- new_x[idx] * STATS[j]
+        } else {
+          new_x[idx] <- new_x[idx] / STATS[j]
+        }
+      }
+    }
+    result <- new("dgCMatrix", i = host@i, p = host@p, Dim = host@Dim,
+                  Dimnames = host@Dimnames, x = new_x, factors = list())
+    return(new_adgCMatrix(result, preferred_backend = x@preferred_backend,
+                          precision = x@precision, policy = x@policy))
+  }
+  # Fallback: densify for other margins/ops
+  base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, ...)
+}
+
 max.col.adgeMatrix <- function(m, ties.method = "random") {
   .am_argreduce(m, "rowargmax")
 }
