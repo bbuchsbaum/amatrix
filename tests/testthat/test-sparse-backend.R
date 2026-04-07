@@ -2,8 +2,8 @@ test_that("adgCMatrix preserves preferred_backend slot", {
   skip_if_not_installed("Matrix")
   sp <- Matrix::rsparsematrix(50, 30, density=0.1)
   X <- new_adgCMatrix(sp)
-  # Default preferred_backend should be accessible
-  expect_true(!is.null(X@preferred_backend) || is.character(X@preferred_backend))
+  # Default preferred_backend should be a non-empty character string
+  expect_true(is.character(X@preferred_backend) && nzchar(X@preferred_backend))
 })
 
 test_that("adgCMatrix preferred_backend defaults to cpu", {

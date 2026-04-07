@@ -3937,8 +3937,10 @@ SEXP amatrix_mlx_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r,
   int  X_ncol = INTEGER(dim_r)[1];
   int  trans  = asLogical(trans_lhs_r);
   int  out_nrow = trans ? X_ncol : X_nrow;
-
-  (void)B_nrow;
+  int  expected_rows = trans ? X_nrow : X_ncol;
+  if (B_nrow != expected_rows)
+    error("spmm: dimension mismatch: B has %d rows but %s(X) has %d cols",
+          B_nrow, trans ? "t" : "", expected_rows);
 
   SEXP out_r = PROTECT(allocMatrix(REALSXP, out_nrow, B_ncol));
   double *res = REAL(out_r);
@@ -4052,8 +4054,10 @@ SEXP amatrix_mlx_spmm_resident_bridge(SEXP sp_key_r, SEXP B_r,
   int  X_ncol = entry->ncol;
   int  trans  = asLogical(trans_lhs_r);
   int  out_nrow = trans ? X_ncol : X_nrow;
-
-  (void)B_nrow;
+  int  expected_rows = trans ? X_nrow : X_ncol;
+  if (B_nrow != expected_rows)
+    error("spmm_resident: dimension mismatch: B has %d rows but %s(X) has %d cols",
+          B_nrow, trans ? "t" : "", expected_rows);
 
   SEXP out_r = PROTECT(allocMatrix(REALSXP, out_nrow, B_ncol));
   double *res = REAL(out_r);

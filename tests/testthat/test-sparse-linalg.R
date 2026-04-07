@@ -20,3 +20,17 @@ test_that("solve works on sparse triangular system", {
   x <- solve(A_sp, b)
   expect_equal(as.numeric(A_dn %*% x), b, tolerance = 1e-8)
 })
+
+test_that("qr works on sparse tall matrix", {
+  skip_if_not_installed("Matrix")
+  set.seed(42)
+  n <- 40; p <- 20
+  X_dn <- matrix(rnorm(n * p), n, p)
+  X_sp <- new_adgCMatrix(Matrix::Matrix(X_dn, sparse = TRUE))
+  qr_sp <- qr(X_sp)
+  # QR result should be a valid decomposition; verify via solve
+  b <- rnorm(n)
+  coef_sp <- qr.coef(qr_sp, b)
+  coef_ref <- qr.coef(qr(X_dn), b)
+  expect_equal(as.numeric(coef_sp), coef_ref, tolerance = 1e-8)
+})
