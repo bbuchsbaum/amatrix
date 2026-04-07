@@ -797,6 +797,174 @@ dot <- function(x, y) {
   sum(x_host * y_host)
 }
 
+# ── segment_sum / segment_mean (amatrix-ylo) ──────────────────────────────
+# First-class grouped-reduction primitives.  GPU path stores result as a
+# resident adgeMatrix (no data downloaded). CPU path uses base::rowsum.
+
+.am_segment_sum_cpu <- function(X_mat, labels, K) {
+  sums_raw <- rowsum(X_mat, labels, reorder = FALSE)
+  out <- matrix(0, K, ncol(X_mat))
+  idx <- as.integer(rownames(sums_raw))
+  valid <- idx >= 1L & idx <= K
+  if (any(valid)) out[idx[valid], ] <- sums_raw[valid, , drop = FALSE]
+  out
+}
+
+.am_segment_mean_cpu <- function(X_mat, labels, K) {
+  sums_raw <- rowsum(X_mat, labels, reorder = FALSE)
+  idx    <- as.integer(rownames(sums_raw))
+  counts <- tabulate(labels, nbins = K)
+  out    <- matrix(NA_real_, K, ncol(X_mat))
+  valid  <- idx >= 1L & idx <= K
+  if (any(valid)) {
+    k  <- idx[valid]
+    nz <- counts[k] > 0L
+    if (any(nz))
+      out[k[nz], ] <- sums_raw[valid, , drop = FALSE][nz, , drop = FALSE] /
+                      counts[k[nz]]
+  }
+  out
+}
+
+.am_try_resident_segment_op <- function(x, labels, K, backend_name, op_name) {
+  backend <- .amatrix_get_backend(backend_name)
+  fn_name <- paste0(op_name, "_resident")
+  if (!is.function(backend[[fn_name]])) return(NULL)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+  if (is.null(lhs)) return(NULL)
+  out_key <- .amatrix_next_resident_key(backend_name)
+  backend[[fn_name]](lhs$key, labels, K, out_key)
+  .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+  out_key
+}
+
+.am_segment_resident_wrap <- function(x, K, choice_name, out_key) {
+  p <- ncol(x)
+  placeholder <- new_adgeMatrix(matrix(0, K, p),
+                                preferred_backend = x@preferred_backend,
+                                precision = x@precision,
+                                policy = x@policy)
+  .amatrix_bind_resident(placeholder, choice_name, out_key)
+}
+
+am_segment_sum <- function(x, labels, K) {
+  labels <- as.integer(labels)
+  K      <- as.integer(K)
+  if (!inherits(x, "adgeMatrix"))
+    return(.am_segment_sum_cpu(as.matrix(x), labels, K))
+  choice  <- .amatrix_backend_for(x, "segment_sum")
+  out_key <- .am_try_resident_segment_op(x, labels, K, choice$name, "segment_sum")
+  if (is.null(out_key))
+    return(.am_segment_sum_cpu(as.matrix(amatrix_materialize_host(x)), labels, K))
+  .am_segment_resident_wrap(x, K, choice$name, out_key)
+}
+
+am_segment_mean <- function(x, labels, K) {
+  labels <- as.integer(labels)
+  K      <- as.integer(K)
+  if (!inherits(x, "adgeMatrix"))
+    return(.am_segment_mean_cpu(as.matrix(x), labels, K))
+  choice  <- .amatrix_backend_for(x, "segment_mean")
+  out_key <- .am_try_resident_segment_op(x, labels, K, choice$name, "segment_mean")
+  if (is.null(out_key))
+    return(.am_segment_mean_cpu(as.matrix(amatrix_materialize_host(x)), labels, K))
+  .am_segment_resident_wrap(x, K, choice$name, out_key)
+}
+
+# ── pairwise_sqdist_argmin (amatrix-zas) ───────────────────────────────────
+# Fused nearest-centroid assignment via the squared-distance identity:
+#   D[i,k] = ||xi||^2 - 2*(X@Ct)[i,k] + ||ck||^2
+# GPU path chains resident operations (no intermediate host round-trips):
+#   1. cross  = matmul_resident(X, Ct)         [n×K]
+#   2. neg2   = ewise_resident(cross, -2, "*") [n×K]
+#   3. d1     = broadcast_ewise(neg2, x_norms, margin=1, "+") [add row norms]
+#   4. d      = broadcast_ewise(d1,   c_norms, margin=2, "+") [add col norms]
+#   5. labels = rowargmin_resident(d) + 1L     [0→1-indexed]
+# CPU fallback: base R distance matrix + max.col.
+.pairwise_sqdist_argmin_cpu <- function(X_mat, Ct_mat, x_norms, c_norms) {
+  cross <- X_mat %*% Ct_mat                          # n×K
+  D     <- -2 * cross + x_norms + rep(c_norms, each = nrow(X_mat))
+  max.col(-D, ties.method = "first")
+}
+
+.pairwise_sqdist_argmin_gpu <- function(X, Ct_mat, x_norms, c_norms,
+                                            backend_name) {
+  backend <- .amatrix_get_backend(backend_name)
+  # All required resident ops must be present
+  needed <- c("matmul_resident", "ewise_resident",
+               "broadcast_ewise_resident", "rowargmin_resident")
+  if (!all(vapply(needed, function(f) is.function(backend[[f]]), logical(1L))))
+    return(NULL)
+
+  lhs_X  <- .amatrix_prepare_resident_arg(X, backend_name)
+  if (is.null(lhs_X)) return(NULL)
+
+  # Upload Ct (p×K plain matrix) as temporary resident
+  Ct_key  <- .amatrix_next_resident_key(backend_name)
+  backend$resident_store(Ct_key, Ct_mat)
+  temps   <- list(lhs_X, list(key = Ct_key, is_temp = TRUE))
+
+  cross_key  <- .amatrix_next_resident_key(backend_name)
+  neg2_key   <- .amatrix_next_resident_key(backend_name)
+  d1_key     <- .amatrix_next_resident_key(backend_name)
+  d_key      <- .amatrix_next_resident_key(backend_name)
+
+  tryCatch({
+    backend$matmul_resident(lhs_X$key, Ct_key, cross_key)
+    backend$ewise_resident(cross_key, -2.0, "*", neg2_key)
+    backend$broadcast_ewise_resident(neg2_key, as.double(x_norms), 1L, "+", d1_key)
+    backend$broadcast_ewise_resident(d1_key, as.double(c_norms), 2L, "+", d_key)
+    labels0 <- backend$rowargmin_resident(d_key)
+    labels0 + 1L   # 0-indexed → 1-indexed
+  }, error = function(e) NULL,
+  finally = {
+    .amatrix_cleanup_temp_resident(temps, backend_name)
+    for (k in c(cross_key, neg2_key, d1_key, d_key))
+      tryCatch(backend$resident_drop(k), error = function(e) invisible(NULL))
+  })
+}
+
+#' Nearest-centroid assignment via fused squared-distance computation
+#'
+#' Computes \eqn{D[i,k] = \|x_i\|^2 - 2 x_i^\top c_k + \|c_k\|^2} and
+#' returns \eqn{\arg\min_k D[i,k]} for each row \eqn{i}, 1-indexed.
+#' GPU path avoids host round-trips by chaining resident operations.
+#'
+#' @param X       n×p \code{adgeMatrix} or plain matrix (query points).
+#' @param Ct      p×K numeric matrix (centroids, transposed — columns are centroids).
+#' @param x_norms Optional n-vector of precomputed \eqn{\|x_i\|^2}. Computed if \code{NULL}.
+#' @param c_norms Optional K-vector of precomputed \eqn{\|c_k\|^2}. Computed if \code{NULL}.
+#' @return Integer vector of length n, 1-indexed nearest centroid per row.
+#' @export
+pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
+  Ct_mat  <- as.matrix(Ct);  storage.mode(Ct_mat) <- "double"
+  if (is.null(x_norms)) {
+    X_mat   <- if (inherits(X, "adgeMatrix")) as.matrix(amatrix_materialize_host(X))
+               else as.matrix(X)
+    x_norms <- rowSums(X_mat^2)
+  } else {
+    x_norms <- as.double(x_norms)
+    X_mat   <- NULL
+  }
+  if (is.null(c_norms)) c_norms <- colSums(Ct_mat^2)
+  else c_norms <- as.double(c_norms)
+
+  if (!inherits(X, "adgeMatrix")) {
+    X_mat <- if (is.null(X_mat)) as.matrix(X) else X_mat
+    storage.mode(X_mat) <- "double"
+    return(.pairwise_sqdist_argmin_cpu(X_mat, Ct_mat, x_norms, c_norms))
+  }
+
+  choice <- .amatrix_backend_for(X, "matmul")
+  result <- .pairwise_sqdist_argmin_gpu(X, Ct_mat, x_norms, c_norms, choice$name)
+  if (!is.null(result)) return(result)
+
+  # Fallback: materialize and use CPU
+  X_mat <- if (is.null(X_mat)) as.matrix(amatrix_materialize_host(X)) else X_mat
+  storage.mode(X_mat) <- "double"
+  .pairwise_sqdist_argmin_cpu(X_mat, Ct_mat, x_norms, c_norms)
+}
+
 .am_scatter_mean_cpu <- function(X_mat, labels, K) {
   p <- ncol(X_mat)
   centroids <- matrix(NA_real_, K, p)
