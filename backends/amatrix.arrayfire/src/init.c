@@ -23,6 +23,8 @@ extern SEXP amatrix_arrayfire_ewise_resident_bridge(SEXP lhs_key, SEXP rhs, SEXP
 extern SEXP amatrix_arrayfire_broadcast_ewise_resident_bridge(SEXP lhs_key, SEXP v, SEXP margin_r, SEXP op, SEXP out_key);
 extern SEXP amatrix_arrayfire_argreduce_bridge(SEXP lhs_key, SEXP axis_r, SEXP is_max_r);
 extern SEXP amatrix_arrayfire_scatter_mean_bridge(SEXP lhs_key, SEXP labels_r, SEXP K_r);
+extern SEXP amatrix_arrayfire_segment_sum_bridge(SEXP x_key, SEXP labels_r, SEXP K_r, SEXP out_key);
+extern SEXP amatrix_arrayfire_segment_mean_bridge(SEXP x_key, SEXP labels_r, SEXP K_r, SEXP out_key);
 extern SEXP amatrix_arrayfire_sum_axis_resident_bridge(SEXP x_key, SEXP axis);
 extern SEXP am_af_lanczos_bidiag_bridge(SEXP A_r, SEXP v0_r, SEXP k_r);
 extern SEXP am_af_lbz_upload_A_bridge(SEXP A_r);
@@ -43,6 +45,7 @@ extern SEXP amatrix_arrayfire_svd_bridge(SEXP x, SEXP nu_r, SEXP nv_r);
 extern SEXP amatrix_arrayfire_svd_safe_bridge(void);
 extern SEXP amatrix_arrayfire_bdc_bidiag_bridge(SEXP A_r);
 extern SEXP amatrix_arrayfire_bdc_orgbr_bridge(SEXP vect_r, SEXP A_r, SEXP tau_r, SEXP M_r, SEXP N_r, SEXP K_r);
+extern SEXP amatrix_arrayfire_bdc_dbdsdc_bridge(SEXP d_r, SEXP e_r, SEXP uplo_r);
 
 static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_native_available_bridge", (DL_FUNC) &amatrix_arrayfire_native_available_bridge, 0},
@@ -66,6 +69,8 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_broadcast_ewise_resident_bridge",        (DL_FUNC) &amatrix_arrayfire_broadcast_ewise_resident_bridge,        5},
     {"amatrix_arrayfire_argreduce_bridge",                       (DL_FUNC) &amatrix_arrayfire_argreduce_bridge,                       3},
     {"amatrix_arrayfire_scatter_mean_bridge",                    (DL_FUNC) &amatrix_arrayfire_scatter_mean_bridge,                    3},
+    {"amatrix_arrayfire_segment_sum_bridge",                     (DL_FUNC) &amatrix_arrayfire_segment_sum_bridge,                     4},
+    {"amatrix_arrayfire_segment_mean_bridge",                    (DL_FUNC) &amatrix_arrayfire_segment_mean_bridge,                    4},
     {"amatrix_arrayfire_sum_axis_resident_bridge",     (DL_FUNC) &amatrix_arrayfire_sum_axis_resident_bridge,     2},
     {"am_af_lanczos_bidiag_bridge",                    (DL_FUNC) &am_af_lanczos_bidiag_bridge,                    3},
     {"am_af_lbz_upload_A_bridge",                      (DL_FUNC) &am_af_lbz_upload_A_bridge,                      1},
@@ -86,6 +91,7 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_svd_safe_bridge",              (DL_FUNC) &amatrix_arrayfire_svd_safe_bridge,              0},
     {"amatrix_arrayfire_bdc_bidiag_bridge",            (DL_FUNC) &amatrix_arrayfire_bdc_bidiag_bridge,            1},
     {"amatrix_arrayfire_bdc_orgbr_bridge",             (DL_FUNC) &amatrix_arrayfire_bdc_orgbr_bridge,             6},
+    {"amatrix_arrayfire_bdc_dbdsdc_bridge",            (DL_FUNC) &amatrix_arrayfire_bdc_dbdsdc_bridge,            3},
     {NULL, NULL, 0}
 };
 

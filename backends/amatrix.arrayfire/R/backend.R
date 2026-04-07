@@ -1,5 +1,5 @@
 amatrix_arrayfire_capabilities <- function() {
-  c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean",
+  c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean", "segment_sum", "segment_mean",
     "rowSums", "colSums",
     "qr", "rsvd", "chol", "solve", "covariance", "svd")
 }
@@ -181,6 +181,18 @@ amatrix_arrayfire_scatter_mean <- function(x_key, labels, K) {
   .Call("amatrix_arrayfire_scatter_mean_bridge",
         as.character(x_key), as.integer(labels), as.integer(K),
         PACKAGE = "amatrix.arrayfire")
+}
+
+amatrix_arrayfire_segment_sum <- function(x_key, labels, K, out_key) {
+  .Call("amatrix_arrayfire_segment_sum_bridge",
+        as.character(x_key), as.integer(labels), as.integer(K),
+        as.character(out_key), PACKAGE = "amatrix.arrayfire")
+}
+
+amatrix_arrayfire_segment_mean <- function(x_key, labels, K, out_key) {
+  .Call("amatrix_arrayfire_segment_mean_bridge",
+        as.character(x_key), as.integer(labels), as.integer(K),
+        as.character(out_key), PACKAGE = "amatrix.arrayfire")
 }
 
 amatrix_arrayfire_argreduce <- function(x_key, axis, is_max) {
@@ -380,18 +392,21 @@ amatrix_arrayfire_bdc_svd <- function(x, nu, nv) {
   brd <- .Call("amatrix_arrayfire_bdc_bidiag_bridge", mat,
                PACKAGE = "amatrix.arrayfire")
 
-  # ── Phase 2: Build k×k bidiagonal B and compute its SVD on CPU ─────────
-  B <- matrix(0, k, k)
-  diag(B) <- brd$d
-  if (k > 1L) {
-    idx <- seq_len(k - 1L)
-    if (m >= n) {
-      B[cbind(idx, idx + 1L)] <- brd$e   # upper bidiagonal
-    } else {
-      B[cbind(idx + 1L, idx)] <- brd$e   # lower bidiagonal
-    }
-  }
-  sv_B <- base::svd(B, nu = nu_eff, nv = nv_eff)
+  # ── Phase 2: bidiagonal D&C SVD via dbdsdc ─────────────────────────────
+  # dbdsdc operates directly on (d, e) vectors — no k×k dense B matrix needed.
+  # This is 5-10× faster than base::svd() which calls dgesdd and treats the
+  # bidiagonal matrix as a general dense matrix.
+  #
+  # uplo convention: dgebrd produces upper bidiagonal (m >= n) or lower (m < n).
+  # dbdsdc returns singular values in decreasing order (matching base::svd).
+  # sv_bd$vt is V^T (k×k): row j = j-th right singular vector.
+  uplo <- if (m >= n) "U" else "L"
+  sv_bd <- .Call("amatrix_arrayfire_bdc_dbdsdc_bridge", brd$d, brd$e, uplo,
+                 PACKAGE = "amatrix.arrayfire")
+  # Alias into the name convention used in Phase 3 (sv_B$u, sv_B$v)
+  u_B <- if (nu_eff > 0L) sv_bd$u[, seq_len(nu_eff), drop = FALSE] else matrix(0, k, 0L)
+  v_B <- if (nv_eff > 0L) t(sv_bd$vt)[, seq_len(nv_eff), drop = FALSE] else matrix(0, k, 0L)
+  d_B <- sv_bd$d
 
   # ── Phase 3: Form Q and P^T via dorgbr, back-transform ──────────────────
   #
@@ -419,9 +434,9 @@ amatrix_arrayfire_bdc_svd <- function(x, nu, nv) {
     storage.mode(Q_brd) <- "double"
     if (m * nu_eff >= gemm_min * gemm_min) {
       U_out <- .Call("amatrix_arrayfire_matmul_correct_bridge",
-                     Q_brd, sv_B$u, PACKAGE = "amatrix.arrayfire")
+                     Q_brd, u_B, PACKAGE = "amatrix.arrayfire")
     } else {
-      U_out <- Q_brd %*% sv_B$u
+      U_out <- Q_brd %*% u_B
     }
   }
 
@@ -431,16 +446,16 @@ amatrix_arrayfire_bdc_svd <- function(x, nu, nv) {
                     "P", brd$a, brd$taup, k, n, m,   # K = m (rows of original)
                     PACKAGE = "amatrix.arrayfire")
     storage.mode(Pt_brd) <- "double"
-    # crossprod(A, B) = t(A) %*% B, so t(P^T) %*% sv_B$v = P %*% sv_B$v
+    # crossprod(A, B) = t(A) %*% B, so t(P^T) %*% v_B = P %*% v_B
     if (n * nv_eff >= gemm_min * gemm_min) {
       V_out <- .Call("amatrix_arrayfire_crossprod_correct_bridge",
-                     Pt_brd, sv_B$v, PACKAGE = "amatrix.arrayfire")
+                     Pt_brd, v_B, PACKAGE = "amatrix.arrayfire")
     } else {
-      V_out <- crossprod(Pt_brd, sv_B$v)
+      V_out <- crossprod(Pt_brd, v_B)
     }
   }
 
-  list(u = U_out, d = sv_B$d, v = V_out)
+  list(u = U_out, d = d_B, v = V_out)
 }
 
 # Layer 1: R-QR + GPU matmul SVD — always safe.
@@ -708,6 +723,10 @@ amatrix_arrayfire_backend <- function() {
         return(TRUE)
       }
 
+      if (identical(op, "segment_sum") || identical(op, "segment_mean")) {
+        return(TRUE)
+      }
+
       if (op %in% c("rowSums", "colSums")) {
         return(.amatrix_arrayfire_meets_threshold(x, thresholds$sum_min_dim))
       }
@@ -755,6 +774,12 @@ amatrix_arrayfire_backend <- function() {
     },
     scatter_mean_resident = function(x_key, labels, K) {
       amatrix_arrayfire_scatter_mean(x_key, labels, K)
+    },
+    segment_sum_resident = function(x_key, labels, K, out_key) {
+      amatrix_arrayfire_segment_sum(x_key, labels, K, out_key)
+    },
+    segment_mean_resident = function(x_key, labels, K, out_key) {
+      amatrix_arrayfire_segment_mean(x_key, labels, K, out_key)
     },
     rowargmax_resident = function(x_key) amatrix_arrayfire_argreduce(x_key, 1L, TRUE),
     rowargmin_resident = function(x_key) amatrix_arrayfire_argreduce(x_key, 1L, FALSE),

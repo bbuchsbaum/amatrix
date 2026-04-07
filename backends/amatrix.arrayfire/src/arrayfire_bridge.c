@@ -852,6 +852,103 @@ SEXP amatrix_arrayfire_scatter_mean_bridge(SEXP lhs_key, SEXP labels_r, SEXP K_r
 #endif
 }
 
+/* ── segment_sum / segment_mean (amatrix-ylo) ────────────────────────────── */
+
+SEXP amatrix_arrayfire_segment_sum_bridge(SEXP x_key, SEXP labels_r, SEXP K_r, SEXP out_key) {
+#ifdef HAVE_ARRAYFIRE
+  if (!isString(x_key) || LENGTH(x_key) != 1)
+    error("x_key must be a scalar string");
+  amatrix_af_resident_entry* ex = amatrix_af_registry_find(CHAR(STRING_ELT(x_key, 0)));
+  if (ex == NULL) error("arrayfire segment_sum: resident key not found");
+
+  dim_t dims[4] = {0, 0, 0, 0};
+  af_get_dims(&dims[0], &dims[1], &dims[2], &dims[3], ex->array);
+  int n = (int)dims[0], p = (int)dims[1];
+  int K = INTEGER(K_r)[0];
+  const int* labels = INTEGER(labels_r);
+
+  /* W (n×K) col-major: W[i, k] = 1.0 if labels[i]-1 == k */
+  float* w_buf = (float*)arrayfire_xmalloc((size_t)n * (size_t)K * sizeof(float));
+  memset(w_buf, 0, (size_t)n * (size_t)K * sizeof(float));
+  for (int i = 0; i < n; i++) {
+    int k = labels[i] - 1;
+    if (k >= 0 && k < K) w_buf[(size_t)k * n + i] = 1.0f;
+  }
+  dim_t wdims[2] = {(dim_t)n, (dim_t)K};
+  af_array W = 0;
+  af_err err = af_create_array(&W, w_buf, 2, wdims, f32);
+  free(w_buf);
+  if (err != AF_SUCCESS) error("arrayfire segment_sum: af_create_array failed");
+
+  /* sums = W^T %*% X : [K,n] × [n,p] → [K,p] */
+  amatrix_af_resident_entry* eout = amatrix_af_registry_reserve(CHAR(STRING_ELT(out_key, 0)));
+  err = af_matmul(&eout->array, W, ex->array, AF_MAT_TRANS, AF_MAT_NONE);
+  af_release_array(W);
+  if (err != AF_SUCCESS) error("arrayfire segment_sum: af_matmul failed");
+  return ScalarLogical(1);
+#else
+  error("arrayfire segment_sum requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
+SEXP amatrix_arrayfire_segment_mean_bridge(SEXP x_key, SEXP labels_r, SEXP K_r, SEXP out_key) {
+#ifdef HAVE_ARRAYFIRE
+  if (!isString(x_key) || LENGTH(x_key) != 1)
+    error("x_key must be a scalar string");
+  amatrix_af_resident_entry* ex = amatrix_af_registry_find(CHAR(STRING_ELT(x_key, 0)));
+  if (ex == NULL) error("arrayfire segment_mean: resident key not found");
+
+  dim_t dims[4] = {0, 0, 0, 0};
+  af_get_dims(&dims[0], &dims[1], &dims[2], &dims[3], ex->array);
+  int n = (int)dims[0], p = (int)dims[1];
+  int K = INTEGER(K_r)[0];
+  const int* labels = INTEGER(labels_r);
+
+  /* W (n×K) + counts (K) */
+  float* w_buf   = (float*)arrayfire_xmalloc((size_t)n * (size_t)K * sizeof(float));
+  float* cnt_buf = (float*)arrayfire_xmalloc((size_t)K * sizeof(float));
+  memset(w_buf,   0, (size_t)n * (size_t)K * sizeof(float));
+  memset(cnt_buf, 0, (size_t)K * sizeof(float));
+  for (int i = 0; i < n; i++) {
+    int k = labels[i] - 1;
+    if (k >= 0 && k < K) {
+      w_buf[(size_t)k * n + i] = 1.0f;
+      cnt_buf[k] += 1.0f;
+    }
+  }
+  dim_t wdims[2] = {(dim_t)n, (dim_t)K};
+  af_array W = 0;
+  af_err err = af_create_array(&W, w_buf, 2, wdims, f32);
+  free(w_buf);
+  if (err != AF_SUCCESS) { free(cnt_buf); error("arrayfire segment_mean: W create failed"); }
+
+  /* sums = W^T %*% X : [K,p] */
+  af_array sums = 0;
+  err = af_matmul(&sums, W, ex->array, AF_MAT_TRANS, AF_MAT_NONE);
+  af_release_array(W);
+  if (err != AF_SUCCESS) { free(cnt_buf); error("arrayfire segment_mean: af_matmul failed"); }
+
+  /* counts as K×1 AF array */
+  dim_t cdims[2] = {(dim_t)K, 1};
+  af_array counts = 0;
+  err = af_create_array(&counts, cnt_buf, 2, cdims, f32);
+  free(cnt_buf);
+  if (err != AF_SUCCESS) { af_release_array(sums); error("arrayfire segment_mean: counts create failed"); }
+
+  /* means = sums / counts (K×p / K×1 broadcast; 0/0 → NaN for empty clusters) */
+  amatrix_af_resident_entry* eout = amatrix_af_registry_reserve(CHAR(STRING_ELT(out_key, 0)));
+  err = af_div(&eout->array, sums, counts, true);
+  af_release_array(sums);
+  af_release_array(counts);
+  if (err != AF_SUCCESS) error("arrayfire segment_mean: af_div failed");
+  return ScalarLogical(1);
+#else
+  error("arrayfire segment_mean requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
 SEXP amatrix_arrayfire_argreduce_bridge(SEXP lhs_key, SEXP axis_r, SEXP is_max_r) {
 #ifdef HAVE_ARRAYFIRE
   if (!isString(lhs_key) || LENGTH(lhs_key) != 1)
@@ -2252,4 +2349,80 @@ SEXP amatrix_arrayfire_bdc_orgbr_bridge(SEXP vect_r, SEXP A_r, SEXP tau_r,
 
   UNPROTECT(1);
   return out;
+}
+
+/* ── LAPACK dbdsdc: bidiagonal divide-and-conquer SVD ───────────────────────
+ *
+ * Computes the SVD of a real bidiagonal matrix B directly from its diagonal
+ * and off-diagonal vectors, without requiring B to be materialised as a full
+ * matrix.  This is 5-10× faster than calling dgesdd on the equivalent dense
+ * bidiagonal matrix.
+ *
+ * Arguments:
+ *   d_r    — real vector, length N: main diagonal of B (overwritten with
+ *             singular values in decreasing order on output)
+ *   e_r    — real vector, length N-1: off-diagonal of B
+ *             (upper bidiagonal → superdiagonal; lower bidiagonal → subdiag)
+ *   uplo_r — "U" (upper bidiagonal) or "L" (lower bidiagonal)
+ *
+ * Returns a named list: list(d, u, vt)
+ *   d  — N singular values (decreasing)
+ *   u  — N×N left  singular vector matrix (column per vector)
+ *   vt — N×N right singular vector matrix as V^T (row per vector)
+ * ─────────────────────────────────────────────────────────────────────────── */
+SEXP amatrix_arrayfire_bdc_dbdsdc_bridge(SEXP d_r, SEXP e_r, SEXP uplo_r) {
+  if (!isReal(d_r))
+    error("bdc_dbdsdc: d must be a real vector");
+  if (TYPEOF(uplo_r) != STRSXP || length(uplo_r) < 1)
+    error("bdc_dbdsdc: uplo must be a length-1 character string");
+
+  const char *uplo = CHAR(STRING_ELT(uplo_r, 0));
+  int N = (int) length(d_r);
+
+  /* Working copy of d (dbdsdc overwrites it with singular values) */
+  SEXP d_out = PROTECT(allocVector(REALSXP, N));
+  memcpy(REAL(d_out), REAL(d_r), (size_t)N * sizeof(double));
+
+  /* Working copy of e (dbdsdc overwrites it) */
+  int e_len = (N > 1) ? N - 1 : 0;
+  double *e_work = (double *) R_alloc(e_len > 0 ? e_len : 1, sizeof(double));
+  if (e_len > 0) memcpy(e_work, REAL(e_r), (size_t)e_len * sizeof(double));
+
+  /* Output matrices: U (N×N) and VT (N×N) */
+  SEXP U_out  = PROTECT(allocMatrix(REALSXP, N, N));
+  SEXP VT_out = PROTECT(allocMatrix(REALSXP, N, N));
+
+  /* Workspace: COMPQ='I' requires LWORK >= max(1, 3*N^2 + 4*N),
+   * LIWORK >= 8*N (from LAPACK dbdsdc documentation). */
+  int lwork  = (N > 0) ? (3 * N * N + 4 * N) : 1;
+  int liwork = (N > 0) ? (8 * N) : 1;
+  double *work  = (double *) R_alloc((size_t)lwork,  sizeof(double));
+  int    *iwork = (int *)    R_alloc((size_t)liwork, sizeof(int));
+
+  /* Dummy Q / IQ (only used when COMPQ='P') */
+  double dum_q  = 0.0;
+  int    dum_iq = 0;
+  int    info   = 0;
+
+  F77_CALL(dbdsdc)(uplo, "I", &N,
+                   REAL(d_out), e_work,
+                   REAL(U_out),  &N,
+                   REAL(VT_out), &N,
+                   &dum_q, &dum_iq, work, iwork, &info,
+                   (size_t)1, (size_t)1);
+  if (info != 0)
+    error("dbdsdc failed with INFO = %d", info);
+
+  /* Build return list */
+  SEXP result = PROTECT(allocVector(VECSXP, 3));
+  SEXP names  = PROTECT(allocVector(STRSXP, 3));
+  SET_STRING_ELT(names, 0, mkChar("d"));
+  SET_STRING_ELT(names, 1, mkChar("u"));
+  SET_STRING_ELT(names, 2, mkChar("vt"));
+  setAttrib(result, R_NamesSymbol, names);
+  SET_VECTOR_ELT(result, 0, d_out);
+  SET_VECTOR_ELT(result, 1, U_out);
+  SET_VECTOR_ELT(result, 2, VT_out);
+  UNPROTECT(5); /* d_out, U_out, VT_out, result, names */
+  return result;
 }
