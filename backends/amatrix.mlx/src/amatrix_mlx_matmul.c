@@ -3820,3 +3820,72 @@ SEXP amatrix_mlx_svd_bridge(SEXP x_r, SEXP nu_r, SEXP nv_r) {
   return R_NilValue;
 #endif
 }
+
+/* ── Sparse×Dense matrix multiply (SpMM) ────────────────────────────────────
+ *
+ * CPU-based CSC SpMM: avoids densifying the sparse matrix.
+ * Accepts dgCMatrix CSC slots + dense RHS, computes X %*% B or t(X) %*% B.
+ *
+ * Arguments:
+ *   values_r    REALSXP  — NNZ values      (dgCMatrix @x)
+ *   p_r         INTSXP   — col pointers    (dgCMatrix @p, length ncol+1)
+ *   i_r         INTSXP   — row indices     (dgCMatrix @i, 0-based, length NNZ)
+ *   dim_r       INTSXP   — c(nrow, ncol)   (dgCMatrix @Dim)
+ *   B_r         REALSXP  — dense RHS matrix
+ *   trans_lhs_r LGLSXP   — TRUE → compute t(X) %*% B
+ */
+SEXP amatrix_mlx_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r,
+                               SEXP dim_r, SEXP B_r, SEXP trans_lhs_r) {
+  if (!isReal(values_r))
+    error("spmm: values must be a real vector");
+  if (TYPEOF(i_r) != INTSXP)
+    error("spmm: row indices must be integer");
+  if (TYPEOF(p_r) != INTSXP)
+    error("spmm: col pointers must be integer");
+  if (TYPEOF(dim_r) != INTSXP || length(dim_r) != 2)
+    error("spmm: dim must be integer[2]");
+  if (!isReal(B_r) || !isMatrix(B_r))
+    error("spmm: B must be a real matrix");
+
+  SEXP B_dim  = getAttrib(B_r, R_DimSymbol);
+  int  B_nrow = INTEGER(B_dim)[0];
+  int  B_ncol = INTEGER(B_dim)[1];
+  int  X_nrow = INTEGER(dim_r)[0];
+  int  X_ncol = INTEGER(dim_r)[1];
+  int  trans  = asLogical(trans_lhs_r);
+  int  out_nrow = trans ? X_ncol : X_nrow;
+
+  (void)B_nrow;
+
+  SEXP out_r = PROTECT(allocMatrix(REALSXP, out_nrow, B_ncol));
+  double *res = REAL(out_r);
+  memset(res, 0, (size_t)out_nrow * (size_t)B_ncol * sizeof(double));
+
+  const double *xdata = REAL(values_r);
+  const double *bdata = REAL(B_r);
+  const int    *xi    = INTEGER(i_r);
+  const int    *xp    = INTEGER(p_r);
+
+  if (!trans) {
+    for (int j = 0; j < X_ncol; j++) {
+      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+        int    ri = xi[sp];
+        double v  = xdata[sp];
+        for (int cb = 0; cb < B_ncol; cb++)
+          res[ri + (size_t)out_nrow * cb] += v * bdata[j + (size_t)X_ncol * cb];
+      }
+    }
+  } else {
+    for (int j = 0; j < X_ncol; j++) {
+      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+        int    ri = xi[sp];
+        double v  = xdata[sp];
+        for (int cb = 0; cb < B_ncol; cb++)
+          res[j + (size_t)out_nrow * cb] += v * bdata[ri + (size_t)X_nrow * cb];
+      }
+    }
+  }
+
+  UNPROTECT(1);
+  return out_r;
+}

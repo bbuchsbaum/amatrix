@@ -6,7 +6,7 @@ amatrix_mlx_capabilities <- function() {
 
 amatrix_mlx_features <- function() {
   c("dense_f32", "resident_dense", "unified_memory", "custom_ops",
-    "qr", "rsvd", "chol_gpu", "batched_trsm", "eigen_sym")
+    "qr", "rsvd", "chol_gpu", "batched_trsm", "eigen_sym", "sparse_spmm")
 }
 
 amatrix_mlx_precision_modes <- function() {
@@ -80,6 +80,18 @@ amatrix_mlx_tcrossprod <- function(x, y = NULL) {
   }
 
   .Call("amatrix_mlx_tcrossprod_bridge", x_mat, y_mat)
+}
+
+amatrix_mlx_spmm <- function(x_sp, y, trans_lhs = FALSE) {
+  # x_sp: dgCMatrix (materialized from adgCMatrix via amatrix_materialize_host)
+  # y:    dense host matrix
+  # trans_lhs=TRUE: compute t(x_sp) %*% y; FALSE: x_sp %*% y
+  y_mat <- if (is.matrix(y)) y else as.matrix(y)
+  if (!is.double(y_mat)) storage.mode(y_mat) <- "double"
+  .Call("amatrix_mlx_spmm_bridge",
+        as.double(x_sp@x), as.integer(x_sp@p), as.integer(x_sp@i),
+        as.integer(x_sp@Dim), y_mat, as.logical(trans_lhs),
+        PACKAGE = "amatrix.mlx")
 }
 
 amatrix_mlx_ewise <- function(lhs, rhs = NULL, op) {
@@ -856,6 +868,7 @@ amatrix_mlx_backend <- function() {
   features <- amatrix_mlx_features()
   precision_modes <- amatrix_mlx_precision_modes()
   thresholds <- .amatrix_mlx_product_thresholds()
+  sparse_cache <- new.env(parent = emptyenv())
 
   list(
     capabilities = function() {
@@ -871,6 +884,14 @@ amatrix_mlx_backend <- function() {
       amatrix_mlx_is_available()
     },
     supports = function(op, x, y = NULL) {
+      # ── Sparse SpMM path ─────────────────────────────────────────────────
+      if (is(x, "adgCMatrix")) {
+        if (!(op %in% c("matmul", "crossprod", "tcrossprod"))) return(FALSE)
+        if (op %in% c("crossprod", "tcrossprod") && is.null(y)) return(FALSE)
+        nnz <- length(x@x)
+        return(nnz >= getOption("amatrix.mlx.spmm_min_nnz", 10000L))
+      }
+
       if (!is(x, "adgeMatrix") || !(op %in% capabilities)) {
         return(FALSE)
       }
@@ -924,12 +945,24 @@ amatrix_mlx_backend <- function() {
       TRUE
     },
     matmul = function(x, y) {
+      if (inherits(x, "dgCMatrix"))
+        return(amatrix_mlx_spmm(x, y, trans_lhs = FALSE))
       amatrix_mlx_matmul(x, y)
     },
     crossprod = function(x, y = NULL, ...) {
+      if (inherits(x, "dgCMatrix")) {
+        y_mat <- if (is.matrix(y)) y else as.matrix(y)
+        if (!is.double(y_mat)) storage.mode(y_mat) <- "double"
+        return(amatrix_mlx_spmm(x, y_mat, trans_lhs = TRUE))
+      }
       amatrix_mlx_crossprod(x, y = y)
     },
     tcrossprod = function(x, y = NULL, ...) {
+      if (inherits(x, "dgCMatrix")) {
+        y_mat <- if (is.matrix(y)) y else as.matrix(y)
+        if (!is.double(y_mat)) storage.mode(y_mat) <- "double"
+        return(amatrix_mlx_spmm(x, t(y_mat), trans_lhs = FALSE))
+      }
       amatrix_mlx_tcrossprod(x, y = y)
     },
     ewise = function(x, lhs, rhs = NULL, op, ...) {
@@ -1040,6 +1073,23 @@ amatrix_mlx_backend <- function() {
     },
     covariance = function(x, center = TRUE, denom) {
       amatrix_mlx_covariance(x, center = center, denom = denom)
+    },
+    sparse_resident_store = function(key, x_sp) {
+      assign(key, x_sp, envir = sparse_cache)
+      invisible(TRUE)
+    },
+    sparse_resident_has = function(key) {
+      exists(key, envir = sparse_cache, inherits = FALSE)
+    },
+    sparse_resident_drop = function(key) {
+      if (exists(key, envir = sparse_cache, inherits = FALSE))
+        rm(list = key, envir = sparse_cache)
+      invisible(TRUE)
+    },
+    spmm_resident = function(sp_key, B, trans_lhs = FALSE) {
+      x_sp <- get0(sp_key, envir = sparse_cache, inherits = FALSE)
+      if (is.null(x_sp)) stop("mlx sparse resident key not found: ", sp_key)
+      amatrix_mlx_spmm(x_sp, B, trans_lhs = trans_lhs)
     }
   )
 }
