@@ -25,6 +25,7 @@ test_that("arrayfire capability list is stable and explicit", {
   expect_identical(
     amatrix_arrayfire_capabilities(),
     c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax",
+      "scatter_mean",
       "rowSums", "colSums",
       "qr", "rsvd", "chol", "solve", "covariance", "svd")
   )
