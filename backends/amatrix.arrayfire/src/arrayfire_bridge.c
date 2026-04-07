@@ -1967,6 +1967,146 @@ SEXP am_af_kernel_bridge(SEXP X_r, SEXP Y_r, SEXP kernel_r,
 #endif
 }
 
+/* ── am_af_kernel_resident_bridge: compute kernel, store in resident registry ─
+ * Same computation as am_af_kernel_bridge but stores K as a resident af_array
+ * instead of downloading to R.  Eliminates the CPU round-trip when the caller
+ * will immediately use the result as a GPU operand.
+ *
+ * zero_diag_r: logical; if TRUE and Y is NULL (self-kernel), zeros the diagonal
+ * on GPU before storing (avoids a separate diag<-0 + re-upload cycle).
+ */
+SEXP am_af_kernel_resident_bridge(SEXP out_key_r, SEXP X_r, SEXP Y_r,
+                                   SEXP kernel_r, SEXP sigma_r,
+                                   SEXP degree_r, SEXP coef_r,
+                                   SEXP zero_diag_r) {
+#ifdef HAVE_ARRAYFIRE
+  if (!isString(out_key_r) || LENGTH(out_key_r) != 1)
+    error("out_key must be a scalar string");
+  if (!isString(kernel_r) || LENGTH(kernel_r) != 1)
+    error("kernel must be a scalar string");
+  const char* out_key = CHAR(STRING_ELT(out_key_r, 0));
+  const char* kern    = CHAR(STRING_ELT(kernel_r, 0));
+  double sigma        = asReal(sigma_r);
+  int    degree       = asInteger(degree_r);
+  double coef_val     = asReal(coef_r);
+  int    do_zero_diag = asLogical(zero_diag_r);
+  dim_t  sc_dims[1]   = {1};
+
+  if (!isReal(X_r) || !isMatrix(X_r)) error("X must be a numeric matrix");
+  int pX = INTEGER(getAttrib(X_r, R_DimSymbol))[1];
+  int own_Y = !isNull(Y_r);
+  if (own_Y) {
+    if (!isReal(Y_r) || !isMatrix(Y_r)) error("Y must be a numeric matrix or NULL");
+    if (INTEGER(getAttrib(Y_r, R_DimSymbol))[1] != pX)
+      error("X and Y must have the same number of columns");
+  }
+
+  af_array ax = af_dist_upload(X_r);
+  af_array ay = own_Y ? af_dist_upload(Y_r) : ax;
+  af_array K  = 0;
+  af_err err  = AF_SUCCESS;
+
+  if (strcmp(kern, "linear") == 0) {
+    err = af_matmul(&K, ax, ay, AF_MAT_NONE, AF_MAT_TRANS);
+
+  } else if (strcmp(kern, "rbf") == 0) {
+    af_array D_sq = 0, sc = 0, neg_D = 0;
+    err = af_dist_sq_colmaj(&D_sq, ax, ay);
+    if (err == AF_SUCCESS) err = af_constant(&sc, -1.0/(2.0*sigma*sigma), 1, sc_dims, f32);
+    if (err == AF_SUCCESS) err = af_mul(&neg_D, D_sq, sc, true);
+    if (D_sq) af_release_array(D_sq); if (sc) af_release_array(sc);
+    if (err == AF_SUCCESS) err = af_exp(&K, neg_D);
+    if (neg_D) af_release_array(neg_D);
+
+  } else if (strcmp(kern, "laplacian") == 0) {
+    af_array D_sq = 0, D = 0, sc = 0, neg_D = 0;
+    err = af_dist_sq_colmaj(&D_sq, ax, ay);
+    if (err == AF_SUCCESS) err = af_sqrt(&D, D_sq);
+    if (D_sq) af_release_array(D_sq);
+    if (err == AF_SUCCESS) err = af_constant(&sc, -1.0/sigma, 1, sc_dims, f32);
+    if (err == AF_SUCCESS) err = af_mul(&neg_D, D, sc, true);
+    if (D) af_release_array(D); if (sc) af_release_array(sc);
+    if (err == AF_SUCCESS) err = af_exp(&K, neg_D);
+    if (neg_D) af_release_array(neg_D);
+
+  } else if (strcmp(kern, "polynomial") == 0) {
+    af_array G = 0, Gs = 0, ca = 0, da = 0;
+    err = af_matmul(&G, ax, ay, AF_MAT_NONE, AF_MAT_TRANS);
+    if (err == AF_SUCCESS) err = af_constant(&ca, coef_val, 1, sc_dims, f32);
+    if (err == AF_SUCCESS) err = af_add(&Gs, G, ca, true);
+    if (G) af_release_array(G); if (ca) af_release_array(ca);
+    if (err == AF_SUCCESS) err = af_constant(&da, (double)degree, 1, sc_dims, f32);
+    if (err == AF_SUCCESS) err = af_pow(&K, Gs, da, true);
+    if (Gs) af_release_array(Gs); if (da) af_release_array(da);
+
+  } else if (strcmp(kern, "cosine") == 0) {
+    af_array G = 0, X2 = 0, nx = 0, Y2 = 0, ny = 0, ny_t = 0;
+    af_array nxny = 0, nrm = 0, ea = 0, nrm2 = 0;
+    err = af_matmul(&G, ax, ay, AF_MAT_NONE, AF_MAT_TRANS);
+    if (err == AF_SUCCESS) err = af_mul(&X2, ax, ax, false);
+    if (err == AF_SUCCESS) err = af_sum(&nx, X2, 1);
+    if (X2) af_release_array(X2);
+    if (err == AF_SUCCESS) err = af_mul(&Y2, ay, ay, false);
+    if (err == AF_SUCCESS) err = af_sum(&ny, Y2, 1);
+    if (Y2) af_release_array(Y2);
+    if (err == AF_SUCCESS) err = af_transpose(&ny_t, ny, false);
+    if (ny) af_release_array(ny);
+    if (err == AF_SUCCESS) err = af_mul(&nxny, nx, ny_t, true);
+    if (nx) af_release_array(nx); if (ny_t) af_release_array(ny_t);
+    if (err == AF_SUCCESS) err = af_sqrt(&nrm, nxny);
+    if (nxny) af_release_array(nxny);
+    if (err == AF_SUCCESS) err = af_constant(&ea, 1e-12, 1, sc_dims, f32);
+    if (err == AF_SUCCESS) err = af_add(&nrm2, nrm, ea, true);
+    if (nrm) af_release_array(nrm); if (ea) af_release_array(ea);
+    if (err == AF_SUCCESS) err = af_div(&K, G, nrm2, false);
+    if (G) af_release_array(G); if (nrm2) af_release_array(nrm2);
+
+  } else {
+    if (own_Y) af_release_array(ay);
+    af_release_array(ax);
+    error("unknown kernel '%s': use linear/rbf/laplacian/polynomial/cosine", kern);
+    return R_NilValue;
+  }
+
+  if (own_Y) af_release_array(ay);
+  af_release_array(ax);
+  if (err != AF_SUCCESS) {
+    if (K) af_release_array(K);
+    error("am_af_kernel_resident: computation failed (AF error %d)", (int)err);
+  }
+
+  /* Zero diagonal on GPU — avoids the diag(W)<-0 + re-upload round-trip */
+  if (do_zero_diag && !own_Y && K != 0) {
+    dim_t k_dims[4] = {0, 0, 0, 0};
+    af_get_dims(&k_dims[0], &k_dims[1], &k_dims[2], &k_dims[3], K);
+    dim_t eye_d[2] = {k_dims[0], k_dims[1]};
+    af_array eye_m = 0, one_sc = 0, mask = 0, K_out = 0;
+    dim_t sc1[1] = {1};
+    af_err ze = af_identity(&eye_m, 2, eye_d, f32);
+    if (ze == AF_SUCCESS) ze = af_constant(&one_sc, 1.0, 1, sc1, f32);
+    if (ze == AF_SUCCESS) ze = af_sub(&mask, one_sc, eye_m, true);
+    if (one_sc) af_release_array(one_sc);
+    if (eye_m)  af_release_array(eye_m);
+    if (ze == AF_SUCCESS) {
+      ze = af_mul(&K_out, K, mask, false);
+      af_release_array(mask);
+      af_release_array(K);
+      K = K_out;
+    } else {
+      if (mask) af_release_array(mask);
+      /* zero_diag failed — continue without zeroing rather than error */
+    }
+  }
+
+  /* Store in resident registry — caller owns the key and must drop it */
+  amatrix_af_resident_entry* e = amatrix_af_registry_reserve(out_key);
+  e->array = K;
+  return ScalarLogical(1);
+#else
+  error("am_af_kernel_resident requires ArrayFire"); return R_NilValue;
+#endif
+}
+
 /* ── amatrix_arrayfire_matmul_correct_bridge(A, B) → A %*% B ─────────── */
 SEXP amatrix_arrayfire_matmul_correct_bridge(SEXP A_r, SEXP B_r) {
   if (!isReal(A_r) || !isMatrix(A_r) || !isReal(B_r) || !isMatrix(B_r))
@@ -2425,4 +2565,128 @@ SEXP amatrix_arrayfire_bdc_dbdsdc_bridge(SEXP d_r, SEXP e_r, SEXP uplo_r) {
   SET_VECTOR_ELT(result, 2, VT_out);
   UNPROTECT(5); /* d_out, U_out, VT_out, result, names */
   return result;
+}
+
+/* ── Sparse×Dense matrix multiply (SpMM) ────────────────────────────────────
+ *
+ * Accepts a dgCMatrix (CSC: values/@x, col-ptrs/@p, row-idx/@i) plus a dense
+ * RHS matrix B, then computes:
+ *   trans_lhs=FALSE :  X %*% B
+ *   trans_lhs=TRUE  :  t(X) %*% B
+ * via ArrayFire af_sparse_matmul (sparse×dense, GPU-accelerated).
+ *
+ * Arguments
+ *   values_r    REALSXP  — NNZ values      (dgCMatrix @x)
+ *   p_r         INTSXP   — col pointers    (dgCMatrix @p, length ncol+1)
+ *   i_r         INTSXP   — row indices     (dgCMatrix @i, length NNZ)
+ *   dim_r       INTSXP   — c(nrow, ncol)   (dgCMatrix @Dim)
+ *   B_r         REALSXP  — dense RHS matrix
+ *   trans_lhs_r LGLSXP   — TRUE → compute t(X) %*% B
+ */
+SEXP amatrix_arrayfire_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r,
+                                    SEXP dim_r,    SEXP B_r, SEXP trans_lhs_r) {
+  if (!isReal(values_r))
+    error("spmm: values must be a real vector");
+  if (TYPEOF(i_r) != INTSXP)
+    error("spmm: row indices must be integer");
+  if (TYPEOF(p_r) != INTSXP)
+    error("spmm: col pointers must be integer");
+  if (TYPEOF(dim_r) != INTSXP || length(dim_r) != 2)
+    error("spmm: dim must be integer[2]");
+  if (!isReal(B_r) || !isMatrix(B_r))
+    error("spmm: B must be a real matrix");
+
+#ifdef HAVE_ARRAYFIRE
+  int    nrow      = INTEGER(dim_r)[0];
+  int    ncol      = INTEGER(dim_r)[1];
+  int    nnz       = (int)length(values_r);
+  int    trans_lhs = asLogical(trans_lhs_r);
+
+  /* float32 copy of values */
+  float *fval = (float *) arrayfire_xmalloc((size_t)nnz * sizeof(float));
+  const double *dval = REAL(values_r);
+  for (int k = 0; k < nnz; k++) fval[k] = (float)dval[k];
+
+  /* Build AF sparse array (CSC layout matches dgCMatrix exactly):
+   *   rowIdx = row indices (NNZ elements)
+   *   colIdx = col pointers (ncol+1 elements)                        */
+  af_array sp_arr = 0;
+  af_err err = af_create_sparse_array_from_ptr(
+      &sp_arr,
+      (dim_t)nrow, (dim_t)ncol, (dim_t)nnz,
+      fval,
+      INTEGER(i_r),   /* row indices */
+      INTEGER(p_r),   /* col pointers */
+      AF_STORAGE_CSC,
+      f32,
+      afHost);
+  free(fval);
+  if (err != AF_SUCCESS) {
+    error("af_create_sparse_array_from_ptr failed (err=%d)", (int)err);
+  }
+
+  /* Dense RHS — column-major path (amatrix_af_from_r) */
+  af_array B_af = amatrix_af_from_r(B_r);
+
+  /* SpMM */
+  af_array out = 0;
+  af_mat_prop opt_lhs = trans_lhs ? AF_MAT_TRANS : AF_MAT_NONE;
+  err = af_sparse_matmul(&out, sp_arr, B_af, opt_lhs, AF_MAT_NONE);
+  af_release_array(sp_arr);
+  af_release_array(B_af);
+  if (err != AF_SUCCESS) {
+    if (out) af_release_array(out);
+    error("af_sparse_matmul failed (err=%d)", (int)err);
+  }
+
+  SEXP result = amatrix_af_to_r(out);
+  af_release_array(out);
+  return result;
+
+#else
+  /* ── No-ArrayFire fallback: plain sparse CSC × dense ── */
+  SEXP B_dim  = getAttrib(B_r, R_DimSymbol);
+  int  B_nrow = INTEGER(B_dim)[0];
+  int  B_ncol = INTEGER(B_dim)[1];
+  int  X_nrow = INTEGER(dim_r)[0];
+  int  X_ncol = INTEGER(dim_r)[1];
+  int  trans  = asLogical(trans_lhs_r);
+  int  out_nrow = trans ? X_ncol : X_nrow;
+
+  (void)B_nrow;  /* suppress unused warning */
+
+  SEXP out_r = PROTECT(allocMatrix(REALSXP, out_nrow, B_ncol));
+  double *res   = REAL(out_r);
+  for (int k = 0; k < out_nrow * B_ncol; k++) res[k] = 0.0;
+
+  const double *xdata = REAL(values_r);
+  const double *bdata = REAL(B_r);
+  const int    *xi    = INTEGER(i_r);
+  const int    *xp    = INTEGER(p_r);
+
+  if (!trans) {
+    /* X %*% B : iterate CSC columns */
+    for (int j = 0; j < X_ncol; j++) {
+      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+        int    ri = xi[sp];
+        double v  = xdata[sp];
+        for (int cb = 0; cb < B_ncol; cb++)
+          res[ri + (size_t)out_nrow * cb] += v * bdata[j + (size_t)X_ncol * cb];
+      }
+    }
+  } else {
+    /* t(X) %*% B : col j of X → row j of t(X) */
+    for (int j = 0; j < X_ncol; j++) {
+      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+        int    ri = xi[sp];
+        double v  = xdata[sp];
+        for (int cb = 0; cb < B_ncol; cb++)
+          res[j + (size_t)out_nrow * cb] += v * bdata[ri + (size_t)X_nrow * cb];
+      }
+    }
+  }
+
+  UNPROTECT(1);
+  return out_r;
+#endif
 }

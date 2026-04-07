@@ -1,11 +1,11 @@
 amatrix_arrayfire_capabilities <- function() {
   c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean", "segment_sum", "segment_mean",
     "rowSums", "colSums",
-    "qr", "rsvd", "chol", "solve", "covariance", "svd")
+    "qr", "rsvd", "chol", "solve", "covariance", "svd", "kernel_resident")
 }
 
 amatrix_arrayfire_features <- function() {
-  c("dense_f32", "qr", "op_resident", "rsvd", "chol_gpu", "solve_gpu")
+  c("dense_f32", "qr", "op_resident", "rsvd", "chol_gpu", "solve_gpu", "sparse_spmm")
 }
 
 amatrix_arrayfire_lapack_available <- function() {
@@ -101,6 +101,18 @@ amatrix_arrayfire_tcrossprod <- function(x, y = NULL) {
         PACKAGE = "amatrix.arrayfire")
 }
 
+amatrix_arrayfire_spmm <- function(x_sp, y, trans_lhs = FALSE) {
+  # x_sp: dgCMatrix (materialized from adgCMatrix via amatrix_materialize_host)
+  # y:    dense host matrix
+  # trans_lhs=TRUE: compute t(x_sp) %*% y; FALSE: x_sp %*% y
+  y_mat <- if (is.matrix(y)) y else as.matrix(y)
+  if (!is.double(y_mat)) storage.mode(y_mat) <- "double"
+  .Call("amatrix_arrayfire_spmm_bridge",
+        as.double(x_sp@x), as.integer(x_sp@p), as.integer(x_sp@i),
+        as.integer(x_sp@Dim), y_mat, as.logical(trans_lhs),
+        PACKAGE = "amatrix.arrayfire")
+}
+
 amatrix_arrayfire_ewise <- function(lhs, rhs = NULL, op) {
   lhs_mat <- as.matrix(lhs)
   rhs_arg <- rhs
@@ -174,6 +186,17 @@ amatrix_arrayfire_tcrossprod_resident <- function(x_key, y_key = NULL, out_key) 
   rhs_key <- if (is.null(y_key)) NULL else as.character(y_key)
   .Call("amatrix_arrayfire_tcrossprod_resident_bridge",
         as.character(x_key), rhs_key, as.character(out_key))
+  amatrix_arrayfire_resident_materialize(out_key)
+}
+
+amatrix_arrayfire_kernel_resident <- function(out_key, X_mat, Y_mat = NULL,
+                                               kernel, sigma, degree, coef,
+                                               zero_diag = FALSE) {
+  .Call("am_af_kernel_resident_bridge",
+        as.character(out_key), X_mat, Y_mat, as.character(kernel),
+        as.double(sigma), as.integer(degree), as.double(coef),
+        as.logical(zero_diag),
+        PACKAGE = "amatrix.arrayfire")
   amatrix_arrayfire_resident_materialize(out_key)
 }
 
@@ -747,6 +770,17 @@ amatrix_arrayfire_backend <- function() {
       amatrix_arrayfire_is_available()
     },
     supports = function(op, x, y = NULL) {
+      # ── Sparse SpMM path ─────────────────────────────────────────────────
+      if (is(x, "adgCMatrix")) {
+        if (!(op %in% c("matmul", "crossprod", "tcrossprod"))) return(FALSE)
+        # crossprod/tcrossprod without y: result is square dense — CPU sparse
+        # BLAS (Matrix pkg) handles these well; no benefit to GPU round-trip.
+        if (op %in% c("crossprod", "tcrossprod") && is.null(y)) return(FALSE)
+        # Only route to GPU when NNZ is large enough to justify the upload cost.
+        nnz <- length(x@x)
+        return(nnz >= getOption("amatrix.arrayfire.spmm_min_nnz", 10000L))
+      }
+
       if (!is(x, "adgeMatrix") || !(op %in% capabilities)) {
         return(FALSE)
       }
@@ -824,12 +858,26 @@ amatrix_arrayfire_backend <- function() {
       FALSE
     },
     matmul = function(x, y) {
+      if (inherits(x, "dgCMatrix"))
+        return(amatrix_arrayfire_spmm(x, y, trans_lhs = FALSE))
       amatrix_arrayfire_matmul(x, y)
     },
     crossprod = function(x, y = NULL, ...) {
+      if (inherits(x, "dgCMatrix")) {
+        # y != NULL guaranteed by supports() (y=NULL falls back to CPU)
+        y_mat <- if (is.matrix(y)) y else as.matrix(y)
+        if (!is.double(y_mat)) storage.mode(y_mat) <- "double"
+        return(amatrix_arrayfire_spmm(x, y_mat, trans_lhs = TRUE))
+      }
       amatrix_arrayfire_crossprod(x, y = y)
     },
     tcrossprod = function(x, y = NULL, ...) {
+      if (inherits(x, "dgCMatrix")) {
+        # y != NULL guaranteed by supports(); compute X %*% t(Y) as SpMM(X, t(Y))
+        y_mat <- if (is.matrix(y)) y else as.matrix(y)
+        if (!is.double(y_mat)) storage.mode(y_mat) <- "double"
+        return(amatrix_arrayfire_spmm(x, t(y_mat), trans_lhs = FALSE))
+      }
       amatrix_arrayfire_tcrossprod(x, y = y)
     },
     ewise = function(x, lhs, rhs = NULL, op, ...) {
@@ -849,6 +897,11 @@ amatrix_arrayfire_backend <- function() {
     },
     segment_mean_resident = function(x_key, labels, K, out_key) {
       amatrix_arrayfire_segment_mean(x_key, labels, K, out_key)
+    },
+    kernel_resident = function(out_key, X_mat, Y_mat = NULL, kernel,
+                               sigma, degree, coef, zero_diag = FALSE) {
+      amatrix_arrayfire_kernel_resident(out_key, X_mat, Y_mat, kernel,
+                                        sigma, degree, coef, zero_diag)
     },
     rowargmax_resident = function(x_key) amatrix_arrayfire_argreduce(x_key, 1L, TRUE),
     rowargmin_resident = function(x_key) amatrix_arrayfire_argreduce(x_key, 1L, FALSE),

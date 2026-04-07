@@ -32,6 +32,7 @@ extern SEXP am_af_lbz_drop_A_bridge(void);
 extern SEXP am_af_lanczos_warm_bridge(SEXP V_warm_r, SEXP U_warm_r, SEXP p0_r, SEXP k_r);
 extern SEXP am_af_dist_sq_bridge(SEXP X_r, SEXP Y_r);
 extern SEXP am_af_kernel_bridge(SEXP X_r, SEXP Y_r, SEXP kernel_r, SEXP sigma_r, SEXP degree_r, SEXP coef_r);
+extern SEXP am_af_kernel_resident_bridge(SEXP out_key_r, SEXP X_r, SEXP Y_r, SEXP kernel_r, SEXP sigma_r, SEXP degree_r, SEXP coef_r, SEXP zero_diag_r);
 extern SEXP amatrix_arrayfire_matmul_correct_bridge(SEXP A_r, SEXP B_r);
 extern SEXP amatrix_arrayfire_crossprod_correct_bridge(SEXP A_r, SEXP B_r);
 extern SEXP amatrix_arrayfire_tcrossprod_correct_bridge(SEXP A_r, SEXP B_r);
@@ -46,6 +47,7 @@ extern SEXP amatrix_arrayfire_svd_safe_bridge(void);
 extern SEXP amatrix_arrayfire_bdc_bidiag_bridge(SEXP A_r);
 extern SEXP amatrix_arrayfire_bdc_orgbr_bridge(SEXP vect_r, SEXP A_r, SEXP tau_r, SEXP M_r, SEXP N_r, SEXP K_r);
 extern SEXP amatrix_arrayfire_bdc_dbdsdc_bridge(SEXP d_r, SEXP e_r, SEXP uplo_r);
+extern SEXP amatrix_arrayfire_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r, SEXP dim_r, SEXP B_r, SEXP trans_lhs_r);
 
 static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_native_available_bridge", (DL_FUNC) &amatrix_arrayfire_native_available_bridge, 0},
@@ -78,6 +80,7 @@ static const R_CallMethodDef call_methods[] = {
     {"am_af_lanczos_warm_bridge",                      (DL_FUNC) &am_af_lanczos_warm_bridge,                      4},
     {"am_af_dist_sq_bridge",                           (DL_FUNC) &am_af_dist_sq_bridge,                           2},
     {"am_af_kernel_bridge",                            (DL_FUNC) &am_af_kernel_bridge,                            6},
+    {"am_af_kernel_resident_bridge",                   (DL_FUNC) &am_af_kernel_resident_bridge,                   8},
     {"amatrix_arrayfire_matmul_correct_bridge",        (DL_FUNC) &amatrix_arrayfire_matmul_correct_bridge,        2},
     {"amatrix_arrayfire_crossprod_correct_bridge",     (DL_FUNC) &amatrix_arrayfire_crossprod_correct_bridge,     2},
     {"amatrix_arrayfire_tcrossprod_correct_bridge",    (DL_FUNC) &amatrix_arrayfire_tcrossprod_correct_bridge,    2},
@@ -92,6 +95,7 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_bdc_bidiag_bridge",            (DL_FUNC) &amatrix_arrayfire_bdc_bidiag_bridge,            1},
     {"amatrix_arrayfire_bdc_orgbr_bridge",             (DL_FUNC) &amatrix_arrayfire_bdc_orgbr_bridge,             6},
     {"amatrix_arrayfire_bdc_dbdsdc_bridge",            (DL_FUNC) &amatrix_arrayfire_bdc_dbdsdc_bridge,            3},
+    {"amatrix_arrayfire_spmm_bridge",                  (DL_FUNC) &amatrix_arrayfire_spmm_bridge,                  6},
     {NULL, NULL, 0}
 };
 
