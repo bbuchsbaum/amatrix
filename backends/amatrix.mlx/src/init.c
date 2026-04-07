@@ -41,6 +41,10 @@ extern SEXP amatrix_mlx_covariance_bridge(SEXP x_r, SEXP center_r, SEXP denom_r)
 extern SEXP amatrix_mlx_qr_Q_resident_bridge(SEXP x_key, SEXP q_out_key);
 extern SEXP amatrix_mlx_svd_bridge(SEXP x_r, SEXP nu_r, SEXP nv_r);
 extern SEXP amatrix_mlx_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r, SEXP dim_r, SEXP B_r, SEXP trans_lhs_r);
+extern SEXP amatrix_mlx_sparse_store_bridge(SEXP key_r, SEXP values_r, SEXP p_r, SEXP i_r, SEXP dim_r);
+extern SEXP amatrix_mlx_sparse_has_bridge(SEXP key_r);
+extern SEXP amatrix_mlx_sparse_drop_bridge(SEXP key_r);
+extern SEXP amatrix_mlx_spmm_resident_bridge(SEXP sp_key_r, SEXP B_r, SEXP trans_lhs_r);
 
 static const R_CallMethodDef call_methods[] = {
     {"amatrix_mlx_native_available_bridge", (DL_FUNC) &amatrix_mlx_native_available_bridge, 0},
@@ -82,6 +86,10 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_mlx_qr_Q_resident_bridge",  (DL_FUNC) &amatrix_mlx_qr_Q_resident_bridge,  2},
     {"amatrix_mlx_svd_bridge",            (DL_FUNC) &amatrix_mlx_svd_bridge,            3},
     {"amatrix_mlx_spmm_bridge",           (DL_FUNC) &amatrix_mlx_spmm_bridge,           6},
+    {"amatrix_mlx_sparse_store_bridge",   (DL_FUNC) &amatrix_mlx_sparse_store_bridge,   5},
+    {"amatrix_mlx_sparse_has_bridge",     (DL_FUNC) &amatrix_mlx_sparse_has_bridge,     1},
+    {"amatrix_mlx_sparse_drop_bridge",    (DL_FUNC) &amatrix_mlx_sparse_drop_bridge,    1},
+    {"amatrix_mlx_spmm_resident_bridge",  (DL_FUNC) &amatrix_mlx_spmm_resident_bridge,  3},
     {NULL, NULL, 0}
 };
 

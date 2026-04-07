@@ -510,6 +510,12 @@ am_solve <- function(a, b = NULL, ...) {
     if (is.null(b_arg)) return(base::solve(a, ...))
     return(base::solve(a, b = b_arg, ...))
   }
+  if (inherits(a, "adgCMatrix")) {
+    host <- amatrix_materialize_host(a)
+    if (is.null(b_arg)) return(Matrix::solve(host, ...))
+    b_mat <- if (inherits(b_arg, "adgCMatrix")) amatrix_materialize_host(b_arg) else b_arg
+    return(Matrix::solve(host, b_mat, ...))
+  }
   b_was_vector <- !is.null(b_arg) && is.numeric(b_arg) && is.null(dim(b_arg))
   choice <- .amatrix_backend_for(a, "solve", y = b_arg)
   resident <- .amatrix_try_resident_solve(a, b_arg, choice$name)
@@ -546,6 +552,10 @@ am_solve <- function(a, b = NULL, ...) {
 }
 
 am_chol <- function(x, ...) {
+  if (inherits(x, "adgCMatrix")) {
+    host <- amatrix_materialize_host(x)
+    return(Matrix::chol(host, ...))
+  }
   choice <- .amatrix_backend_for(x, "chol")
   resident <- .amatrix_try_resident_chol(x, choice$name)
   if (!is.null(resident)) {
@@ -565,6 +575,10 @@ am_chol <- function(x, ...) {
 }
 
 am_qr <- function(x, ...) {
+  if (inherits(x, "adgCMatrix")) {
+    host <- amatrix_materialize_host(x)
+    return(Matrix::qr(host, ...))
+  }
   qr_value <- amatrix_dispatch_op(
     x = x,
     op = "qr",

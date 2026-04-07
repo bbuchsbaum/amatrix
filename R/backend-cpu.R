@@ -19,7 +19,13 @@
       TRUE
     },
     matmul = function(x, y) {
-      x %*% y
+      if (inherits(x, "sparseMatrix") && inherits(y, "sparseMatrix")) {
+        result <- methods::as(x %*% y, "dgCMatrix")
+        return(new_adgCMatrix(result))
+      }
+      if (inherits(x, "sparseMatrix") || inherits(y, "sparseMatrix"))
+        return(as.matrix(x %*% y))
+      as.matrix(x) %*% as.matrix(y)
     },
     crossprod = function(x, y = NULL, ...) {
       if (inherits(x, "sparseMatrix")) {

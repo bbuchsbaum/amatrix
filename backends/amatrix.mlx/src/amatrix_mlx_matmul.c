@@ -86,6 +86,89 @@ static void amatrix_mlx_registry_drop(const char* key) {
 }
 #endif
 
+/* ── Sparse CSC resident store ─────────────────────────────────────────────
+ * Caches CSC arrays (values, col-pointers, row-indices, dims) in C memory
+ * so that repeated SpMM calls (e.g. irlba Lanczos iterations) avoid the
+ * R→C copy overhead on every call.
+ */
+typedef struct {
+  char*   key;
+  double* values;   /* NNZ values (col-major CSC) */
+  int*    p;        /* col pointers, length ncol+1 */
+  int*    i;        /* row indices,  length NNZ    */
+  int     nrow;
+  int     ncol;
+  int     nnz;
+  bool    in_use;
+} amatrix_mlx_sparse_entry;
+
+static amatrix_mlx_sparse_entry* amatrix_mlx_sparse_registry = NULL;
+static size_t amatrix_mlx_sparse_registry_capacity = 0;
+
+static void amatrix_mlx_sparse_registry_init(void) {
+  if (amatrix_mlx_sparse_registry != NULL) return;
+  amatrix_mlx_sparse_registry_capacity = 32;
+  amatrix_mlx_sparse_registry = (amatrix_mlx_sparse_entry*)
+      calloc(amatrix_mlx_sparse_registry_capacity, sizeof(amatrix_mlx_sparse_entry));
+  if (amatrix_mlx_sparse_registry == NULL)
+    error("failed to allocate mlx sparse residency registry");
+}
+
+static amatrix_mlx_sparse_entry* amatrix_mlx_sparse_registry_find(const char* key) {
+  amatrix_mlx_sparse_registry_init();
+  for (size_t idx = 0; idx < amatrix_mlx_sparse_registry_capacity; ++idx) {
+    if (amatrix_mlx_sparse_registry[idx].in_use &&
+        strcmp(amatrix_mlx_sparse_registry[idx].key, key) == 0)
+      return &amatrix_mlx_sparse_registry[idx];
+  }
+  return NULL;
+}
+
+static void amatrix_mlx_sparse_entry_free_data(amatrix_mlx_sparse_entry* entry) {
+  if (entry->values) { free(entry->values); entry->values = NULL; }
+  if (entry->p)      { free(entry->p);      entry->p = NULL; }
+  if (entry->i)      { free(entry->i);      entry->i = NULL; }
+  if (entry->key)    { free(entry->key);    entry->key = NULL; }
+  entry->in_use = false;
+}
+
+static amatrix_mlx_sparse_entry* amatrix_mlx_sparse_registry_reserve(const char* key) {
+  amatrix_mlx_sparse_entry* existing = amatrix_mlx_sparse_registry_find(key);
+  if (existing != NULL) {
+    /* Free old data, reuse slot */
+    if (existing->values) free(existing->values);
+    if (existing->p) free(existing->p);
+    if (existing->i) free(existing->i);
+    existing->values = NULL;
+    existing->p = NULL;
+    existing->i = NULL;
+    return existing;
+  }
+
+  amatrix_mlx_sparse_registry_init();
+  for (size_t idx = 0; idx < amatrix_mlx_sparse_registry_capacity; ++idx) {
+    if (!amatrix_mlx_sparse_registry[idx].in_use) {
+      amatrix_mlx_sparse_registry[idx].in_use = true;
+      amatrix_mlx_sparse_registry[idx].key = strdup(key);
+      amatrix_mlx_sparse_registry[idx].values = NULL;
+      amatrix_mlx_sparse_registry[idx].p = NULL;
+      amatrix_mlx_sparse_registry[idx].i = NULL;
+      if (amatrix_mlx_sparse_registry[idx].key == NULL)
+        error("failed to allocate mlx sparse resident key");
+      return &amatrix_mlx_sparse_registry[idx];
+    }
+  }
+
+  error("mlx sparse residency registry is full");
+  return NULL;
+}
+
+static void amatrix_mlx_sparse_registry_drop(const char* key) {
+  amatrix_mlx_sparse_entry* entry = amatrix_mlx_sparse_registry_find(key);
+  if (entry != NULL)
+    amatrix_mlx_sparse_entry_free_data(entry);
+}
+
 static void copy_r_to_row_major_float(float* out, const double* in, int nrow, int ncol) {
   for (int j = 0; j < ncol; ++j) {
     for (int i = 0; i < nrow; ++i) {
@@ -3865,6 +3948,121 @@ SEXP amatrix_mlx_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r,
   const double *bdata = REAL(B_r);
   const int    *xi    = INTEGER(i_r);
   const int    *xp    = INTEGER(p_r);
+
+  if (!trans) {
+    for (int j = 0; j < X_ncol; j++) {
+      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+        int    ri = xi[sp];
+        double v  = xdata[sp];
+        for (int cb = 0; cb < B_ncol; cb++)
+          res[ri + (size_t)out_nrow * cb] += v * bdata[j + (size_t)X_ncol * cb];
+      }
+    }
+  } else {
+    for (int j = 0; j < X_ncol; j++) {
+      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+        int    ri = xi[sp];
+        double v  = xdata[sp];
+        for (int cb = 0; cb < B_ncol; cb++)
+          res[j + (size_t)out_nrow * cb] += v * bdata[ri + (size_t)X_nrow * cb];
+      }
+    }
+  }
+
+  UNPROTECT(1);
+  return out_r;
+}
+
+/* ── Sparse residency bridge functions ────────────────────────────────────
+ * These cache CSC arrays in C memory so repeated SpMM calls (irlba etc.)
+ * avoid re-extracting R slots on every iteration.
+ */
+
+SEXP amatrix_mlx_sparse_store_bridge(SEXP key_r, SEXP values_r, SEXP p_r,
+                                      SEXP i_r, SEXP dim_r) {
+  if (!isReal(values_r))
+    error("sparse_store: values must be a real vector");
+  if (TYPEOF(i_r) != INTSXP)
+    error("sparse_store: row indices must be integer");
+  if (TYPEOF(p_r) != INTSXP)
+    error("sparse_store: col pointers must be integer");
+  if (TYPEOF(dim_r) != INTSXP || length(dim_r) != 2)
+    error("sparse_store: dim must be integer[2]");
+
+  const char* key = CHAR(asChar(key_r));
+  int nrow = INTEGER(dim_r)[0];
+  int ncol = INTEGER(dim_r)[1];
+  int nnz  = length(values_r);
+  int np   = length(p_r);   /* ncol + 1 */
+
+  amatrix_mlx_sparse_entry* entry = amatrix_mlx_sparse_registry_reserve(key);
+  entry->nrow = nrow;
+  entry->ncol = ncol;
+  entry->nnz  = nnz;
+
+  entry->values = (double*) malloc((size_t)nnz * sizeof(double));
+  entry->p      = (int*)    malloc((size_t)np  * sizeof(int));
+  entry->i      = (int*)    malloc((size_t)nnz * sizeof(int));
+  if (!entry->values || !entry->p || !entry->i) {
+    amatrix_mlx_sparse_entry_free_data(entry);
+    error("sparse_store: memory allocation failed");
+  }
+
+  memcpy(entry->values, REAL(values_r),    (size_t)nnz * sizeof(double));
+  memcpy(entry->p,      INTEGER(p_r),      (size_t)np  * sizeof(int));
+  memcpy(entry->i,      INTEGER(i_r),      (size_t)nnz * sizeof(int));
+
+  return ScalarLogical(1);
+}
+
+SEXP amatrix_mlx_sparse_has_bridge(SEXP key_r) {
+  const char* key = CHAR(asChar(key_r));
+  return ScalarLogical(amatrix_mlx_sparse_registry_find(key) != NULL);
+}
+
+SEXP amatrix_mlx_sparse_drop_bridge(SEXP key_r) {
+  const char* key = CHAR(asChar(key_r));
+  amatrix_mlx_sparse_registry_drop(key);
+  return ScalarLogical(1);
+}
+
+/* spmm_resident: retrieve cached CSC arrays and compute SpMM without
+ * any R object extraction overhead.
+ *
+ *   sp_key_r     STRSXP  — key into the sparse resident store
+ *   B_r          REALSXP — dense RHS matrix (column-major from R)
+ *   trans_lhs_r  LGLSXP  — TRUE → compute t(X) %*% B
+ *
+ * Returns: REALSXP matrix
+ */
+SEXP amatrix_mlx_spmm_resident_bridge(SEXP sp_key_r, SEXP B_r,
+                                       SEXP trans_lhs_r) {
+  const char* key = CHAR(asChar(sp_key_r));
+  amatrix_mlx_sparse_entry* entry = amatrix_mlx_sparse_registry_find(key);
+  if (entry == NULL)
+    error("spmm_resident: sparse key not found: %s", key);
+
+  if (!isReal(B_r) || !isMatrix(B_r))
+    error("spmm_resident: B must be a real matrix");
+
+  SEXP B_dim  = getAttrib(B_r, R_DimSymbol);
+  int  B_nrow = INTEGER(B_dim)[0];
+  int  B_ncol = INTEGER(B_dim)[1];
+  int  X_nrow = entry->nrow;
+  int  X_ncol = entry->ncol;
+  int  trans  = asLogical(trans_lhs_r);
+  int  out_nrow = trans ? X_ncol : X_nrow;
+
+  (void)B_nrow;
+
+  SEXP out_r = PROTECT(allocMatrix(REALSXP, out_nrow, B_ncol));
+  double *res = REAL(out_r);
+  memset(res, 0, (size_t)out_nrow * (size_t)B_ncol * sizeof(double));
+
+  const double *xdata = entry->values;
+  const double *bdata = REAL(B_r);
+  const int    *xi    = entry->i;
+  const int    *xp    = entry->p;
 
   if (!trans) {
     for (int j = 0; j < X_ncol; j++) {

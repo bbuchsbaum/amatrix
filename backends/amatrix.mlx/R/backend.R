@@ -868,8 +868,6 @@ amatrix_mlx_backend <- function() {
   features <- amatrix_mlx_features()
   precision_modes <- amatrix_mlx_precision_modes()
   thresholds <- .amatrix_mlx_product_thresholds()
-  sparse_cache <- new.env(parent = emptyenv())
-
   list(
     capabilities = function() {
       capabilities
@@ -1075,21 +1073,28 @@ amatrix_mlx_backend <- function() {
       amatrix_mlx_covariance(x, center = center, denom = denom)
     },
     sparse_resident_store = function(key, x_sp) {
-      assign(key, x_sp, envir = sparse_cache)
+      .Call("amatrix_mlx_sparse_store_bridge",
+            as.character(key),
+            as.double(x_sp@x), as.integer(x_sp@p), as.integer(x_sp@i),
+            as.integer(x_sp@Dim),
+            PACKAGE = "amatrix.mlx")
       invisible(TRUE)
     },
     sparse_resident_has = function(key) {
-      exists(key, envir = sparse_cache, inherits = FALSE)
+      .Call("amatrix_mlx_sparse_has_bridge", as.character(key),
+            PACKAGE = "amatrix.mlx")
     },
     sparse_resident_drop = function(key) {
-      if (exists(key, envir = sparse_cache, inherits = FALSE))
-        rm(list = key, envir = sparse_cache)
+      .Call("amatrix_mlx_sparse_drop_bridge", as.character(key),
+            PACKAGE = "amatrix.mlx")
       invisible(TRUE)
     },
     spmm_resident = function(sp_key, B, trans_lhs = FALSE) {
-      x_sp <- get0(sp_key, envir = sparse_cache, inherits = FALSE)
-      if (is.null(x_sp)) stop("mlx sparse resident key not found: ", sp_key)
-      amatrix_mlx_spmm(x_sp, B, trans_lhs = trans_lhs)
+      B_mat <- if (is.matrix(B)) B else as.matrix(B)
+      if (!is.double(B_mat)) storage.mode(B_mat) <- "double"
+      .Call("amatrix_mlx_spmm_resident_bridge",
+            as.character(sp_key), B_mat, as.logical(trans_lhs),
+            PACKAGE = "amatrix.mlx")
     }
   )
 }

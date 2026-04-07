@@ -556,6 +556,22 @@
 }
 
 covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_size = NULL) {
+  # Sparse path: avoid densifying large sparse matrices.
+  # Formula: cov(X) = (X^TX - n * mu * mu^T) / (n-1)
+  # X^TX via Matrix::crossprod (sparse BLAS, O(NNZ*p)); mu via Matrix::colMeans (O(NNZ)).
+  if (is.null(weights) && is.null(block_size) &&
+      (inherits(X, "sparseMatrix") || inherits(X, "adgCMatrix"))) {
+    n <- nrow(X)
+    denom <- if (isTRUE(sample)) n - 1L else n
+    if (denom <= 0L) stop("effective denominator must be positive")
+    XtX <- as.matrix(Matrix::crossprod(X))   # p x p dense result
+    if (isTRUE(center)) {
+      mu  <- Matrix::colMeans(X)             # length-p vector
+      XtX <- XtX - n * tcrossprod(mu)
+    }
+    return(XtX / denom)
+  }
+
   X_arg <- .amatrix_model_dense_arg(X)
   weights <- .amatrix_validate_weights(weights, nrow(X_arg))
 
