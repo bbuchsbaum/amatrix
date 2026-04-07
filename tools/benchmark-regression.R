@@ -69,10 +69,10 @@ run_size <- function(sz, backend) {
   cold <- bench::mark(
     matmul     = { invisible(aX_cold %*% B_host) },
     crossprod  = { invisible(crossprod(aX_cold)) },
-    covariance = { invisible(am_covariance(aX_cold)) },
-    dist       = { invisible(am_dist(Xs)) },
-    many_lm    = { invisible(am_many_lm(aX_cold, Y, method = "qr", cache = FALSE)) },
-    rsvd       = { invisible(am_rsvd(aX_cold, k = 10L)) },
+    covariance = { invisible(covariance(aX_cold)) },
+    dist       = { invisible(dist_matrix(Xs)) },
+    many_lm    = { invisible(many_lm(aX_cold, Y, method = "qr", cache = FALSE)) },
+    rsvd       = { invisible(rsvd(aX_cold, k = 10L)) },
     iterations = 10L,
     check      = FALSE,
     memory     = FALSE
@@ -91,10 +91,10 @@ run_size <- function(sz, backend) {
   warm <- bench::mark(
     matmul     = { invisible(aX_warm %*% aB_warm) },
     crossprod  = { invisible(crossprod(aX_warm)) },
-    covariance = { invisible(am_covariance(aX_warm)) },
-    dist       = { invisible(am_dist(Xs)) },
-    many_lm    = { invisible(am_many_lm(aX_warm, Y, method = "qr", cache = TRUE)) },
-    rsvd       = { invisible(am_rsvd(aX_warm, k = 10L)) },
+    covariance = { invisible(covariance(aX_warm)) },
+    dist       = { invisible(dist_matrix(Xs)) },
+    many_lm    = { invisible(many_lm(aX_warm, Y, method = "qr", cache = TRUE)) },
+    rsvd       = { invisible(rsvd(aX_warm, k = 10L)) },
     iterations = 10L,
     check      = FALSE,
     memory     = FALSE
