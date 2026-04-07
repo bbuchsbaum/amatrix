@@ -133,7 +133,7 @@ cat("  CPU overhead (sweep+argmin+update) also O(n): dilutes speedup\n")
 cat("═══════════════════════════════════════════════════════════════\n\n")
 
 for (n in c(2000L, 5000L, 10000L, 20000L)) {
-  gflop <- n * 200L * 50L * 20L / 1e9
+  gflop <- as.numeric(n) * 200 * 50 * 20 / 1e9
   print_row(active_backends, n, 200L, 50L,
             sprintf("n = %6d  (%.1f Gops over 20 iters)", n, gflop))
 }

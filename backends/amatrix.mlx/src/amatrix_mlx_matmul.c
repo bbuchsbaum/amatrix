@@ -1952,6 +1952,137 @@ SEXP amatrix_mlx_scatter_mean_bridge(SEXP lhs_key, SEXP labels, SEXP K) {
 #endif
 }
 
+/* ── segment_sum / segment_mean (amatrix-ylo) ─────────────────────────────
+ * These are first-class primitives.  They use the same K×n one-hot matmul
+ * approach as scatter_mean (W_T @ X), but store the result as a
+ * GPU-resident adgeMatrix under out_key and return ScalarLogical(1); the R
+ * wrapper constructs a placeholder adgeMatrix from the known (K,p) dims.
+ */
+
+#ifdef HAVE_MLXC
+/* shared inner op: one-hot matmul W_T (K×n) @ X (n×p) → result (K×p).
+ * W_T[k,i] = 1.0 if labels[i]-1 == k, else 0.0.
+ * Returns 0 on success, non-zero on failure. */
+static int amatrix_mlx_do_segment_sum(
+    mlx_array X, int n, int p, int K, const int* labels,
+    mlx_array* result_out, mlx_stream stream) {
+  size_t wt_size = (size_t)K * (size_t)n;
+  float* wt_buf = (float*)R_alloc(wt_size, sizeof(float));
+  memset(wt_buf, 0, wt_size * sizeof(float));
+  for (int i = 0; i < n; i++) {
+    int k = labels[i] - 1;
+    if (k >= 0 && k < K) wt_buf[(size_t)k * n + i] = 1.0f;
+  }
+  int wt_shape[2] = {K, n};
+  mlx_array W_T = mlx_array_new_data(wt_buf, wt_shape, 2, MLX_FLOAT32);
+  int err = mlx_matmul(result_out, W_T, X, stream);
+  mlx_array_free(W_T);
+  return err;
+}
+
+static SEXP amatrix_mlx_segment_sum_real(SEXP x_key, SEXP labels_r, SEXP K_r, SEXP out_key) {
+  mlx_stream stream;
+  mlx_array X = amatrix_mlx_array_from_resident_key(x_key);
+  int n = mlx_array_dim(X, 0);
+  int p = mlx_array_dim(X, 1);
+  int K = INTEGER(K_r)[0];
+  const int* labels = INTEGER(labels_r);
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) error("mlx segment_sum: GPU stream unavailable");
+
+  mlx_array result = mlx_array_new();
+  if (amatrix_mlx_do_segment_sum(X, n, p, K, labels, &result, stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(result);
+    error("mlx segment_sum: scatter_add_axis failed");
+  }
+  if (mlx_synchronize(stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(result);
+    error("mlx segment_sum: synchronize failed");
+  }
+  amatrix_mlx_resident_entry* entry = amatrix_mlx_registry_reserve(CHAR(asChar(out_key)));
+  entry->array = result;
+  SEXP r_out = amatrix_mlx_result_to_r_matrix(entry->array);
+  mlx_stream_free(stream);
+  return r_out;
+}
+#endif
+
+SEXP amatrix_mlx_segment_sum_bridge(SEXP x_key, SEXP labels, SEXP K, SEXP out_key) {
+#ifdef HAVE_MLXC
+  return amatrix_mlx_segment_sum_real(x_key, labels, K, out_key);
+#else
+  error("mlx segment_sum requires mlx-c");
+  return R_NilValue;
+#endif
+}
+
+#ifdef HAVE_MLXC
+static SEXP amatrix_mlx_segment_mean_real(SEXP x_key, SEXP labels_r, SEXP K_r, SEXP out_key) {
+  mlx_stream stream;
+  mlx_array X = amatrix_mlx_array_from_resident_key(x_key);
+  int n = mlx_array_dim(X, 0);
+  int p = mlx_array_dim(X, 1);
+  int K = INTEGER(K_r)[0];
+  const int* labels = INTEGER(labels_r);
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) error("mlx segment_mean: GPU stream unavailable");
+
+  /* sums via one-hot matmul (lazy graph, no sync yet) */
+  mlx_array sums = mlx_array_new();
+  if (amatrix_mlx_do_segment_sum(X, n, p, K, labels, &sums, stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(sums);
+    error("mlx segment_mean: segment sum (matmul) failed");
+  }
+
+  /* counts as float K×1, built CPU-side and uploaded (mlx_array_new_data copies) */
+  float* cnt_buf = (float*)R_alloc(K, sizeof(float));
+  memset(cnt_buf, 0, (size_t)K * sizeof(float));
+  for (int i = 0; i < n; i++) {
+    int k = labels[i] - 1;
+    if (k >= 0 && k < K) cnt_buf[k] += 1.0f;
+  }
+  int cnt_shape[2] = {K, 1};
+  mlx_array counts = mlx_array_new_data(cnt_buf, cnt_shape, 2, MLX_FLOAT32);
+
+  /* divide sums by counts (K×p / K×1 broadcast); empty clusters → NaN (0/0) */
+  mlx_array result = mlx_array_new();
+  int err = mlx_divide(&result, sums, counts, stream);
+  mlx_array_free(sums);
+  mlx_array_free(counts);
+  if (err != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(result);
+    error("mlx segment_mean: divide failed");
+  }
+
+  /* single sync covers scatter_add + divide */
+  if (mlx_synchronize(stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(result);
+    error("mlx segment_mean: synchronize failed");
+  }
+  amatrix_mlx_resident_entry* entry = amatrix_mlx_registry_reserve(CHAR(asChar(out_key)));
+  entry->array = result;
+  SEXP r_out = amatrix_mlx_result_to_r_matrix(entry->array);
+  mlx_stream_free(stream);
+  return r_out;
+}
+#endif
+
+SEXP amatrix_mlx_segment_mean_bridge(SEXP x_key, SEXP labels, SEXP K, SEXP out_key) {
+#ifdef HAVE_MLXC
+  return amatrix_mlx_segment_mean_real(x_key, labels, K, out_key);
+#else
+  error("mlx segment_mean requires mlx-c");
+  return R_NilValue;
+#endif
+}
+
 SEXP amatrix_mlx_matmul_bridge(SEXP x, SEXP y) {
   if (!isReal(x) || !isMatrix(x)) {
     error("x must be a numeric matrix");

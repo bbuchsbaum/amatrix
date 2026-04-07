@@ -1,5 +1,5 @@
 amatrix_mlx_capabilities <- function() {
-  c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean",
+  c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean", "segment_sum", "segment_mean",
     "rowSums", "colSums",
     "qr", "svd", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen", "covariance")
 }
@@ -762,6 +762,18 @@ amatrix_mlx_scatter_mean <- function(x_key, labels, K) {
         PACKAGE = "amatrix.mlx")
 }
 
+amatrix_mlx_segment_sum <- function(x_key, labels, K, out_key) {
+  .Call("amatrix_mlx_segment_sum_bridge",
+        as.character(x_key), as.integer(labels), as.integer(K),
+        as.character(out_key), PACKAGE = "amatrix.mlx")
+}
+
+amatrix_mlx_segment_mean <- function(x_key, labels, K, out_key) {
+  .Call("amatrix_mlx_segment_mean_bridge",
+        as.character(x_key), as.integer(labels), as.integer(K),
+        as.character(out_key), PACKAGE = "amatrix.mlx")
+}
+
 amatrix_mlx_argreduce <- function(x_key, axis, is_max) {
   .Call("amatrix_mlx_argreduce_bridge",
         as.character(x_key), as.integer(axis), as.logical(is_max),
@@ -898,6 +910,10 @@ amatrix_mlx_backend <- function() {
         return(TRUE)
       }
 
+      if (identical(op, "segment_sum") || identical(op, "segment_mean")) {
+        return(TRUE)
+      }
+
       TRUE
     },
     matmul = function(x, y) {
@@ -920,6 +936,12 @@ amatrix_mlx_backend <- function() {
     },
     scatter_mean_resident = function(x_key, labels, K) {
       amatrix_mlx_scatter_mean(x_key, labels, K)
+    },
+    segment_sum_resident = function(x_key, labels, K, out_key) {
+      amatrix_mlx_segment_sum(x_key, labels, K, out_key)
+    },
+    segment_mean_resident = function(x_key, labels, K, out_key) {
+      amatrix_mlx_segment_mean(x_key, labels, K, out_key)
     },
     rowargmax_resident = function(x_key) amatrix_mlx_argreduce(x_key, 1L, TRUE),
     rowargmin_resident = function(x_key) amatrix_mlx_argreduce(x_key, 1L, FALSE),

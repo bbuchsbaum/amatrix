@@ -1,5 +1,5 @@
 .amatrix_cpu_backend <- function() {
-  capabilities <- c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "diag")
+  capabilities <- c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean", "segment_sum", "segment_mean", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "diag")
   features <- c("dense_f64", "dense_f32", "solve", "chol", "svd", "sparse_spmm")
 
   list(

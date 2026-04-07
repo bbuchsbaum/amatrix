@@ -833,18 +833,19 @@ dot <- function(x, y) {
   lhs <- .amatrix_prepare_resident_arg(x, backend_name)
   if (is.null(lhs)) return(NULL)
   out_key <- .amatrix_next_resident_key(backend_name)
-  backend[[fn_name]](lhs$key, labels, K, out_key)
+  value   <- backend[[fn_name]](lhs$key, labels, K, out_key)
   .amatrix_cleanup_temp_resident(list(lhs), backend_name)
-  out_key
+  # Bridge returns a plain R matrix; fall back to resident_materialize if not
+  if (!is.matrix(value)) value <- backend$resident_materialize(out_key)
+  list(value = value, key = out_key)
 }
 
-.am_segment_resident_wrap <- function(x, K, choice_name, out_key) {
-  p <- ncol(x)
-  placeholder <- new_adgeMatrix(matrix(0, K, p),
-                                preferred_backend = x@preferred_backend,
-                                precision = x@precision,
-                                policy = x@policy)
-  .amatrix_bind_resident(placeholder, choice_name, out_key)
+.am_segment_resident_wrap <- function(x, resident, choice_name) {
+  wrapped <- new_adgeMatrix(resident$value,
+                            preferred_backend = x@preferred_backend,
+                            precision        = x@precision,
+                            policy           = x@policy)
+  .amatrix_bind_resident(wrapped, choice_name, resident$key)
 }
 
 am_segment_sum <- function(x, labels, K) {
@@ -852,11 +853,11 @@ am_segment_sum <- function(x, labels, K) {
   K      <- as.integer(K)
   if (!inherits(x, "adgeMatrix"))
     return(.am_segment_sum_cpu(as.matrix(x), labels, K))
-  choice  <- .amatrix_backend_for(x, "segment_sum")
-  out_key <- .am_try_resident_segment_op(x, labels, K, choice$name, "segment_sum")
-  if (is.null(out_key))
+  choice   <- .amatrix_backend_for(x, "segment_sum")
+  resident <- .am_try_resident_segment_op(x, labels, K, choice$name, "segment_sum")
+  if (is.null(resident))
     return(.am_segment_sum_cpu(as.matrix(amatrix_materialize_host(x)), labels, K))
-  .am_segment_resident_wrap(x, K, choice$name, out_key)
+  .am_segment_resident_wrap(x, resident, choice$name)
 }
 
 am_segment_mean <- function(x, labels, K) {
@@ -864,11 +865,11 @@ am_segment_mean <- function(x, labels, K) {
   K      <- as.integer(K)
   if (!inherits(x, "adgeMatrix"))
     return(.am_segment_mean_cpu(as.matrix(x), labels, K))
-  choice  <- .amatrix_backend_for(x, "segment_mean")
-  out_key <- .am_try_resident_segment_op(x, labels, K, choice$name, "segment_mean")
-  if (is.null(out_key))
+  choice   <- .amatrix_backend_for(x, "segment_mean")
+  resident <- .am_try_resident_segment_op(x, labels, K, choice$name, "segment_mean")
+  if (is.null(resident))
     return(.am_segment_mean_cpu(as.matrix(amatrix_materialize_host(x)), labels, K))
-  .am_segment_resident_wrap(x, K, choice$name, out_key)
+  .am_segment_resident_wrap(x, resident, choice$name)
 }
 
 # ── pairwise_sqdist_argmin (amatrix-zas) ───────────────────────────────────
