@@ -853,6 +853,11 @@ segment_sum <- function(x, labels, K) {
   K      <- as.integer(K)
   if (!inherits(x, "adgeMatrix"))
     return(.am_segment_sum_cpu(as.matrix(x), labels, K))
+  # Size gate: GPU kernel launch overhead exceeds compute for small matrices.
+  # Fall back to CPU when n*p < amatrix.segment_min_size (default 500k).
+  seg_min <- as.numeric(getOption("amatrix.segment_min_size", 500000L))
+  if (nrow(x) * ncol(x) < seg_min)
+    return(.am_segment_sum_cpu(as.matrix(amatrix_materialize_host(x)), labels, K))
   choice   <- .amatrix_backend_for(x, "segment_sum")
   resident <- .am_try_resident_segment_op(x, labels, K, choice$name, "segment_sum")
   if (is.null(resident))
@@ -865,11 +870,42 @@ segment_mean <- function(x, labels, K) {
   K      <- as.integer(K)
   if (!inherits(x, "adgeMatrix"))
     return(.am_segment_mean_cpu(as.matrix(x), labels, K))
+  # Size gate: same as segment_sum — CPU is faster for small n*p.
+  seg_min <- as.numeric(getOption("amatrix.segment_min_size", 500000L))
+  if (nrow(x) * ncol(x) < seg_min)
+    return(.am_segment_mean_cpu(as.matrix(amatrix_materialize_host(x)), labels, K))
   choice   <- .amatrix_backend_for(x, "segment_mean")
   resident <- .am_try_resident_segment_op(x, labels, K, choice$name, "segment_mean")
   if (is.null(resident))
     return(.am_segment_mean_cpu(as.matrix(amatrix_materialize_host(x)), labels, K))
   .am_segment_resident_wrap(x, resident, choice$name)
+}
+
+# ── rowsum.adgeMatrix ──────────────────────────────────────────────────────
+# Intercept base::rowsum(X, group) for GPU matrices and route to segment_sum.
+# group can be integer, numeric, character, or factor — we map to 1..K labels.
+
+rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
+  g_chr <- as.character(group)
+  lvls  <- if (reorder) sort(unique(g_chr)) else unique(g_chr)
+  grp   <- factor(g_chr, levels = lvls)
+  labels <- as.integer(grp)
+  K      <- nlevels(grp)
+  result <- segment_sum(x, labels, K)
+  if (is.matrix(result)) rownames(result) <- lvls
+  result
+}
+
+# ── sweep / max.col S3 dispatch for adgeMatrix ────────────────────────────────
+# Lets idiomatic R code (sweep, max.col) route to GPU kernels automatically.
+
+sweep.adgeMatrix <- function(x, MARGIN, STATS, FUN = "-",
+                             check.margins = TRUE, ...) {
+  am_sweep(x, MARGIN, STATS, FUN)
+}
+
+max.col.adgeMatrix <- function(m, ties.method = "random") {
+  .am_argreduce(m, "rowargmax")
 }
 
 # ── addmm (amatrix-uaj) ─────────────────────────────────────────────────

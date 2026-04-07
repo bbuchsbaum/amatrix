@@ -100,8 +100,14 @@ lda_amatrix <- function(X_mat, labels, n_components = NULL, backend = "cpu",
   W          <- apply(W, 2L, function(w) w / sqrt(sum(w^2)))   # unit norm
 
   # Step 5: project X onto discriminant axes ────────────────────────────────
-  W_gpu   <- adgeMatrix(W, preferred_backend = backend, precision = "fast")
-  scores  <- as.matrix(X_gpu %*% W_gpu)
+  # Size gate: GPU matmul for n×p × p×d is only faster when n*d >= gemm_min^2.
+  gemm_min <- as.integer(getOption("amatrix.arrayfire.bdc_gemm_min", 256L))
+  if (n * d >= gemm_min * gemm_min) {
+    W_gpu  <- adgeMatrix(W, preferred_backend = backend, precision = "fast")
+    scores <- as.matrix(X_gpu %*% W_gpu)
+  } else {
+    scores <- X_mat %*% W
+  }
 
   list(loadings   = W,
        scores     = scores,
