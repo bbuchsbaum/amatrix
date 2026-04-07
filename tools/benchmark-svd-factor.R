@@ -22,7 +22,7 @@ repo_root <- normalizePath(
   mustWork = TRUE
 )
 safe_mlx_command <- sprintf(
-  "Rscript -e 'Sys.setenv(AMATRIX_SVD_FACTOR_ALLOW_NESTED_MLX = \"true\", AMATRIX_SVD_FACTOR_MLX_MAIN = \"true\"); setwd(%s); source(\"tools/benchmark-svd-factor.R\")'",
+  "Rscript -e 'Sys.setenv(AMATRIX_MLX_PROBE_GPU = \"1\", AMATRIX_SVD_FACTOR_ALLOW_NESTED_MLX = \"true\", AMATRIX_SVD_FACTOR_MLX_MAIN = \"true\"); setwd(%s); source(\"tools/benchmark-svd-factor.R\")'",
   r_string(repo_root)
 )
 

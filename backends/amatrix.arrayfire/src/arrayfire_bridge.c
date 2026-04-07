@@ -807,6 +807,140 @@ SEXP amatrix_arrayfire_ewise_resident_bridge(SEXP lhs_key, SEXP rhs, SEXP op, SE
 #endif
 }
 
+SEXP amatrix_arrayfire_scatter_mean_bridge(SEXP lhs_key, SEXP labels_r, SEXP K_r) {
+#ifdef HAVE_ARRAYFIRE
+  /* Returns K×p group-sum matrix (R divides by counts to get means) */
+  if (!isString(lhs_key) || LENGTH(lhs_key) != 1)
+    error("lhs_key must be a scalar string");
+  amatrix_af_resident_entry* ex = amatrix_af_registry_find(CHAR(STRING_ELT(lhs_key, 0)));
+  if (ex == NULL) error("arrayfire resident key not found: %s", CHAR(STRING_ELT(lhs_key, 0)));
+
+  dim_t dims[4] = {0, 0, 0, 0};
+  af_get_dims(&dims[0], &dims[1], &dims[2], &dims[3], ex->array);
+  int n = (int)dims[0], p = (int)dims[1];
+  int K = INTEGER(K_r)[0];
+  const int* labels = INTEGER(labels_r); /* 1-indexed */
+
+  /* Build W (n×K) in column-major: W[i, k] = 1.0 if labels[i]-1 == k */
+  float* w_buf = (float*)arrayfire_xmalloc((size_t)n * (size_t)K * sizeof(float));
+  memset(w_buf, 0, (size_t)n * (size_t)K * sizeof(float));
+  for (int i = 0; i < n; i++) {
+    int k = labels[i] - 1; /* 0-indexed */
+    if (k >= 0 && k < K) w_buf[(size_t)k * n + i] = 1.0f; /* col-major: col k, row i */
+  }
+
+  dim_t wdims[2] = {(dim_t)n, (dim_t)K};
+  af_array W = 0;
+  af_err err = af_create_array(&W, w_buf, 2, wdims, f32);
+  free(w_buf);
+  if (err != AF_SUCCESS) error("af_create_array failed for W in scatter_mean");
+
+  /* t(W) %*% X = [K,n] × [n,p] → [K,p] */
+  af_array result = 0;
+  err = af_matmul(&result, W, ex->array, AF_MAT_TRANS, AF_MAT_NONE);
+  af_release_array(W);
+  if (err != AF_SUCCESS) error("af_matmul failed in scatter_mean");
+
+  SEXP out = PROTECT(amatrix_af_to_r(result));
+  af_release_array(result);
+  UNPROTECT(1);
+  return out;
+#else
+  error("arrayfire scatter_mean requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
+SEXP amatrix_arrayfire_argreduce_bridge(SEXP lhs_key, SEXP axis_r, SEXP is_max_r) {
+#ifdef HAVE_ARRAYFIRE
+  if (!isString(lhs_key) || LENGTH(lhs_key) != 1)
+    error("lhs_key must be a scalar string");
+  amatrix_af_resident_entry* ex = amatrix_af_registry_find(CHAR(STRING_ELT(lhs_key, 0)));
+  if (ex == NULL) error("arrayfire resident key not found: %s", CHAR(STRING_ELT(lhs_key, 0)));
+
+  int axis   = INTEGER(axis_r)[0];
+  int is_max = LOGICAL(is_max_r)[0];
+
+  /* AF column-major: axis=1 reduces cols → n row results; axis=0 reduces rows → K col results */
+  dim_t dims[4] = {0, 0, 0, 0};
+  af_get_dims(&dims[0], &dims[1], &dims[2], &dims[3], ex->array);
+  int len = (axis == 0) ? (int)dims[1] : (int)dims[0];
+
+  af_array out_val = 0, out_idx = 0;
+  af_err err = is_max
+    ? af_imax(&out_val, &out_idx, ex->array, axis)
+    : af_imin(&out_val, &out_idx, ex->array, axis);
+  if (err != AF_SUCCESS) error("af_imax/imin failed");
+  af_release_array(out_val);
+
+  uint32_t* buf = (uint32_t*)arrayfire_xmalloc((size_t)len * sizeof(uint32_t));
+  af_get_data_ptr(buf, out_idx);
+  af_release_array(out_idx);
+
+  SEXP result = PROTECT(allocVector(INTSXP, len));
+  int* ires = INTEGER(result);
+  for (int i = 0; i < len; i++) ires[i] = (int)buf[i] + 1; /* 0-indexed → 1-indexed */
+  free(buf);
+  UNPROTECT(1);
+  return result;
+#else
+  error("arrayfire argreduce requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
+SEXP amatrix_arrayfire_broadcast_ewise_resident_bridge(SEXP lhs_key, SEXP v, SEXP margin_r, SEXP op, SEXP out_key) {
+#ifdef HAVE_ARRAYFIRE
+  if (!isString(lhs_key) || !isString(op) || !isString(out_key))
+    error("keys and op must be scalar strings");
+  if (!isReal(v) && !isInteger(v))
+    error("v must be a numeric vector");
+  if (!isInteger(margin_r) || LENGTH(margin_r) != 1)
+    error("margin must be a scalar integer");
+
+  amatrix_af_resident_entry* elhs = amatrix_af_registry_find(CHAR(STRING_ELT(lhs_key, 0)));
+  if (elhs == NULL) error("arrayfire resident key not found: %s", CHAR(STRING_ELT(lhs_key, 0)));
+
+  const char* op_name = CHAR(STRING_ELT(op, 0));
+  int margin = INTEGER(margin_r)[0];
+  int len_v = (int)XLENGTH(v);
+
+  /* Build float32 buffer from v (1-D, column-major = identity for 1-D) */
+  float* fbuf = (float*)arrayfire_xmalloc((size_t)len_v * sizeof(float));
+  if (isReal(v)) {
+    const double* src = REAL(v);
+    for (int i = 0; i < len_v; i++) fbuf[i] = (float)src[i];
+  } else {
+    const int* src = INTEGER(v);
+    for (int i = 0; i < len_v; i++) fbuf[i] = (float)src[i];
+  }
+
+  /* margin=1 → [n,1]; margin=2 → [1,K] — AF broadcasts with batch=true */
+  dim_t vdims[2];
+  if (margin == 1) { vdims[0] = (dim_t)len_v; vdims[1] = 1; }
+  else             { vdims[0] = 1;             vdims[1] = (dim_t)len_v; }
+
+  af_array av = 0;
+  af_err err = af_create_array(&av, fbuf, 2, vdims, f32);
+  free(fbuf);
+  if (err != AF_SUCCESS) error("af_create_array failed for broadcast vector");
+
+  amatrix_af_resident_entry* eout = amatrix_af_registry_reserve(CHAR(STRING_ELT(out_key, 0)));
+  if      (strcmp(op_name, "+") == 0) err = af_add(&eout->array, elhs->array, av, true);
+  else if (strcmp(op_name, "-") == 0) err = af_sub(&eout->array, elhs->array, av, true);
+  else if (strcmp(op_name, "*") == 0) err = af_mul(&eout->array, elhs->array, av, true);
+  else if (strcmp(op_name, "/") == 0) err = af_div(&eout->array, elhs->array, av, true);
+  else { af_release_array(av); error("unsupported broadcast ewise op: %s", op_name); }
+
+  af_release_array(av);
+  if (err != AF_SUCCESS) error("arrayfire broadcast ewise failed");
+  return ScalarLogical(1);
+#else
+  error("arrayfire broadcast_ewise_resident requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
 SEXP amatrix_arrayfire_sum_axis_resident_bridge(SEXP x_key, SEXP axis) {
 #ifdef HAVE_ARRAYFIRE
   if (!isString(x_key) || LENGTH(x_key) != 1)
@@ -1773,6 +1907,27 @@ SEXP amatrix_arrayfire_crossprod_correct_bridge(SEXP A_r, SEXP B_r) {
   return result;
 #else
   error("amatrix_arrayfire_crossprod_correct requires ArrayFire");
+  return R_NilValue;
+#endif
+}
+
+/* ── amatrix_arrayfire_tcrossprod_correct_bridge(A, B) → A %*% t(B) ─── */
+SEXP amatrix_arrayfire_tcrossprod_correct_bridge(SEXP A_r, SEXP B_r) {
+  if (!isReal(A_r) || !isMatrix(A_r) || !isReal(B_r) || !isMatrix(B_r))
+    error("inputs must be real matrices");
+#ifdef HAVE_ARRAYFIRE
+  af_array A = 0, B = 0, C = 0;
+  A = amatrix_af_from_r(A_r);
+  B = amatrix_af_from_r(B_r);
+  af_err err = af_matmul(&C, A, B, AF_MAT_NONE, AF_MAT_TRANS);
+  af_release_array(A); af_release_array(B);
+  if (err != AF_SUCCESS) error("amatrix_arrayfire_tcrossprod_correct: af_matmul failed (%d)", (int)err);
+  SEXP result = PROTECT(amatrix_af_to_r(C));
+  af_release_array(C);
+  UNPROTECT(1);
+  return result;
+#else
+  error("amatrix_arrayfire_tcrossprod_correct requires ArrayFire");
   return R_NilValue;
 #endif
 }

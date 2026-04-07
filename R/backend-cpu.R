@@ -1,5 +1,5 @@
 .amatrix_cpu_backend <- function() {
-  capabilities <- c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "diag")
+  capabilities <- c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "diag")
   features <- c("dense_f64", "dense_f32", "solve", "chol", "svd", "sparse_spmm")
 
   list(
@@ -38,6 +38,9 @@
         return(do.call(op, c(list(lhs), list(...))))
       }
       do.call(op, c(list(lhs, rhs), list(...)))
+    },
+    broadcast_ewise = function(x, lhs, v, margin, op, ...) {
+      base::sweep(as.matrix(lhs), MARGIN = margin, STATS = v, FUN = op)
     },
     rowSums = function(x, na.rm = FALSE, dims = 1L) {
       Matrix::rowSums(x, na.rm = na.rm, dims = dims)

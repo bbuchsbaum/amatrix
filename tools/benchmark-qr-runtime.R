@@ -138,8 +138,14 @@ benchmark_case <- function(n, p, rhs_cols = 8L) {
   )
 }
 
+# Activate the Metal GPU probe (safe in -e / interactive launch mode).
+# In direct `Rscript file.R` mode, MLX is skipped rather than crashing.
+Sys.setenv(AMATRIX_MLX_PROBE_GPU = "1")
 if (!amatrix_mlx_is_available()) {
-  options(amatrix.mlx.available = TRUE)
+  message("MLX not available. To benchmark MLX, run via:\n",
+          "  Rscript -e 'Sys.setenv(AMATRIX_MLX_PROBE_GPU=\"1\"); ",
+          "setwd(\"", normalizePath("."), "\"); ",
+          "source(\"tools/benchmark-qr-runtime.R\")'")
 }
 
 cases <- list(c(512L, 64L, 8L), c(1024L, 128L, 8L), c(1024L, 128L, 32L), c(1024L, 128L, 128L))

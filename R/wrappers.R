@@ -797,6 +797,129 @@ dot <- function(x, y) {
   sum(x_host * y_host)
 }
 
+.am_scatter_mean_cpu <- function(X_mat, labels, K) {
+  p <- ncol(X_mat)
+  centroids <- matrix(NA_real_, K, p)
+  for (k in seq_len(K)) {
+    idx <- which(labels == k)
+    if (length(idx) > 0L)
+      centroids[k, ] <- colMeans(X_mat[idx, , drop = FALSE])
+  }
+  centroids
+}
+
+.amatrix_try_resident_scatter_mean <- function(x, labels, K, backend_name) {
+  backend <- .amatrix_get_backend(backend_name)
+  if (!is.function(backend$scatter_mean_resident)) return(NULL)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+  if (is.null(lhs)) return(NULL)
+  result <- backend$scatter_mean_resident(lhs$key, labels, K)
+  .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+  result
+}
+
+am_scatter_mean <- function(x, labels, K) {
+  labels <- as.integer(labels)
+  K      <- as.integer(K)
+  counts <- tabulate(labels, nbins = K)   # O(n), always on CPU
+
+  if (!inherits(x, "adgeMatrix")) {
+    return(.am_scatter_mean_cpu(as.matrix(x), labels, K))
+  }
+
+  choice <- .amatrix_backend_for(x, "scatter_mean")
+  sums   <- .amatrix_try_resident_scatter_mean(x, labels, K, choice$name)
+
+  if (is.null(sums)) {
+    return(.am_scatter_mean_cpu(as.matrix(amatrix_materialize_host(x)), labels, K))
+  }
+
+  # sums is K×p; divide each row by cluster count
+  means <- sums
+  nonzero <- counts > 0L
+  if (any(nonzero))
+    means[nonzero, ] <- sums[nonzero, , drop = FALSE] / counts[nonzero]
+  means[!nonzero, ] <- NA_real_
+  means
+}
+
+.amatrix_try_resident_broadcast_ewise <- function(x, v, margin, op, backend_name) {
+  backend <- .amatrix_get_backend(backend_name)
+  if (!.amatrix_backend_supports_resident_op(backend, "broadcast_ewise")) return(NULL)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+  if (is.null(lhs)) return(NULL)
+  out_key <- .amatrix_next_resident_key(backend_name)
+  value <- backend$broadcast_ewise_resident(lhs$key, v, margin, op, out_key)
+  .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+  list(value = value, backend = backend_name, resident_key = out_key)
+}
+
+am_sweep <- function(x, MARGIN, STATS, FUN = "+") {
+  if (!inherits(x, "adgeMatrix")) {
+    return(base::sweep(as.matrix(x), MARGIN = MARGIN, STATS = STATS, FUN = FUN))
+  }
+  op <- if (is.character(FUN) && length(FUN) == 1L) FUN else NULL
+  if (is.null(op) || !op %in% c("+", "-", "*", "/")) {
+    return(base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN = MARGIN,
+                       STATS = STATS, FUN = FUN))
+  }
+  if (!is.numeric(STATS) || is.matrix(STATS)) {
+    return(base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN = MARGIN,
+                       STATS = STATS, FUN = FUN))
+  }
+  v <- as.double(STATS)
+  choice <- .amatrix_backend_for(x, "broadcast_ewise")
+  resident <- .amatrix_try_resident_broadcast_ewise(x, v, MARGIN, op, choice$name)
+  if (!is.null(resident)) {
+    value <- .amatrix_rewrap_value(x, resident$value)
+    return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
+  }
+  result <- amatrix_dispatch_op(
+    x = x,
+    op = "broadcast_ewise",
+    method = "broadcast_ewise",
+    args = list(lhs = as.matrix(amatrix_materialize_host(x)), v = v,
+                margin = MARGIN, op = op),
+    fallback = function() base::sweep(as.matrix(amatrix_materialize_host(x)),
+                                      MARGIN = MARGIN, STATS = STATS, FUN = FUN)
+  )
+  .amatrix_rewrap_value(x, result)
+}
+
+.amatrix_try_resident_argreduce <- function(x, kind, backend_name) {
+  backend  <- .amatrix_get_backend(backend_name)
+  fn_name  <- paste0(kind, "_resident")
+  if (!is.function(backend[[fn_name]])) return(NULL)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+  if (is.null(lhs)) return(NULL)
+  result <- backend[[fn_name]](lhs$key)
+  .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+  result
+}
+
+.am_argreduce_cpu <- function(x, kind) {
+  mat <- as.matrix(x)
+  switch(kind,
+    rowargmax = max.col(mat,  ties.method = "first"),
+    rowargmin = max.col(-mat, ties.method = "first"),
+    colargmax = max.col(t(mat),  ties.method = "first"),
+    colargmin = max.col(-t(mat), ties.method = "first")
+  )
+}
+
+.am_argreduce <- function(x, kind) {
+  if (!inherits(x, "adgeMatrix")) return(.am_argreduce_cpu(x, kind))
+  choice <- .amatrix_backend_for(x, "argmax")
+  result <- .amatrix_try_resident_argreduce(x, kind, choice$name)
+  if (!is.null(result)) return(result)
+  .am_argreduce_cpu(x, kind)
+}
+
+am_rowargmax <- function(x) .am_argreduce(x, "rowargmax")
+am_rowargmin <- function(x) .am_argreduce(x, "rowargmin")
+am_colargmax <- function(x) .am_argreduce(x, "colargmax")
+am_colargmin <- function(x) .am_argreduce(x, "colargmin")
+
 ewise <- function(op, e1, e2 = NULL) {
   template <- .amatrix_template(e1, e2)
   host_e1 <- .amatrix_host_arg(e1)

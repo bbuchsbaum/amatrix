@@ -1760,6 +1760,198 @@ SEXP amatrix_mlx_ewise_resident_bridge(SEXP lhs_key, SEXP rhs, SEXP op, SEXP out
 #endif
 }
 
+#ifdef HAVE_MLXC
+static SEXP amatrix_mlx_broadcast_ewise_resident_real(SEXP lhs_key, SEXP v, SEXP margin_r, SEXP op, SEXP out_key) {
+  mlx_stream stream;
+  mlx_array a = amatrix_mlx_array_from_resident_key(lhs_key);
+  mlx_array v_arr = mlx_array_new();
+  mlx_array out = mlx_array_new();
+  const char* op_name = CHAR(asChar(op));
+  int margin = INTEGER(margin_r)[0];
+  R_xlen_t len_v = XLENGTH(v);
+  amatrix_mlx_resident_entry* entry = NULL;
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+    error("mlx GPU stream is unavailable");
+  }
+
+  /* Cast double vector to float32 — no transposition for 1-D */
+  const double* dbl = REAL(v);
+  float* fbuf = (float*)R_alloc(len_v, sizeof(float));
+  for (R_xlen_t i = 0; i < len_v; i++) fbuf[i] = (float)dbl[i];
+
+  /* Reshape for broadcasting (MLX row-major):
+   * margin=1: add v[i] to every element in row i  → shape [n, 1]
+   * margin=2: add v[k] to every element in col k  → shape [1, K] */
+  int shape[2];
+  if (margin == 1) { shape[0] = (int)len_v; shape[1] = 1; }
+  else             { shape[0] = 1;           shape[1] = (int)len_v; }
+  v_arr = mlx_array_new_data(fbuf, shape, 2, MLX_FLOAT32);
+
+  int err = 0;
+  if      (strcmp(op_name, "+") == 0) err = mlx_add(&out, a, v_arr, stream);
+  else if (strcmp(op_name, "-") == 0) err = mlx_subtract(&out, a, v_arr, stream);
+  else if (strcmp(op_name, "*") == 0) err = mlx_multiply(&out, a, v_arr, stream);
+  else if (strcmp(op_name, "/") == 0) err = mlx_divide(&out, a, v_arr, stream);
+  else {
+    mlx_array_free(v_arr);
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("unsupported broadcast ewise op: %s", op_name);
+  }
+  mlx_array_free(v_arr);
+
+  if (err != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx broadcast ewise failed for op '%s'", op_name);
+  }
+
+  if (mlx_synchronize(stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx broadcast ewise synchronize failed");
+  }
+
+  entry = amatrix_mlx_registry_reserve(CHAR(asChar(out_key)));
+  entry->array = out;
+  SEXP result = amatrix_mlx_result_to_r_matrix(entry->array);
+  mlx_stream_free(stream);
+  return result;
+}
+#endif
+
+SEXP amatrix_mlx_broadcast_ewise_resident_bridge(SEXP lhs_key, SEXP v, SEXP margin, SEXP op, SEXP out_key) {
+#ifdef HAVE_MLXC
+  return amatrix_mlx_broadcast_ewise_resident_real(lhs_key, v, margin, op, out_key);
+#else
+  error("mlx broadcast_ewise_resident requires mlx-c");
+  return R_NilValue;
+#endif
+}
+
+#ifdef HAVE_MLXC
+static SEXP amatrix_mlx_argreduce_real(SEXP lhs_key, SEXP axis_r, SEXP is_max_r) {
+  mlx_stream stream;
+  mlx_array a = amatrix_mlx_array_from_resident_key(lhs_key);
+  mlx_array out = mlx_array_new();
+  int axis   = INTEGER(axis_r)[0];
+  int is_max = LOGICAL(is_max_r)[0];
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+    error("mlx GPU stream is unavailable");
+  }
+
+  int err = is_max
+    ? mlx_argmax_axis(&out, a, axis, false, stream)
+    : mlx_argmin_axis(&out, a, axis, false, stream);
+
+  if (err != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx argreduce failed (axis=%d, is_max=%d)", axis, is_max);
+  }
+
+  if (mlx_synchronize(stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx argreduce synchronize failed");
+  }
+
+  if (mlx_array_eval(out) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx argreduce eval failed");
+  }
+
+  int len = mlx_array_dim(out, 0);
+  const uint32_t* data = mlx_array_data_uint32(out);
+  if (data == NULL) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx argreduce: null data pointer (unexpected dtype?)");
+  }
+
+  SEXP result = PROTECT(allocVector(INTSXP, len));
+  int* ires = INTEGER(result);
+  for (int i = 0; i < len; i++) ires[i] = (int)data[i] + 1; /* 0-indexed → 1-indexed */
+
+  amatrix_mlx_free_array_if_needed(out);
+  mlx_stream_free(stream);
+  UNPROTECT(1);
+  return result;
+}
+#endif
+
+SEXP amatrix_mlx_argreduce_bridge(SEXP lhs_key, SEXP axis, SEXP is_max) {
+#ifdef HAVE_MLXC
+  return amatrix_mlx_argreduce_real(lhs_key, axis, is_max);
+#else
+  error("mlx argreduce requires mlx-c");
+  return R_NilValue;
+#endif
+}
+
+#ifdef HAVE_MLXC
+static SEXP amatrix_mlx_scatter_mean_real(SEXP lhs_key, SEXP labels_r, SEXP K_r) {
+  /* Returns K×p group-sum matrix (R divides by counts to get means) */
+  mlx_stream stream;
+  mlx_array X = amatrix_mlx_array_from_resident_key(lhs_key);
+  int n = mlx_array_dim(X, 0);
+  int p = mlx_array_dim(X, 1);
+  int K = INTEGER(K_r)[0];
+  const int* labels = INTEGER(labels_r); /* 1-indexed, length n */
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+    error("mlx GPU stream is unavailable");
+  }
+
+  /* Build W_T (K×n) in row-major: W_T[k][i] = 1.0 if labels[i]-1 == k */
+  size_t wt_size = (size_t)K * (size_t)n;
+  float* wt_buf = (float*)R_alloc(wt_size, sizeof(float));
+  memset(wt_buf, 0, wt_size * sizeof(float));
+  for (int i = 0; i < n; i++) {
+    int k = labels[i] - 1; /* 0-indexed */
+    if (k >= 0 && k < K) wt_buf[(size_t)k * n + i] = 1.0f;
+  }
+
+  int wt_shape[2] = {K, n};
+  mlx_array W_T = mlx_array_new_data(wt_buf, wt_shape, 2, MLX_FLOAT32);
+
+  mlx_array result = mlx_array_new();
+  if (mlx_matmul(&result, W_T, X, stream) != 0) {
+    mlx_array_free(W_T);
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(result);
+    error("mlx scatter_mean: matmul failed");
+  }
+  mlx_array_free(W_T);
+
+  if (mlx_synchronize(stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(result);
+    error("mlx scatter_mean: synchronize failed");
+  }
+
+  SEXP out = amatrix_mlx_result_to_r_matrix(result);
+  amatrix_mlx_free_array_if_needed(result);
+  mlx_stream_free(stream);
+  return out;
+}
+#endif
+
+SEXP amatrix_mlx_scatter_mean_bridge(SEXP lhs_key, SEXP labels, SEXP K) {
+#ifdef HAVE_MLXC
+  return amatrix_mlx_scatter_mean_real(lhs_key, labels, K);
+#else
+  error("mlx scatter_mean requires mlx-c");
+  return R_NilValue;
+#endif
+}
+
 SEXP amatrix_mlx_matmul_bridge(SEXP x, SEXP y) {
   if (!isReal(x) || !isMatrix(x)) {
     error("x must be a numeric matrix");

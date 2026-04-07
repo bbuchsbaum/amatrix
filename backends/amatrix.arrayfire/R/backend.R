@@ -1,5 +1,6 @@
 amatrix_arrayfire_capabilities <- function() {
-  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
+  c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean",
+    "rowSums", "colSums",
     "qr", "rsvd", "chol", "solve", "covariance", "svd")
 }
 
@@ -173,6 +174,26 @@ amatrix_arrayfire_tcrossprod_resident <- function(x_key, y_key = NULL, out_key) 
   rhs_key <- if (is.null(y_key)) NULL else as.character(y_key)
   .Call("amatrix_arrayfire_tcrossprod_resident_bridge",
         as.character(x_key), rhs_key, as.character(out_key))
+  amatrix_arrayfire_resident_materialize(out_key)
+}
+
+amatrix_arrayfire_scatter_mean <- function(x_key, labels, K) {
+  .Call("amatrix_arrayfire_scatter_mean_bridge",
+        as.character(x_key), as.integer(labels), as.integer(K),
+        PACKAGE = "amatrix.arrayfire")
+}
+
+amatrix_arrayfire_argreduce <- function(x_key, axis, is_max) {
+  .Call("amatrix_arrayfire_argreduce_bridge",
+        as.character(x_key), as.integer(axis), as.logical(is_max),
+        PACKAGE = "amatrix.arrayfire")
+}
+
+amatrix_arrayfire_broadcast_ewise_resident <- function(lhs_key, v, margin, op, out_key) {
+  .Call("amatrix_arrayfire_broadcast_ewise_resident_bridge",
+        as.character(lhs_key), as.double(v), as.integer(margin),
+        as.character(op), as.character(out_key),
+        PACKAGE = "amatrix.arrayfire")
   amatrix_arrayfire_resident_materialize(out_key)
 }
 
@@ -355,9 +376,12 @@ amatrix_arrayfire_bdc_svd <- function(x, nu, nv) {
   nb      <- as.integer(getOption("amatrix.arrayfire.bdc_panel_width", 64L))
 
   # Storage:  left_U[j:m, j] = u_j   right_V[(j+1):n, j] = v_j
+  # For wide matrices (n > k = m) the last bidiag step j=k still has a right
+  # Householder (zeros A[k, (k+2):n]); so we need k right reflector columns.
+  # For square/tall (n == k) step j=k gives j < n = FALSE — no right reflector.
   left_U    <- matrix(0, m, k)
   left_tau  <- numeric(k)
-  n_right   <- max(k - 1L, 0L)
+  n_right   <- if (n > k) k else max(k - 1L, 0L)
   right_V   <- matrix(0, n, n_right)
   right_tau <- numeric(n_right)
 
@@ -404,17 +428,17 @@ amatrix_arrayfire_bdc_svd <- function(x, nu, nv) {
   }
 
   # ── Phase 2: Extract bidiagonal + CPU BDC (O(k²)) ──────────────────────
-  B <- matrix(0, k, k)
+  # For wide matrices (n > k) the last right Householder creates element
+  # B[k, k+1], so B is k×(k+1).  For square/tall (n = k) B is k×k.
+  B_cols <- if (n > k) k + 1L else k
+  B      <- matrix(0, k, B_cols)
   diag(B) <- A[cbind(seq_len(k), seq_len(k))]
-  if (k > 1L)
-    B[cbind(seq_len(k - 1L), seq_len(k - 1L) + 1L)] <-
-      A[cbind(seq_len(k - 1L), seq_len(k - 1L) + 1L)]
-  # base::svd always returns all k singular values regardless of nu/nv.
-  # Truncate $d so its length equals max(nu_eff, nv_eff) — consistent with
-  # base::svd behaviour when called with truncated nu/nv on a rectangular input.
-  k_out <- max(nu_eff, nv_eff, 1L)
-  sv_B  <- base::svd(B, nu = nu_eff, nv = nv_eff)
-  sv_B$d <- sv_B$d[seq_len(min(k_out, k))]
+  n_super <- min(k, n - 1L)   # number of superdiagonal entries that exist
+  if (n_super > 0L)
+    B[cbind(seq_len(n_super), seq_len(n_super) + 1L)] <-
+      A[cbind(seq_len(n_super), seq_len(n_super) + 1L)]
+  # $d follows base::svd convention: length k = min(m, n).
+  sv_B <- base::svd(B, nu = nu_eff, nv = nv_eff)
 
   # ── Phase 3: WY-blocked back-transform ─────────────────────────────────
   # U = Q_L * sv_B$u  (H_1..H_k applied last-to-first to [sv_B$u; 0_{m-k}])
@@ -430,15 +454,14 @@ amatrix_arrayfire_bdc_svd <- function(x, nu, nv) {
     }
   }
 
-  # V = Q_R * sv_B$v  (G_1..G_{k-1} applied last-to-first to [sv_B$v; 0_{n-k}])
+  # V = Q_R * sv_B$v  (G_j applied last-to-first to [sv_B$v; 0_{n-B_cols}])
+  # sv_B$v has B_cols rows (k for square/tall, k+1 for wide).
   V_out <- matrix(0, n, nv_eff)
   if (nv_eff > 0L && n_right > 0L) {
-    V_out[seq_len(k), ] <- sv_B$v
+    V_out[seq_len(B_cols), ] <- sv_B$v
     for (j_start in rev(seq(1L, n_right, by = nb))) {
       j_end   <- min(j_start + nb - 1L, n_right)
       panel   <- j_start:j_end
-      # Right reflectors: v_j stored in right_V[(j+1):n, j]; panel submatrix
-      # starts at global row j_start+1 with lower-triangular structure.
       Y_sub   <- right_V[(j_start + 1L):n, panel, drop = FALSE]
       tau_sub <- right_tau[panel]
       V_out   <- .bdc_wy_apply_left(Y_sub, tau_sub, V_out, j_start + 1L, bdc_min)
@@ -701,6 +724,18 @@ amatrix_arrayfire_backend <- function() {
         return(.amatrix_arrayfire_meets_threshold(x, thresholds$ewise_min_dim))
       }
 
+      if (identical(op, "broadcast_ewise")) {
+        return(.amatrix_arrayfire_meets_threshold(x, thresholds$ewise_min_dim))
+      }
+
+      if (identical(op, "argmax")) {
+        return(TRUE)
+      }
+
+      if (identical(op, "scatter_mean")) {
+        return(TRUE)
+      }
+
       if (op %in% c("rowSums", "colSums")) {
         return(.amatrix_arrayfire_meets_threshold(x, thresholds$sum_min_dim))
       }
@@ -740,6 +775,19 @@ amatrix_arrayfire_backend <- function() {
     ewise = function(x, lhs, rhs = NULL, op, ...) {
       amatrix_arrayfire_ewise(lhs = lhs, rhs = rhs, op = op)
     },
+    broadcast_ewise = function(x, lhs, v, margin, op, ...) {
+      base::sweep(as.matrix(lhs), MARGIN = margin, STATS = v, FUN = op)
+    },
+    broadcast_ewise_resident = function(lhs_key, v, margin, op, out_key) {
+      amatrix_arrayfire_broadcast_ewise_resident(lhs_key, v, margin, op, out_key)
+    },
+    scatter_mean_resident = function(x_key, labels, K) {
+      amatrix_arrayfire_scatter_mean(x_key, labels, K)
+    },
+    rowargmax_resident = function(x_key) amatrix_arrayfire_argreduce(x_key, 1L, TRUE),
+    rowargmin_resident = function(x_key) amatrix_arrayfire_argreduce(x_key, 1L, FALSE),
+    colargmax_resident = function(x_key) amatrix_arrayfire_argreduce(x_key, 0L, TRUE),
+    colargmin_resident = function(x_key) amatrix_arrayfire_argreduce(x_key, 0L, FALSE),
     rowSums = function(x, na.rm = FALSE, dims = 1L) {
       if (isTRUE(na.rm) || !identical(dims, 1L)) {
         return(base::rowSums(as.matrix(x), na.rm = na.rm, dims = dims))

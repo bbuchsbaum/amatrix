@@ -20,6 +20,9 @@ extern SEXP amatrix_arrayfire_matmul_resident_bridge(SEXP x_key, SEXP y_key, SEX
 extern SEXP amatrix_arrayfire_crossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
 extern SEXP amatrix_arrayfire_tcrossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
 extern SEXP amatrix_arrayfire_ewise_resident_bridge(SEXP lhs_key, SEXP rhs, SEXP op, SEXP out_key);
+extern SEXP amatrix_arrayfire_broadcast_ewise_resident_bridge(SEXP lhs_key, SEXP v, SEXP margin_r, SEXP op, SEXP out_key);
+extern SEXP amatrix_arrayfire_argreduce_bridge(SEXP lhs_key, SEXP axis_r, SEXP is_max_r);
+extern SEXP amatrix_arrayfire_scatter_mean_bridge(SEXP lhs_key, SEXP labels_r, SEXP K_r);
 extern SEXP amatrix_arrayfire_sum_axis_resident_bridge(SEXP x_key, SEXP axis);
 extern SEXP am_af_lanczos_bidiag_bridge(SEXP A_r, SEXP v0_r, SEXP k_r);
 extern SEXP am_af_lbz_upload_A_bridge(SEXP A_r);
@@ -57,7 +60,10 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_matmul_resident_bridge",       (DL_FUNC) &amatrix_arrayfire_matmul_resident_bridge,       3},
     {"amatrix_arrayfire_crossprod_resident_bridge",    (DL_FUNC) &amatrix_arrayfire_crossprod_resident_bridge,    3},
     {"amatrix_arrayfire_tcrossprod_resident_bridge",   (DL_FUNC) &amatrix_arrayfire_tcrossprod_resident_bridge,   3},
-    {"amatrix_arrayfire_ewise_resident_bridge",        (DL_FUNC) &amatrix_arrayfire_ewise_resident_bridge,        4},
+    {"amatrix_arrayfire_ewise_resident_bridge",                  (DL_FUNC) &amatrix_arrayfire_ewise_resident_bridge,                  4},
+    {"amatrix_arrayfire_broadcast_ewise_resident_bridge",        (DL_FUNC) &amatrix_arrayfire_broadcast_ewise_resident_bridge,        5},
+    {"amatrix_arrayfire_argreduce_bridge",                       (DL_FUNC) &amatrix_arrayfire_argreduce_bridge,                       3},
+    {"amatrix_arrayfire_scatter_mean_bridge",                    (DL_FUNC) &amatrix_arrayfire_scatter_mean_bridge,                    3},
     {"amatrix_arrayfire_sum_axis_resident_bridge",     (DL_FUNC) &amatrix_arrayfire_sum_axis_resident_bridge,     2},
     {"am_af_lanczos_bidiag_bridge",                    (DL_FUNC) &am_af_lanczos_bidiag_bridge,                    3},
     {"am_af_lbz_upload_A_bridge",                      (DL_FUNC) &am_af_lbz_upload_A_bridge,                      1},

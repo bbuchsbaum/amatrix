@@ -54,13 +54,16 @@ REL_ERR_FAIL   <- 3.0   # fail above this
 # ── Sizes ────────────────────────────────────────────────────────────────────
 
 ALL_SIZES <- list(
-  small  = list(n = 256L,  p =  64L, label = "256×64"),
-  medium = list(n = 1024L, p = 128L, label = "1024×128"),
-  large  = list(n = 4096L, p = 256L, label = "4096×256")
+  small   = list(n =  256L, p =   64L, label =  "256×64"),
+  medium  = list(n = 1024L, p =  128L, label = "1024×128"),
+  large   = list(n = 4096L, p =  256L, label = "4096×256"),
+  wide    = list(n = 4096L, p =  512L, label = "4096×512"),
+  square  = list(n = 2048L, p = 2048L, label = "2048×2048"),
+  xlarge  = list(n = 8192L, p =  512L, label = "8192×512")
 )
 SIZES <- if (SIZE_FILTER == "all") ALL_SIZES else ALL_SIZES[SIZE_FILTER]
 if (!length(SIZES)) stop("Unknown --size=", SIZE_FILTER,
-                         ".  Choose: small, medium, large")
+                         ".  Choose: small, medium, large, wide, square, xlarge")
 
 # ── Backend detection ────────────────────────────────────────────────────────
 
@@ -104,36 +107,30 @@ BACKENDS <- if (BACKEND_FILTER == "all") ALL_BACKENDS else {
   X
 }
 
-subspace_iter <- function(X_am, k, q, X_host) {
-  p <- ncol(X_am)
-  n <- nrow(X_am)
-  oversampling <- min(10L, p - k)
-  k_over <- k + oversampling
+# Core algorithm — timed.  Returns list(U, d, V) on the host.
+subspace_iter_kernel <- function(X_am, k, q, X_host) {
+  p      <- ncol(X_am)
+  k_over <- k + min(10L, p - k)
 
-  # Random starting block
   Omega <- matrix(rnorm(p * k_over), p, k_over)
-
-  # Power iteration: each step applies X then X'
-  Y <- X_am %*% Omega                          # forward:  n × k_over
+  Y     <- X_am %*% Omega
   for (i in seq_len(q)) {
-    Z <- crossprod(X_am, Y)                    # backward: p × k_over
-    Y <- X_am %*% qr.Q(qr(as.matrix(Z)))      # forward again, reortho'd
+    Z    <- crossprod(X_am, Y)
+    Q_am <- amatrix:::.amatrix_try_resident_qr_Q(Z)
+    Y    <- X_am %*% Q_am
   }
 
-  Q  <- qr.Q(qr(as.matrix(Y)))                # n × k_over orthonormal basis
-  B  <- t(Q) %*% X_host                       # k_over × p  (small, on CPU)
-  sv <- svd(B, nu = k, nv = k)
-  U  <- Q %*% sv$u
-  d  <- sv$d[seq_len(k)]
-  V  <- sv$v
+  Q  <- qr.Q(qr(as.matrix(Y)))          # forces device sync
+  B  <- t(Q) %*% X_host
+  sv <- base::svd(B, nu = k, nv = k)
+  list(U = Q %*% sv$u, d = sv$d[seq_len(k)], V = sv$v)
+}
 
-  # Reconstruction error vs optimal rank-k SVD
-  X_rec  <- U %*% diag(d) %*% t(V)
-  sv_opt <- base::svd(X_host, nu = k, nv = k)
-  X_opt  <- sv_opt$u %*% diag(sv_opt$d[seq_len(k)]) %*% t(sv_opt$v)
-  rel_err <- norm(X_host - X_rec, "F") / norm(X_host - X_opt, "F")
-
-  list(d = d, rel_err = rel_err)
+# Accuracy check — run once, not timed.
+subspace_iter_accuracy <- function(res, X_host, k, sv_opt) {
+  X_rec   <- res$U %*% diag(res$d) %*% t(res$V)
+  X_opt   <- sv_opt$u %*% diag(sv_opt$d[seq_len(k)]) %*% t(sv_opt$v)
+  norm(X_host - X_rec, "F") / norm(X_host - X_opt, "F")
 }
 
 # ── Timing helper ─────────────────────────────────────────────────────────────
@@ -183,6 +180,8 @@ for (sz_name in names(SIZES)) {
               "backend", "med_ms", "speedup", "rel_err", "status"))
 
   X_host <- .make_low_rank(n, p, K_RANK, seed = 7L)
+  # Precompute optimal rank-k SVD once per size (expensive; not part of benchmark)
+  sv_opt <- base::svd(X_host, nu = K_RANK, nv = K_RANK)
   cpu_med <- NA_real_
 
   for (backend in BACKENDS) {
@@ -190,13 +189,14 @@ for (sz_name in names(SIZES)) {
 
     fn <- local({
       X_am_ <- X_am; k_ <- K_RANK; q_ <- Q_ITER; Xh_ <- X_host
-      function() subspace_iter(X_am_, k = k_, q = q_, X_host = Xh_)
+      function() subspace_iter_kernel(X_am_, k = k_, q = q_, X_host = Xh_)
     })
     result <- tryCatch({
       fn()                    # warmup (not timed)
       med <- time_ms(fn)
-      res <- fn()             # one final run to capture rel_err
-      list(med_ms = med, rel_err = res$rel_err, error = NULL)
+      res <- fn()             # one final run to capture accuracy
+      rel_err <- subspace_iter_accuracy(res, X_host, K_RANK, sv_opt)
+      list(med_ms = med, rel_err = rel_err, error = NULL)
     }, error = function(e) list(med_ms = NA, rel_err = NA, error = conditionMessage(e)))
 
     if (!is.null(result$error)) {

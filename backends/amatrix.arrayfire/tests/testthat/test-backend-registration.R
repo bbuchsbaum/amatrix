@@ -24,7 +24,8 @@ test_that("arrayfire backend advertises dense-first capabilities", {
 test_that("arrayfire capability list is stable and explicit", {
   expect_identical(
     amatrix_arrayfire_capabilities(),
-    c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
+    c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax",
+      "rowSums", "colSums",
       "qr", "rsvd", "chol", "solve", "covariance", "svd")
   )
 })
@@ -122,16 +123,16 @@ test_that("bdc_svd gives accurate reconstruction for square and rectangular matr
   recon_err2 <- max(abs(recon2 - B)) / max(abs(B), 1e-12)
   expect_lt(recon_err2, 1e-4, label = "bdc_svd reconstruction (near-square)")
 
-  # Thin SVD: nu=nv=5 only
+  # Thin SVD: nu=nv=5 — $d still has all k values (base::svd convention)
   set.seed(3)
   C <- matrix(rnorm(64 * 64), 64, 64); storage.mode(C) <- "double"
   res3 <- amatrix_arrayfire_bdc_svd(C, nu = 5L, nv = 5L)
-  expect_equal(length(res3$d), 5L)
+  expect_equal(length(res3$d), 64L, label = "bdc_svd $d has all k values (nu=5)")
   expect_equal(dim(res3$u), c(64L, 5L))
   expect_equal(dim(res3$v), c(64L, 5L))
-  ref_d5 <- base::svd(C, nu = 0L, nv = 0L)$d[seq_len(5L)]
-  expect_equal(sort(res3$d, decreasing = TRUE), ref_d5, tolerance = 1e-4,
-               label = "bdc_svd top-5 singular values")
+  ref_d <- base::svd(C, nu = 0L, nv = 0L)$d
+  expect_equal(sort(res3$d, decreasing = TRUE), ref_d, tolerance = 1e-4,
+               label = "bdc_svd all singular values match (nu=5 thin)")
 })
 
 test_that("svd dispatcher routes square-ish matrices to bdc_svd when native unsafe", {
@@ -161,6 +162,118 @@ test_that("svd dispatcher routes square-ish matrices to bdc_svd when native unsa
   ref_ts <- base::svd(y, nu = 0L, nv = 0L)$d
   expect_equal(sort(res_ts$d, decreasing = TRUE), ref_ts, tolerance = 1e-4,
                label = "dispatcher ts_svd path (tall-thin)")
+})
+
+test_that("bdc_svd produces orthonormal U and V", {
+  old_backend <- amatrix_arrayfire_active_backend()
+  amatrix_arrayfire_set_backend("cpu")
+  on.exit(amatrix_arrayfire_set_backend(
+    if (identical(old_backend, 4L)) "opencl" else "cpu"), add = TRUE)
+
+  set.seed(17)
+  A <- matrix(rnorm(64 * 64), 64, 64); storage.mode(A) <- "double"
+  res <- amatrix_arrayfire_bdc_svd(A, nu = 64L, nv = 64L)
+
+  expect_equal(crossprod(res$u), diag(64L), tolerance = 1e-10,
+               label = "bdc_svd U^T U = I")
+  expect_equal(crossprod(res$v), diag(64L), tolerance = 1e-10,
+               label = "bdc_svd V^T V = I")
+})
+
+test_that("bdc_svd multi-panel back-transform (k > panel_width)", {
+  old_backend <- amatrix_arrayfire_active_backend()
+  old_nb <- getOption("amatrix.arrayfire.bdc_panel_width")
+  amatrix_arrayfire_set_backend("cpu")
+  options(amatrix.arrayfire.bdc_panel_width = 10L)   # forces 5 panels for k=48
+  on.exit({
+    options(amatrix.arrayfire.bdc_panel_width = old_nb)
+    amatrix_arrayfire_set_backend(if (identical(old_backend, 4L)) "opencl" else "cpu")
+  }, add = TRUE)
+
+  set.seed(5)
+  A <- matrix(rnorm(48 * 48), 48, 48); storage.mode(A) <- "double"
+  res <- amatrix_arrayfire_bdc_svd(A, nu = 48L, nv = 48L)
+
+  recon_err <- max(abs(res$u %*% diag(res$d) %*% t(res$v) - A)) / max(abs(A), 1e-12)
+  expect_lt(recon_err, 1e-10, label = "bdc_svd multi-panel reconstruction")
+  expect_equal(crossprod(res$u), diag(48L), tolerance = 1e-10,
+               label = "bdc_svd multi-panel U orthonormality")
+  expect_equal(crossprod(res$v), diag(48L), tolerance = 1e-10,
+               label = "bdc_svd multi-panel V orthonormality")
+})
+
+test_that("bdc_svd handles wide matrices (m < n)", {
+  old_backend <- amatrix_arrayfire_active_backend()
+  amatrix_arrayfire_set_backend("cpu")
+  on.exit(amatrix_arrayfire_set_backend(
+    if (identical(old_backend, 4L)) "opencl" else "cpu"), add = TRUE)
+
+  set.seed(21)
+  A <- matrix(rnorm(32 * 60), 32, 60); storage.mode(A) <- "double"
+  res <- amatrix_arrayfire_bdc_svd(A, nu = 32L, nv = 32L)
+
+  expect_equal(dim(res$u), c(32L, 32L))
+  expect_equal(dim(res$v), c(60L, 32L))
+  ref_d <- base::svd(A, nu = 0L, nv = 0L)$d
+  expect_equal(sort(res$d, decreasing = TRUE), ref_d, tolerance = 1e-10,
+               label = "bdc_svd wide matrix singular values")
+  recon_err <- max(abs(res$u %*% diag(res$d) %*% t(res$v) - A)) / max(abs(A), 1e-12)
+  expect_lt(recon_err, 1e-10, label = "bdc_svd wide matrix reconstruction")
+})
+
+test_that("bdc_svd handles nu=0, nv=0, and asymmetric nu/nv", {
+  old_backend <- amatrix_arrayfire_active_backend()
+  amatrix_arrayfire_set_backend("cpu")
+  on.exit(amatrix_arrayfire_set_backend(
+    if (identical(old_backend, 4L)) "opencl" else "cpu"), add = TRUE)
+
+  set.seed(13)
+  A <- matrix(rnorm(32 * 32), 32, 32); storage.mode(A) <- "double"
+  ref_d <- base::svd(A, nu = 0L, nv = 0L)$d
+
+  # nu=0, nv=0: only singular values (all k)
+  res0 <- amatrix_arrayfire_bdc_svd(A, nu = 0L, nv = 0L)
+  expect_equal(length(res0$d), 32L, label = "bdc_svd nu=nv=0 d length")
+  expect_equal(dim(res0$u), c(32L, 0L))
+  expect_equal(dim(res0$v), c(32L, 0L))
+  expect_equal(sort(res0$d, decreasing = TRUE), ref_d, tolerance = 1e-10,
+               label = "bdc_svd nu=nv=0 singular values")
+
+  # Asymmetric: nu=32, nv=0
+  res_u <- amatrix_arrayfire_bdc_svd(A, nu = 32L, nv = 0L)
+  expect_equal(dim(res_u$u), c(32L, 32L))
+  expect_equal(dim(res_u$v), c(32L, 0L))
+  expect_equal(crossprod(res_u$u), diag(32L), tolerance = 1e-10,
+               label = "bdc_svd asymmetric nu=32,nv=0 U orthonormality")
+})
+
+test_that("bdc_svd handles small matrices (edge cases)", {
+  old_backend <- amatrix_arrayfire_active_backend()
+  amatrix_arrayfire_set_backend("cpu")
+  on.exit(amatrix_arrayfire_set_backend(
+    if (identical(old_backend, 4L)) "opencl" else "cpu"), add = TRUE)
+
+  # 2×2
+  A2 <- matrix(c(3, 1, 1, 2), 2, 2); storage.mode(A2) <- "double"
+  res2 <- amatrix_arrayfire_bdc_svd(A2, nu = 2L, nv = 2L)
+  expect_lt(max(abs(res2$u %*% diag(res2$d) %*% t(res2$v) - A2)), 1e-10,
+            label = "bdc_svd 2×2 reconstruction")
+
+  # 1×1
+  A1 <- matrix(5.0, 1, 1)
+  res1 <- amatrix_arrayfire_bdc_svd(A1, nu = 1L, nv = 1L)
+  expect_equal(res1$d, 5.0, tolerance = 1e-10, label = "bdc_svd 1×1 singular value")
+
+  # 4×3 (k=3, non-square)
+  set.seed(8)
+  A43 <- matrix(rnorm(12), 4, 3); storage.mode(A43) <- "double"
+  res43 <- amatrix_arrayfire_bdc_svd(A43, nu = 3L, nv = 3L)
+  recon_err <- max(abs(res43$u %*% diag(res43$d) %*% t(res43$v) - A43)) /
+               max(abs(A43), 1e-12)
+  expect_lt(recon_err, 1e-10, label = "bdc_svd 4×3 reconstruction")
+  ref_d43 <- base::svd(A43, nu = 0L, nv = 0L)$d
+  expect_equal(sort(res43$d, decreasing = TRUE), ref_d43, tolerance = 1e-10,
+               label = "bdc_svd 4×3 singular values")
 })
 
 test_that("forced availability bypasses size heuristics for backend tests", {

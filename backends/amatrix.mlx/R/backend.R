@@ -1,5 +1,6 @@
 amatrix_mlx_capabilities <- function() {
-  c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
+  c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean",
+    "rowSums", "colSums",
     "qr", "svd", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen", "covariance")
 }
 
@@ -755,6 +756,25 @@ amatrix_mlx_chol_solve_factor <- function(R, B) {
         PACKAGE = "amatrix.mlx")
 }
 
+amatrix_mlx_scatter_mean <- function(x_key, labels, K) {
+  .Call("amatrix_mlx_scatter_mean_bridge",
+        as.character(x_key), as.integer(labels), as.integer(K),
+        PACKAGE = "amatrix.mlx")
+}
+
+amatrix_mlx_argreduce <- function(x_key, axis, is_max) {
+  .Call("amatrix_mlx_argreduce_bridge",
+        as.character(x_key), as.integer(axis), as.logical(is_max),
+        PACKAGE = "amatrix.mlx")
+}
+
+amatrix_mlx_broadcast_ewise_resident <- function(lhs_key, v, margin, op, out_key) {
+  .Call("amatrix_mlx_broadcast_ewise_resident_bridge",
+        as.character(lhs_key), as.double(v), as.integer(margin),
+        as.character(op), as.character(out_key),
+        PACKAGE = "amatrix.mlx")
+}
+
 amatrix_mlx_ewise_resident <- function(lhs_key, rhs, op, out_key) {
   rhs_arg <- rhs
   if (is.character(rhs_arg)) {
@@ -866,6 +886,18 @@ amatrix_mlx_backend <- function() {
                dims[1L] >= getOption("amatrix.mlx.eigen_min_dim", 200L))
       }
 
+      if (identical(op, "broadcast_ewise")) {
+        return(.amatrix_mlx_meets_threshold(x, thresholds$matmul_min_dim))
+      }
+
+      if (identical(op, "argmax")) {
+        return(TRUE)
+      }
+
+      if (identical(op, "scatter_mean")) {
+        return(TRUE)
+      }
+
       TRUE
     },
     matmul = function(x, y) {
@@ -880,6 +912,19 @@ amatrix_mlx_backend <- function() {
     ewise = function(x, lhs, rhs = NULL, op, ...) {
       amatrix_mlx_ewise(lhs = lhs, rhs = rhs, op = op)
     },
+    broadcast_ewise = function(x, lhs, v, margin, op, ...) {
+      base::sweep(as.matrix(lhs), MARGIN = margin, STATS = v, FUN = op)
+    },
+    broadcast_ewise_resident = function(lhs_key, v, margin, op, out_key) {
+      amatrix_mlx_broadcast_ewise_resident(lhs_key, v, margin, op, out_key)
+    },
+    scatter_mean_resident = function(x_key, labels, K) {
+      amatrix_mlx_scatter_mean(x_key, labels, K)
+    },
+    rowargmax_resident = function(x_key) amatrix_mlx_argreduce(x_key, 1L, TRUE),
+    rowargmin_resident = function(x_key) amatrix_mlx_argreduce(x_key, 1L, FALSE),
+    colargmax_resident = function(x_key) amatrix_mlx_argreduce(x_key, 0L, TRUE),
+    colargmin_resident = function(x_key) amatrix_mlx_argreduce(x_key, 0L, FALSE),
     rowSums = function(x, na.rm = FALSE, dims = 1L) {
       if (isTRUE(na.rm) || !identical(dims, 1L)) {
         return(cpu$rowSums(x, na.rm = na.rm, dims = dims))
