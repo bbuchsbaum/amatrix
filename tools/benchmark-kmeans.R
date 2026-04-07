@@ -48,18 +48,16 @@ kmeans_amatrix <- function(X_mat, K, max_iter = 20L, backend = "cpu", seed = 1L)
   labels     <- integer(n)
 
   for (iter in seq_len(max_iter)) {
-    # Full GPU pipeline: gemm + broadcast sweep + argmin + scatter mean
     c_norms_sq <- rowSums(centroids^2)
-    XCt_gpu    <- X_gpu %*% t(centroids)               # n×K gemm
-    D_gpu      <- ewise("*", XCt_gpu, -2)              # −2 XCt
-    D_gpu      <- am_sweep(D_gpu, 1L, x_norms_sq, "+") # + row norms
-    D_gpu      <- am_sweep(D_gpu, 2L, c_norms_sq, "+") # + col norms
-    new_labels <- am_rowargmin(D_gpu)                   # argmin of D
+    XCt_gpu    <- X_gpu %*% t(centroids)
+    D_gpu      <- sweep(-2 * XCt_gpu, 1L, x_norms_sq,  "+")
+    D_gpu      <- sweep(D_gpu,        2L, c_norms_sq,   "+")
+    new_labels <- max.col(-D_gpu, ties.method = "first")
 
     if (identical(new_labels, labels)) break
     labels <- new_labels
 
-    centroids <- am_scatter_mean(X_gpu, labels, K)      # GPU scatter mean
+    centroids  <- as.matrix(segment_mean(X_gpu, labels, K))
     empty <- which(is.na(centroids[, 1L]))
     if (length(empty) > 0L)
       centroids[empty, ] <- X_mat[sample.int(n, length(empty), replace = TRUE), ]
