@@ -848,7 +848,7 @@ dot <- function(x, y) {
   .amatrix_bind_resident(wrapped, choice_name, resident$key)
 }
 
-am_segment_sum <- function(x, labels, K) {
+segment_sum <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
   if (!inherits(x, "adgeMatrix"))
@@ -860,7 +860,7 @@ am_segment_sum <- function(x, labels, K) {
   .am_segment_resident_wrap(x, resident, choice$name)
 }
 
-am_segment_mean <- function(x, labels, K) {
+segment_mean <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
   if (!inherits(x, "adgeMatrix"))
@@ -872,7 +872,7 @@ am_segment_mean <- function(x, labels, K) {
   .am_segment_resident_wrap(x, resident, choice$name)
 }
 
-# ── am_addmm (amatrix-uaj) ─────────────────────────────────────────────────
+# ── addmm (amatrix-uaj) ─────────────────────────────────────────────────
 # alpha*(A%*%B) + beta*C  — BLAS-3 fused scaled matmul with optional bias.
 # A: n×p adgeMatrix (resident if GPU); B: p×k R matrix; C: n×k R matrix or NULL.
 # GPU path uses mlx_addmm directly; CPU path uses plain R arithmetic.
@@ -904,7 +904,7 @@ am_segment_mean <- function(x, labels, K) {
 #' @param beta  Scalar multiplier for \code{C} (default 1).
 #' @return \code{adgeMatrix} if A is resident, otherwise plain matrix.
 #' @export
-am_addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
+addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
   B_mat <- as.matrix(B); storage.mode(B_mat) <- "double"
   C_mat <- if (!is.null(C)) { m <- as.matrix(C); storage.mode(m) <- "double"; m } else NULL
 
