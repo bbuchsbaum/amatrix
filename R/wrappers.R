@@ -79,6 +79,18 @@
     return(NULL)
   }
 
+  if (inherits(value, "adgCMatrix") && is.function(backend$sparse_resident_store)) {
+    resident_key <- .amatrix_resident_key(value, backend = backend_name)
+    if (!is.null(resident_key) && isTRUE(backend$sparse_resident_has(resident_key))) {
+      return(list(key = resident_key, temporary = FALSE, tracked = TRUE, sparse = TRUE))
+    }
+    resident_key <- .amatrix_next_resident_key(backend_name)
+    host <- amatrix_materialize_host(value)  # returns dgCMatrix
+    backend$sparse_resident_store(resident_key, host)
+    .amatrix_bind_resident(value, backend_name, resident_key, sparse = TRUE)
+    return(list(key = resident_key, temporary = FALSE, tracked = TRUE, sparse = TRUE))
+  }
+
   if (inherits(value, "adgeMatrix")) {
     resident_key <- .amatrix_resident_key(value, backend = backend_name)
     if (!is.null(resident_key) && isTRUE(backend$resident_has(resident_key))) {
@@ -111,8 +123,13 @@
   }
 
   for (arg in args) {
-    if (!is.null(arg) && isTRUE(arg$temporary) && isTRUE(backend$resident_has(arg$key))) {
-      backend$resident_drop(arg$key)
+    if (!is.null(arg) && isTRUE(arg$temporary)) {
+      if (isTRUE(arg$sparse) && is.function(backend$sparse_resident_has) &&
+          isTRUE(backend$sparse_resident_has(arg$key))) {
+        backend$sparse_resident_drop(arg$key)
+      } else if (isTRUE(backend$resident_has(arg$key))) {
+        backend$resident_drop(arg$key)
+      }
     }
   }
 
@@ -121,6 +138,20 @@
 
 .amatrix_try_resident_matmul <- function(x, y, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
+
+  # Sparse resident path: LHS is adgCMatrix with spmm_resident support
+  if (inherits(x, "adgCMatrix") && is.function(backend$spmm_resident)) {
+    lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+    if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
+    rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
+    if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
+    value <- backend$spmm_resident(lhs$key, rhs_mat, trans_lhs = FALSE)
+    # No out_key for sparse path (result is returned as plain R matrix)
+    out_key <- .amatrix_next_resident_key(backend_name)
+    backend$resident_store(out_key, value)
+    return(list(value = value, backend = backend_name, resident_key = out_key))
+  }
+
   if (!.amatrix_backend_supports_resident_op(backend, "matmul")) {
     return(NULL)
   }
@@ -141,6 +172,19 @@
 
 .amatrix_try_resident_crossprod <- function(x, y, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
+
+  # Sparse resident path: crossprod(X, Y) = t(X) %*% Y → spmm_resident with trans_lhs=TRUE
+  if (inherits(x, "adgCMatrix") && !is.null(y) && is.function(backend$spmm_resident)) {
+    lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+    if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
+    rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
+    if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
+    value <- backend$spmm_resident(lhs$key, rhs_mat, trans_lhs = TRUE)
+    out_key <- .amatrix_next_resident_key(backend_name)
+    backend$resident_store(out_key, value)
+    return(list(value = value, backend = backend_name, resident_key = out_key))
+  }
+
   if (!.amatrix_backend_supports_resident_op(backend, "crossprod")) {
     return(NULL)
   }

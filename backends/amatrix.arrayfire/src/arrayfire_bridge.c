@@ -2567,6 +2567,190 @@ SEXP amatrix_arrayfire_bdc_dbdsdc_bridge(SEXP d_r, SEXP e_r, SEXP uplo_r) {
   return result;
 }
 
+/* ── Sparse resident registry ─────────────────────────────────────────────── *
+ * Separate from the dense resident registry: stores CSC sparse data on host  *
+ * so that the upload / decomposition cost is paid once per matrix.            */
+
+typedef struct {
+  char*   key;
+  double* values;    /* NNZ doubles (CSC @x) */
+  int*    row_idx;   /* NNZ ints    (CSC @i) */
+  int*    col_ptr;   /* ncol+1 ints (CSC @p) */
+  int     nrow;
+  int     ncol;
+  int     nnz;
+  int     in_use;
+} amatrix_af_sparse_entry;
+
+#define AMATRIX_SPARSE_REGISTRY_CAP 64
+static amatrix_af_sparse_entry amatrix_af_sparse_registry[AMATRIX_SPARSE_REGISTRY_CAP];
+static int amatrix_af_sparse_registry_init_done = 0;
+
+static void amatrix_af_sparse_registry_init(void) {
+  if (amatrix_af_sparse_registry_init_done) return;
+  memset(amatrix_af_sparse_registry, 0, sizeof(amatrix_af_sparse_registry));
+  amatrix_af_sparse_registry_init_done = 1;
+}
+
+static amatrix_af_sparse_entry* amatrix_af_sparse_find(const char* key) {
+  amatrix_af_sparse_registry_init();
+  for (int i = 0; i < AMATRIX_SPARSE_REGISTRY_CAP; ++i) {
+    if (amatrix_af_sparse_registry[i].in_use &&
+        strcmp(amatrix_af_sparse_registry[i].key, key) == 0)
+      return &amatrix_af_sparse_registry[i];
+  }
+  return NULL;
+}
+
+static void amatrix_af_sparse_free_entry(amatrix_af_sparse_entry* e) {
+  if (e->key)     { free(e->key);     e->key     = NULL; }
+  if (e->values)  { free(e->values);  e->values  = NULL; }
+  if (e->row_idx) { free(e->row_idx); e->row_idx = NULL; }
+  if (e->col_ptr) { free(e->col_ptr); e->col_ptr = NULL; }
+  e->in_use = 0;
+  e->nnz = e->nrow = e->ncol = 0;
+}
+
+static amatrix_af_sparse_entry* amatrix_af_sparse_reserve(const char* key) {
+  amatrix_af_sparse_entry* existing = amatrix_af_sparse_find(key);
+  if (existing != NULL) {
+    /* Free old data but keep the slot */
+    if (existing->values)  { free(existing->values);  existing->values  = NULL; }
+    if (existing->row_idx) { free(existing->row_idx); existing->row_idx = NULL; }
+    if (existing->col_ptr) { free(existing->col_ptr); existing->col_ptr = NULL; }
+    existing->nnz = existing->nrow = existing->ncol = 0;
+    return existing;
+  }
+  amatrix_af_sparse_registry_init();
+  for (int i = 0; i < AMATRIX_SPARSE_REGISTRY_CAP; ++i) {
+    if (!amatrix_af_sparse_registry[i].in_use) {
+      amatrix_af_sparse_registry[i].in_use = 1;
+      amatrix_af_sparse_registry[i].key = strdup(key);
+      if (amatrix_af_sparse_registry[i].key == NULL)
+        error("failed to allocate sparse resident key");
+      return &amatrix_af_sparse_registry[i];
+    }
+  }
+  error("sparse residency registry is full");
+  return NULL;
+}
+
+/* ── Sparse resident bridge functions ─────────────────────────────────────── */
+
+/* Store dgCMatrix CSC slots into the sparse registry.
+ * Args: key(STR), values(REAL), p(INT), i(INT), dim(INT[2]), dummy(ignored) */
+SEXP amatrix_arrayfire_sparse_store_bridge(SEXP key_r, SEXP values_r,
+                                            SEXP p_r, SEXP i_r,
+                                            SEXP dim_r, SEXP dummy) {
+  (void)dummy;
+  if (!isString(key_r) || LENGTH(key_r) != 1)
+    error("sparse_store: key must be a scalar string");
+  if (!isReal(values_r))
+    error("sparse_store: values must be real");
+  if (TYPEOF(i_r) != INTSXP)
+    error("sparse_store: row indices must be integer");
+  if (TYPEOF(p_r) != INTSXP)
+    error("sparse_store: col pointers must be integer");
+  if (TYPEOF(dim_r) != INTSXP || length(dim_r) != 2)
+    error("sparse_store: dim must be integer[2]");
+
+  const char* key  = CHAR(STRING_ELT(key_r, 0));
+  int nrow = INTEGER(dim_r)[0];
+  int ncol = INTEGER(dim_r)[1];
+  int nnz  = LENGTH(values_r);
+
+  amatrix_af_sparse_entry* e = amatrix_af_sparse_reserve(key);
+  e->nrow = nrow;
+  e->ncol = ncol;
+  e->nnz  = nnz;
+
+  e->values  = (double*) malloc((size_t)nnz * sizeof(double));
+  e->row_idx = (int*)    malloc((size_t)nnz * sizeof(int));
+  e->col_ptr = (int*)    malloc((size_t)(ncol + 1) * sizeof(int));
+  if (!e->values || !e->row_idx || !e->col_ptr)
+    error("sparse_store: allocation failed");
+
+  memcpy(e->values,  REAL(values_r),    (size_t)nnz * sizeof(double));
+  memcpy(e->row_idx, INTEGER(i_r),      (size_t)nnz * sizeof(int));
+  memcpy(e->col_ptr, INTEGER(p_r),      (size_t)(ncol + 1) * sizeof(int));
+
+  return ScalarLogical(1);
+}
+
+/* Check if a sparse key exists in registry */
+SEXP amatrix_arrayfire_sparse_has_bridge(SEXP key_r) {
+  if (!isString(key_r) || LENGTH(key_r) != 1)
+    error("sparse_has: key must be a scalar string");
+  return ScalarLogical(amatrix_af_sparse_find(CHAR(STRING_ELT(key_r, 0))) != NULL);
+}
+
+/* Drop a sparse key from the registry */
+SEXP amatrix_arrayfire_sparse_drop_bridge(SEXP key_r) {
+  if (!isString(key_r) || LENGTH(key_r) != 1)
+    error("sparse_drop: key must be a scalar string");
+  amatrix_af_sparse_entry* e = amatrix_af_sparse_find(CHAR(STRING_ELT(key_r, 0)));
+  if (e != NULL)
+    amatrix_af_sparse_free_entry(e);
+  return ScalarLogical(1);
+}
+
+/* Sparse×Dense resident multiply: sp_key × B_mat (or t(sp) × B_mat).
+ * Returns a plain R double matrix. */
+SEXP amatrix_arrayfire_spmm_resident_bridge(SEXP sp_key_r, SEXP B_r,
+                                             SEXP trans_lhs_r) {
+  if (!isString(sp_key_r) || LENGTH(sp_key_r) != 1)
+    error("spmm_resident: sp_key must be a scalar string");
+  if (!isReal(B_r) || !isMatrix(B_r))
+    error("spmm_resident: B must be a real matrix");
+
+  const char* sp_key = CHAR(STRING_ELT(sp_key_r, 0));
+  amatrix_af_sparse_entry* e = amatrix_af_sparse_find(sp_key);
+  if (e == NULL)
+    error("spmm_resident: sparse key not found: %s", sp_key);
+
+  SEXP B_dim  = getAttrib(B_r, R_DimSymbol);
+  int  B_nrow = INTEGER(B_dim)[0];
+  int  B_ncol = INTEGER(B_dim)[1];
+  int  trans  = asLogical(trans_lhs_r);
+  int  X_nrow = e->nrow;
+  int  X_ncol = e->ncol;
+  int  out_nrow = trans ? X_ncol : X_nrow;
+
+  (void)B_nrow;
+
+  SEXP out_r = PROTECT(allocMatrix(REALSXP, out_nrow, B_ncol));
+  double *res   = REAL(out_r);
+  for (int k = 0; k < out_nrow * B_ncol; k++) res[k] = 0.0;
+
+  const double *xdata = e->values;
+  const double *bdata = REAL(B_r);
+  const int    *xi    = e->row_idx;
+  const int    *xp    = e->col_ptr;
+
+  if (!trans) {
+    for (int j = 0; j < X_ncol; j++) {
+      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+        int    ri = xi[sp];
+        double v  = xdata[sp];
+        for (int cb = 0; cb < B_ncol; cb++)
+          res[ri + (size_t)out_nrow * cb] += v * bdata[j + (size_t)X_ncol * cb];
+      }
+    }
+  } else {
+    for (int j = 0; j < X_ncol; j++) {
+      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+        int    ri = xi[sp];
+        double v  = xdata[sp];
+        for (int cb = 0; cb < B_ncol; cb++)
+          res[j + (size_t)out_nrow * cb] += v * bdata[ri + (size_t)X_nrow * cb];
+      }
+    }
+  }
+
+  UNPROTECT(1);
+  return out_r;
+}
+
 /* ── Sparse×Dense matrix multiply (SpMM) ────────────────────────────────────
  *
  * Accepts a dgCMatrix (CSC: values/@x, col-ptrs/@p, row-idx/@i) plus a dense
@@ -2596,55 +2780,8 @@ SEXP amatrix_arrayfire_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r,
   if (!isReal(B_r) || !isMatrix(B_r))
     error("spmm: B must be a real matrix");
 
-#ifdef HAVE_ARRAYFIRE
-  int    nrow      = INTEGER(dim_r)[0];
-  int    ncol      = INTEGER(dim_r)[1];
-  int    nnz       = (int)length(values_r);
-  int    trans_lhs = asLogical(trans_lhs_r);
-
-  /* float32 copy of values */
-  float *fval = (float *) arrayfire_xmalloc((size_t)nnz * sizeof(float));
-  const double *dval = REAL(values_r);
-  for (int k = 0; k < nnz; k++) fval[k] = (float)dval[k];
-
-  /* Build AF sparse array (CSC layout matches dgCMatrix exactly):
-   *   rowIdx = row indices (NNZ elements)
-   *   colIdx = col pointers (ncol+1 elements)                        */
-  af_array sp_arr = 0;
-  af_err err = af_create_sparse_array_from_ptr(
-      &sp_arr,
-      (dim_t)nrow, (dim_t)ncol, (dim_t)nnz,
-      fval,
-      INTEGER(i_r),   /* row indices */
-      INTEGER(p_r),   /* col pointers */
-      AF_STORAGE_CSC,
-      f32,
-      afHost);
-  free(fval);
-  if (err != AF_SUCCESS) {
-    error("af_create_sparse_array_from_ptr failed (err=%d)", (int)err);
-  }
-
-  /* Dense RHS — column-major path (amatrix_af_from_r) */
-  af_array B_af = amatrix_af_from_r(B_r);
-
-  /* SpMM */
-  af_array out = 0;
-  af_mat_prop opt_lhs = trans_lhs ? AF_MAT_TRANS : AF_MAT_NONE;
-  err = af_sparse_matmul(&out, sp_arr, B_af, opt_lhs, AF_MAT_NONE);
-  af_release_array(sp_arr);
-  af_release_array(B_af);
-  if (err != AF_SUCCESS) {
-    if (out) af_release_array(out);
-    error("af_sparse_matmul failed (err=%d)", (int)err);
-  }
-
-  SEXP result = amatrix_af_to_r(out);
-  af_release_array(out);
-  return result;
-
-#else
-  /* ── No-ArrayFire fallback: plain sparse CSC × dense ── */
+  /* ── CPU sparse CSC × dense (af_sparse_matmul not available in AF 3.10) ── */
+  {
   SEXP B_dim  = getAttrib(B_r, R_DimSymbol);
   int  B_nrow = INTEGER(B_dim)[0];
   int  B_ncol = INTEGER(B_dim)[1];
@@ -2688,5 +2825,5 @@ SEXP amatrix_arrayfire_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r,
 
   UNPROTECT(1);
   return out_r;
-#endif
+  }
 }

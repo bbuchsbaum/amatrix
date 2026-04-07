@@ -113,6 +113,33 @@ amatrix_arrayfire_spmm <- function(x_sp, y, trans_lhs = FALSE) {
         PACKAGE = "amatrix.arrayfire")
 }
 
+amatrix_arrayfire_sparse_store <- function(key, x_sp) {
+  # x_sp: dgCMatrix (materialized from adgCMatrix via amatrix_materialize_host)
+  invisible(.Call("amatrix_arrayfire_sparse_store_bridge",
+                  as.character(key),
+                  as.double(x_sp@x), as.integer(x_sp@p), as.integer(x_sp@i),
+                  as.integer(x_sp@Dim), NULL,
+                  PACKAGE = "amatrix.arrayfire"))
+}
+
+amatrix_arrayfire_sparse_has <- function(key) {
+  isTRUE(.Call("amatrix_arrayfire_sparse_has_bridge", as.character(key),
+               PACKAGE = "amatrix.arrayfire"))
+}
+
+amatrix_arrayfire_sparse_drop <- function(key) {
+  invisible(.Call("amatrix_arrayfire_sparse_drop_bridge", as.character(key),
+                  PACKAGE = "amatrix.arrayfire"))
+}
+
+amatrix_arrayfire_spmm_resident <- function(sp_key, B, trans_lhs = FALSE) {
+  B_mat <- if (is.matrix(B)) B else as.matrix(B)
+  if (!is.double(B_mat)) storage.mode(B_mat) <- "double"
+  .Call("amatrix_arrayfire_spmm_resident_bridge",
+        as.character(sp_key), B_mat, as.logical(trans_lhs),
+        PACKAGE = "amatrix.arrayfire")
+}
+
 amatrix_arrayfire_ewise <- function(lhs, rhs = NULL, op) {
   lhs_mat <- as.matrix(lhs)
   rhs_arg <- rhs
@@ -978,6 +1005,18 @@ amatrix_arrayfire_backend <- function() {
     },
     rsvd = function(x, k, n_oversamples = 10L, n_iter = 4L) {
       amatrix_arrayfire_rsvd(x, k = k, n_oversamples = n_oversamples, n_iter = n_iter)
+    },
+    sparse_resident_store = function(key, x_sp) {
+      amatrix_arrayfire_sparse_store(key, x_sp)
+    },
+    sparse_resident_has = function(key) {
+      amatrix_arrayfire_sparse_has(key)
+    },
+    sparse_resident_drop = function(key) {
+      amatrix_arrayfire_sparse_drop(key)
+    },
+    spmm_resident = function(sp_key, B, trans_lhs = FALSE) {
+      amatrix_arrayfire_spmm_resident(sp_key, B, trans_lhs = trans_lhs)
     }
   )
 }

@@ -38,7 +38,11 @@
           error = function(e) NULL
         )
         if (!is.null(backend) && .amatrix_backend_residency_capable(backend)) {
-          try(backend$resident_drop(resident_key), silent = TRUE)
+          if (isTRUE(entry$sparse) && is.function(backend$sparse_resident_drop)) {
+            try(backend$sparse_resident_drop(resident_key), silent = TRUE)
+          } else {
+            try(backend$resident_drop(resident_key), silent = TRUE)
+          }
         }
       }
       invisible(NULL)
@@ -77,7 +81,7 @@
   get0(object_key, envir = .amatrix_state$residency, inherits = FALSE)
 }
 
-.amatrix_bind_resident <- function(x, backend, resident_key) {
+.amatrix_bind_resident <- function(x, backend, resident_key, sparse = FALSE) {
   object_key <- .amatrix_object_key(x)
   if (is.null(object_key)) {
     return(x)
@@ -85,7 +89,7 @@
 
   assign(
     object_key,
-    list(backend = backend, resident_key = resident_key),
+    list(backend = backend, resident_key = resident_key, sparse = isTRUE(sparse)),
     envir = .amatrix_state$residency
   )
 

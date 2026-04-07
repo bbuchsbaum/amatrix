@@ -48,6 +48,10 @@ extern SEXP amatrix_arrayfire_bdc_bidiag_bridge(SEXP A_r);
 extern SEXP amatrix_arrayfire_bdc_orgbr_bridge(SEXP vect_r, SEXP A_r, SEXP tau_r, SEXP M_r, SEXP N_r, SEXP K_r);
 extern SEXP amatrix_arrayfire_bdc_dbdsdc_bridge(SEXP d_r, SEXP e_r, SEXP uplo_r);
 extern SEXP amatrix_arrayfire_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r, SEXP dim_r, SEXP B_r, SEXP trans_lhs_r);
+extern SEXP amatrix_arrayfire_sparse_store_bridge(SEXP key_r, SEXP values_r, SEXP p_r, SEXP i_r, SEXP dim_r, SEXP dummy);
+extern SEXP amatrix_arrayfire_sparse_has_bridge(SEXP key_r);
+extern SEXP amatrix_arrayfire_sparse_drop_bridge(SEXP key_r);
+extern SEXP amatrix_arrayfire_spmm_resident_bridge(SEXP sp_key_r, SEXP B_r, SEXP trans_lhs_r);
 
 static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_native_available_bridge", (DL_FUNC) &amatrix_arrayfire_native_available_bridge, 0},
@@ -96,6 +100,10 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_arrayfire_bdc_orgbr_bridge",             (DL_FUNC) &amatrix_arrayfire_bdc_orgbr_bridge,             6},
     {"amatrix_arrayfire_bdc_dbdsdc_bridge",            (DL_FUNC) &amatrix_arrayfire_bdc_dbdsdc_bridge,            3},
     {"amatrix_arrayfire_spmm_bridge",                  (DL_FUNC) &amatrix_arrayfire_spmm_bridge,                  6},
+    {"amatrix_arrayfire_sparse_store_bridge",          (DL_FUNC) &amatrix_arrayfire_sparse_store_bridge,          6},
+    {"amatrix_arrayfire_sparse_has_bridge",            (DL_FUNC) &amatrix_arrayfire_sparse_has_bridge,            1},
+    {"amatrix_arrayfire_sparse_drop_bridge",           (DL_FUNC) &amatrix_arrayfire_sparse_drop_bridge,           1},
+    {"amatrix_arrayfire_spmm_resident_bridge",         (DL_FUNC) &amatrix_arrayfire_spmm_resident_bridge,         3},
     {NULL, NULL, 0}
 };
 
