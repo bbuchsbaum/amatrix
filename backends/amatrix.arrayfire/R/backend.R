@@ -485,6 +485,68 @@ amatrix_arrayfire_ts_svd <- function(x, nu, nv) {
   list(u = U, d = sv_B$d, v = sv_B$v)
 }
 
+# ── GESVDA-style SVD (normal equations path) ─────────────────────────────────
+#
+# For very tall-skinny matrices (m >> n), the GESVDA approach from the NVIDIA
+# GTC talk (Chien & Rodriguez Bernabeu) is faster than QR-based ts_svd:
+#
+#   Phase 1:  B = A^T A  [n×n] via GPU crossprod — pure BLAS-3, fully parallel
+#   Phase 2:  (S², V) = eigen(B, symmetric=TRUE)  [n×n] on CPU
+#   Phase 3:  U = A V S^{-1}  [m×nu_eff] via GPU matmul
+#
+# Rationale: CPU QR on a tall matrix (O(mn²) flops, BLAS-1 dominated) becomes
+# the bottleneck when m >> n; replacing it with a GPU GEMM (BLAS-3) eliminates
+# this. The paper shows 5-17× speedup for m/n ≥ 10.
+#
+# Accuracy trade-off: forming A^T A squares the condition number. Singular
+# values are accurate to ~1e-6 (vs ~1e-15 for QR). Acceptable for PCA /
+# data analytics; not suitable for ill-conditioned systems.
+#
+# Only invoked when:
+#   aspect >= amatrix.arrayfire.gesvda_min_aspect  (default 8)
+#   AND m  >= amatrix.arrayfire.gesvda_min_rows    (default 512)
+amatrix_arrayfire_gesvda_svd <- function(x, nu, nv) {
+  mat <- if (is.matrix(x)) x else as.matrix(x)
+  storage.mode(mat) <- "double"
+  m <- nrow(mat); n <- ncol(mat); k <- min(m, n)
+  nu_eff <- min(as.integer(nu), k)
+  nv_eff <- min(as.integer(nv), k)
+
+  # Phase 1: B = A^T A [n×n] on GPU — BLAS-3, replaces CPU QR
+  B <- .Call("amatrix_arrayfire_crossprod_correct_bridge", mat, mat,
+             PACKAGE = "amatrix.arrayfire")
+  storage.mode(B) <- "double"
+
+  # Phase 2: eigendecomposition of n×n symmetric B on CPU
+  # eigen() returns eigenvalues in *decreasing* order for symmetric matrices,
+  # which matches base::svd's convention (singular values decreasing).
+  ev <- eigen(B, symmetric = TRUE)
+  # sigma = sqrt(lambda); clamp negatives (floating-point noise near zero)
+  d_all <- sqrt(pmax(ev$values, 0))   # length n, decreasing
+  V_all <- ev$vectors                 # n×n, columns = right singular vectors
+
+  # Phase 3: U = A V S^{-1} [m×nu_eff] on GPU
+  # Tolerance: singular values below eps_rel * sigma_1 are numerically zero
+  eps_rel <- .Machine$double.eps * max(m, n)
+  sigma_thresh <- d_all[1L] * eps_rel
+
+  U_out <- matrix(0, m, 0L)
+  if (nu_eff > 0L) {
+    V_eff <- V_all[, seq_len(nu_eff), drop = FALSE]
+    storage.mode(V_eff) <- "double"
+    AV <- .Call("amatrix_arrayfire_matmul_correct_bridge", mat, V_eff,
+                PACKAGE = "amatrix.arrayfire")
+    # Scale columns: u_j = (A v_j) / sigma_j
+    sigma_eff <- d_all[seq_len(nu_eff)]
+    safe_inv  <- ifelse(sigma_eff > sigma_thresh, 1 / sigma_eff, 0)
+    U_out <- AV %*% diag(safe_inv, nu_eff, nu_eff)
+  }
+
+  V_out <- if (nv_eff > 0L) V_all[, seq_len(nv_eff), drop = FALSE] else matrix(0, n, 0L)
+
+  list(u = U_out, d = d_all, v = V_out)
+}
+
 # ── Persistent probe/quarantine ───────────────────────────────────────────────
 #
 # Probe result is keyed by:
@@ -597,12 +659,15 @@ amatrix_arrayfire_ts_svd <- function(x, nu, nv) {
 # Priority:
 #   1. Native af_svd when known safe (Layer 3: CUDA/oneAPI, or Layer 2: probe).
 #   2. BDC path for large square-ish matrices (aspect < 4, min(m,n) >= bdc_min_n).
-#   3. ts_svd fallback (QR→SVD(R)) for tall-thin or small matrices.
+#   3. GESVDA for very tall-skinny matrices (aspect >= gesvda_min_aspect AND m >= gesvda_min_rows).
+#      Replaces CPU QR with GPU A^T A GEMM + CPU eigen — 5-17× faster when m >> n.
+#      Accuracy: ~1e-6 (condition squaring); suitable for PCA / data analytics.
+#   4. ts_svd fallback (QR→SVD(R)) for moderate aspect or small matrices.
 #
 # Shape routing rationale:
-#   ts_svd is optimal when m >> n (QR reduces the problem cheaply).
-#   For square / near-square (aspect < 4), ts_svd offers no reduction;
-#   the BDC path amortizes bidiagonalization via GPU trailing-block GEMMs.
+#   BDC handles square/near-square where QR offers no dimension reduction.
+#   GESVDA beats ts_svd when QR dominates (m/n ≥ 8, paper shows 5-17× speedup).
+#   ts_svd remains the safe default for moderate aspect or accuracy-sensitive work.
 amatrix_arrayfire_svd <- function(x, nu, nv) {
   use_native <- .amatrix_arrayfire_svd_safe_backend() ||
                 .amatrix_arrayfire_probe_native_svd()
@@ -617,8 +682,12 @@ amatrix_arrayfire_svd <- function(x, nu, nv) {
     m      <- nrow(mat); n <- ncol(mat)
     aspect <- max(m, n) / max(min(m, n), 1L)
     bdc_n  <- as.integer(getOption("amatrix.arrayfire.bdc_min_n", 512L))
+    gesvda_aspect <- as.numeric(getOption("amatrix.arrayfire.gesvda_min_aspect", 8))
+    gesvda_rows   <- as.integer(getOption("amatrix.arrayfire.gesvda_min_rows",  512L))
     if (min(m, n) >= bdc_n && aspect < 4) {
       amatrix_arrayfire_bdc_svd(mat, nu = nu, nv = nv)
+    } else if (m >= gesvda_rows && m >= n && aspect >= gesvda_aspect) {
+      amatrix_arrayfire_gesvda_svd(mat, nu = nu, nv = nv)
     } else {
       amatrix_arrayfire_ts_svd(mat, nu = nu, nv = nv)
     }
