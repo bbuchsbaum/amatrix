@@ -65,12 +65,19 @@ lda_amatrix <- function(X_mat, labels, n_components = NULL, backend = "cpu",
   means_gpu <- segment_mean(X_gpu, labels, K) # adgeMatrix K×p
   means_mat <- as.matrix(means_gpu)
 
-  # Step 2: within-class scatter Sw = (X - mu_k)^T (X - mu_k) ─────────────
-  #   Subtract per-row class mean from X, then GPU crossprod
-  mu_rows   <- means_mat[labels, , drop = FALSE]  # n×p broadcast
-  X_c_mat   <- X_mat - mu_rows
-  X_c_gpu   <- adgeMatrix(X_c_mat, preferred_backend = backend, precision = "fast")
-  Sw        <- as.matrix(crossprod(X_c_gpu))       # p×p via GPU
+  # Step 2: within-class scatter Sw via one-pass algebraic identity ────────
+  #   Sw = X^T X − C^T diag(n_k) C
+  #
+  # Derivation: Sw = sum_k (X_k - mu_k)^T(X_k - mu_k)
+  #   = X^T X - X^T L C - C^T L^T X + C^T L^T L C
+  # where L = one_hot(labels).  L^T X = segment_sum = diag(n_k) C, so:
+  #   = X^T X - C^T diag(n_k) C
+  #
+  # Advantage: no n×p centering matrix — just one GPU crossprod(X) and a
+  # tiny K×p CPU correction.  Eliminates the center_X bottleneck entirely.
+  Xsq      <- as.matrix(crossprod(X_gpu))          # p×p via GPU (main GEMM)
+  wt_means <- sqrt(counts) * means_mat              # K×p, row-wise sqrt(n_k)
+  Sw       <- Xsq - crossprod(wt_means)             # p×p, CPU (small K)
 
   # Step 3: between-class scatter Sb = sum_k n_k (mu_k-mu)(mu_k-mu)^T ─────
   grand_mean <- colSums(means_mat * counts) / n    # weighted grand mean
@@ -115,8 +122,9 @@ lda_base <- function(X_mat, labels, n_components = NULL, reg = 1e-6) {
   means_mat  <- do.call(rbind, lapply(seq_len(K), function(k)
     colMeans(X_mat[labels == k, , drop = FALSE])))
   grand_mean <- colSums(means_mat * counts) / n
-  X_c_mat    <- X_mat - means_mat[labels, , drop = FALSE]
-  Sw         <- crossprod(X_c_mat)
+  # One-pass Sw: X^T X − C^T diag(n_k) C  (same formula as GPU path)
+  wt_means <- sqrt(counts) * means_mat
+  Sw       <- crossprod(X_mat) - crossprod(wt_means)
   mu_diff    <- means_mat - rep(grand_mean, each = K)
   Sb         <- crossprod(sqrt(counts) * mu_diff)
   trace_Sw   <- sum(diag(Sw))
@@ -249,19 +257,22 @@ cat("\n── Step profiling  (8000×200  K=10) ──────────�
   X_gpu <- adgeMatrix(X_mat, preferred_backend = bk, precision = "fast")
 
   steps <- bench::mark(
-    segment_mean  = segment_mean(X_gpu, labels, K),
-    center_X      = { mu <- as.matrix(segment_mean(X_gpu, labels, K));
-                      X_mat - mu[labels, ] },
-    Sw_crossprod  = { mu <- as.matrix(segment_mean(X_gpu, labels, K));
-                      Xc <- adgeMatrix(X_mat - mu[labels,], preferred_backend=bk,
-                                       precision="fast");
-                      crossprod(Xc) },
-    Sb_cpu        = { mu <- as.matrix(segment_mean(X_gpu, labels, K));
-                      md <- mu - rep(colMeans(X_mat), each=K);
-                      crossprod(sqrt(counts) * md) },
-    project       = { W_dummy <- matrix(rnorm(p*9), p, 9);
-                      X_gpu %*% adgeMatrix(W_dummy, preferred_backend=bk,
-                                           precision="fast") },
+    segment_mean   = segment_mean(X_gpu, labels, K),
+    # Old path: CPU centering (n×p) then GPU crossprod — was bottleneck
+    Sw_twopass     = { mu <- as.matrix(segment_mean(X_gpu, labels, K));
+                       Xc <- adgeMatrix(X_mat - mu[labels,], preferred_backend=bk,
+                                        precision="fast");
+                       crossprod(Xc) },
+    # New path: one GPU crossprod(X) + tiny CPU correction — no n×p centering
+    Sw_onepass     = { mu  <- as.matrix(segment_mean(X_gpu, labels, K));
+                       Xsq <- as.matrix(crossprod(X_gpu));
+                       Xsq - crossprod(sqrt(counts) * mu) },
+    Sb_cpu         = { mu <- as.matrix(segment_mean(X_gpu, labels, K));
+                       md <- mu - rep(colMeans(X_mat), each=K);
+                       crossprod(sqrt(counts) * md) },
+    project        = { W_dummy <- matrix(rnorm(p*9), p, 9);
+                       X_gpu %*% adgeMatrix(W_dummy, preferred_backend=bk,
+                                            precision="fast") },
     iterations = 5L, check = FALSE, memory = FALSE, time_unit = "ms"
   )
   print(steps[, c("expression", "median", "itr/sec")])
