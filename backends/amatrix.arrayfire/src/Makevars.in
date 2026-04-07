@@ -1,2 +1,4 @@
 PKG_CPPFLAGS = @AF_CPPFLAGS@
 PKG_LIBS = @AF_LIBS@
+# For CUDA/ROCm builds where af_svd is known stable, uncomment:
+#   PKG_CPPFLAGS += -DAMATRIX_AF_NATIVE_SVD_SAFE

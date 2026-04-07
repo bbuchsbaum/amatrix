@@ -90,6 +90,45 @@ static af_array arrayfire_matrix_from_r(SEXP x) {
   return out;
 }
 
+/* ── Correct column-major helpers (used by resident path and rsvd) ────── *
+ * R and ArrayFire both use column-major storage, so we can pass R data    *
+ * directly without the row-major staging buffer in arrayfire_matrix_from_r. *
+ * Use these everywhere you need correct non-square matrix support.         */
+
+/* Cast R double column-major → float32, preserving element order */
+static float* amatrix_af_r_to_f32(const double *src, int n) {
+  float *buf = (float *) arrayfire_xmalloc((size_t)n * sizeof(float));
+  for (int k = 0; k < n; k++) buf[k] = (float)src[k];
+  return buf;
+}
+
+/* Build an AF array from an R matrix (column-major, double→float32) */
+static af_array amatrix_af_from_r(SEXP x) {
+  SEXP dim = getAttrib(x, R_DimSymbol);
+  int m = INTEGER(dim)[0], n = INTEGER(dim)[1];
+  dim_t dims[2] = {(dim_t)m, (dim_t)n};
+  float *buf = amatrix_af_r_to_f32(REAL(x), m * n);
+  af_array out = 0;
+  af_create_array(&out, buf, 2, dims, f32);
+  free(buf);
+  return out;
+}
+
+/* Convert AF array → R matrix (column-major, float32→double) */
+static SEXP amatrix_af_to_r(af_array arr) {
+  dim_t dims[4] = {0, 0, 0, 0};
+  af_get_dims(&dims[0], &dims[1], &dims[2], &dims[3], arr);
+  int m = (int)dims[0], n = (int)dims[1];
+  float *buf = (float *) arrayfire_xmalloc((size_t)m * n * sizeof(float));
+  af_get_data_ptr(buf, arr);
+  SEXP out = PROTECT(allocMatrix(REALSXP, m, n));
+  double *dst = REAL(out);
+  for (int k = 0; k < m * n; k++) dst[k] = (double)buf[k];
+  free(buf);
+  UNPROTECT(1);
+  return out;
+}
+
 static af_err arrayfire_scalar_like(af_array *out, double value, const af_array like) {
   dim_t dims[4] = {0, 0, 0, 0};
   af_get_dims(&dims[0], &dims[1], &dims[2], &dims[3], like);
@@ -451,6 +490,8 @@ SEXP amatrix_arrayfire_ewise_bridge(SEXP lhs, SEXP rhs, SEXP op) {
     err = af_sub(&out, alhs, arhs, false);
   } else if (strcmp(op_name, "*") == 0) {
     err = af_mul(&out, alhs, arhs, false);
+  } else if (strcmp(op_name, "/") == 0) {
+    err = af_div(&out, alhs, arhs, false);
   } else {
     if (alhs) af_release_array(alhs);
     if (arhs) af_release_array(arhs);
@@ -617,7 +658,7 @@ SEXP amatrix_arrayfire_resident_store_bridge(SEXP key, SEXP x) {
     error("x must be a numeric matrix");
   const char* k = CHAR(STRING_ELT(key, 0));
   amatrix_af_resident_entry* e = amatrix_af_registry_reserve(k);
-  e->array = arrayfire_matrix_from_r(x);
+  e->array = amatrix_af_from_r(x);   /* column-major, correct for all shapes */
   return ScalarLogical(1);
 #else
   error("arrayfire resident store requires arrayfire");
@@ -652,7 +693,7 @@ SEXP amatrix_arrayfire_resident_materialize_bridge(SEXP key) {
   amatrix_af_resident_entry* e = amatrix_af_registry_find(CHAR(STRING_ELT(key, 0)));
   if (e == NULL)
     error("arrayfire resident key not found: %s", CHAR(STRING_ELT(key, 0)));
-  return arrayfire_result_to_r_matrix(e->array);
+  return amatrix_af_to_r(e->array);   /* column-major, correct for all shapes */
 #else
   error("arrayfire resident materialize requires arrayfire");
 #endif
@@ -691,10 +732,10 @@ SEXP amatrix_arrayfire_crossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP ou
     ay = ey->array;
   }
   amatrix_af_resident_entry* eout = amatrix_af_registry_reserve(CHAR(STRING_ELT(out_key, 0)));
-  /* crossprod(x,y) = t(x) %*% y.  arrayfire_matrix_from_r stores the R-transpose,
-     so the AF array ax = t(x_orig).  To compute t(x_orig) %*% y_orig we need
-     ax %*% t(ay) = AF_MAT_NONE on lhs, AF_MAT_TRANS on rhs. */
-  af_err err = af_matmul(&eout->array, ex->array, ay, AF_MAT_NONE, AF_MAT_TRANS);
+  /* crossprod(x,y) = t(x) %*% y.  Resident arrays use column-major (amatrix_af_from_r),
+     so ax = x_orig.  AF_MAT_TRANS on lhs gives t(x_orig) %*% y_orig — correct for
+     all shapes including cross-covariance (p != q). */
+  af_err err = af_matmul(&eout->array, ex->array, ay, AF_MAT_TRANS, AF_MAT_NONE);
   if (err != AF_SUCCESS) error("af_matmul (crossprod resident) failed");
   return ScalarLogical(1);
 #else
@@ -717,10 +758,9 @@ SEXP amatrix_arrayfire_tcrossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP o
     ay = ey->array;
   }
   amatrix_af_resident_entry* eout = amatrix_af_registry_reserve(CHAR(STRING_ELT(out_key, 0)));
-  /* tcrossprod(x,y) = x %*% t(y).  arrayfire_matrix_from_r stores the R-transpose,
-     so ax = t(x_orig), ay = t(y_orig).  To compute x_orig %*% t(y_orig) we need
-     t(ax) %*% ay = AF_MAT_TRANS on lhs, AF_MAT_NONE on rhs. */
-  af_err err = af_matmul(&eout->array, ex->array, ay, AF_MAT_TRANS, AF_MAT_NONE);
+  /* tcrossprod(x,y) = x %*% t(y).  Resident arrays use column-major (amatrix_af_from_r),
+     so ax = x_orig, ay = y_orig.  AF_MAT_TRANS on rhs gives x_orig %*% t(y_orig). */
+  af_err err = af_matmul(&eout->array, ex->array, ay, AF_MAT_NONE, AF_MAT_TRANS);
   if (err != AF_SUCCESS) error("af_matmul (tcrossprod resident) failed");
   return ScalarLogical(1);
 #else
@@ -756,6 +796,7 @@ SEXP amatrix_arrayfire_ewise_resident_bridge(SEXP lhs_key, SEXP rhs, SEXP op, SE
   if      (strcmp(op_name, "+") == 0) err = af_add(&eout->array, elhs->array, arhs, false);
   else if (strcmp(op_name, "-") == 0) err = af_sub(&eout->array, elhs->array, arhs, false);
   else if (strcmp(op_name, "*") == 0) err = af_mul(&eout->array, elhs->array, arhs, false);
+  else if (strcmp(op_name, "/") == 0) err = af_div(&eout->array, elhs->array, arhs, false);
   else { if (own_arhs) af_release_array(arhs); error("unsupported ewise op: %s", op_name); }
 
   if (own_arhs) af_release_array(arhs);
@@ -917,6 +958,34 @@ SEXP amatrix_arrayfire_solve_resident_bridge(SEXP a_key, SEXP b_key, SEXP out_ke
   return ScalarLogical(1);
 #else
   error("arrayfire solve_resident requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
+/* ── QR-Q resident: input key → thin Q stored as new resident key ────── */
+SEXP amatrix_arrayfire_qr_Q_resident_bridge(SEXP x_key, SEXP q_out_key) {
+#ifdef HAVE_ARRAYFIRE
+  if (!isString(x_key) || LENGTH(x_key) != 1 ||
+      !isString(q_out_key) || LENGTH(q_out_key) != 1)
+    error("keys must be scalar strings");
+  amatrix_af_resident_entry* ex =
+    amatrix_af_registry_find(CHAR(STRING_ELT(x_key, 0)));
+  if (ex == NULL)
+    error("arrayfire resident key not found: %s", CHAR(STRING_ELT(x_key, 0)));
+  af_array Q = 0, R = 0, tau = 0;
+  af_err err = af_qr(&Q, &R, &tau, ex->array);
+  af_release_array(R);
+  af_release_array(tau);
+  if (err != AF_SUCCESS) {
+    if (Q) af_release_array(Q);
+    error("af_qr failed in qr_Q_resident (%d)", (int)err);
+  }
+  amatrix_af_resident_entry* eout =
+    amatrix_af_registry_reserve(CHAR(STRING_ELT(q_out_key, 0)));
+  eout->array = Q;
+  return ScalarLogical(1);
+#else
+  error("amatrix_arrayfire_qr_Q_resident requires ArrayFire");
   return R_NilValue;
 #endif
 }
@@ -1666,53 +1735,6 @@ SEXP am_af_kernel_bridge(SEXP X_r, SEXP Y_r, SEXP kernel_r,
 #endif
 }
 
-/* =========================================================================
- * Correct column-major helpers and bridges for rsvd
- *
- * The original arrayfire_matrix_from_r / arrayfire_result_to_r_matrix use a
- * row-major staging buffer that was designed for the earlier MLX convention.
- * The three functions below use the natural column-major layout shared by R,
- * LAPACK, and ArrayFire.  They are used exclusively by the rsvd bridge.
- * ========================================================================= */
-
-#ifdef HAVE_ARRAYFIRE
-
-/* Cast R double column-major → float32, preserving element order */
-static float* amatrix_af_r_to_f32(const double *src, int n) {
-  float *buf = (float *) arrayfire_xmalloc((size_t)n * sizeof(float));
-  for (int k = 0; k < n; k++) buf[k] = (float)src[k];
-  return buf;
-}
-
-/* Build an AF array from an R matrix (column-major, double→float32) */
-static af_array amatrix_af_from_r(SEXP x) {
-  SEXP dim = getAttrib(x, R_DimSymbol);
-  int m = INTEGER(dim)[0], n = INTEGER(dim)[1];
-  dim_t dims[2] = {(dim_t)m, (dim_t)n};
-  float *buf = amatrix_af_r_to_f32(REAL(x), m * n);
-  af_array out = 0;
-  af_create_array(&out, buf, 2, dims, f32);
-  free(buf);
-  return out;
-}
-
-/* Convert AF array → R matrix (column-major, float32→double) */
-static SEXP amatrix_af_to_r(af_array arr) {
-  dim_t dims[4] = {0, 0, 0, 0};
-  af_get_dims(&dims[0], &dims[1], &dims[2], &dims[3], arr);
-  int m = (int)dims[0], n = (int)dims[1];
-  float *buf = (float *) arrayfire_xmalloc((size_t)m * n * sizeof(float));
-  af_get_data_ptr(buf, arr);
-  SEXP out = PROTECT(allocMatrix(REALSXP, m, n));
-  double *dst = REAL(out);
-  for (int k = 0; k < m * n; k++) dst[k] = (double)buf[k];
-  free(buf);
-  UNPROTECT(1);
-  return out;
-}
-
-#endif /* HAVE_ARRAYFIRE (correct helpers) */
-
 /* ── amatrix_arrayfire_matmul_correct_bridge(A, B) → A %*% B ─────────── */
 SEXP amatrix_arrayfire_matmul_correct_bridge(SEXP A_r, SEXP B_r) {
   if (!isReal(A_r) || !isMatrix(A_r) || !isReal(B_r) || !isMatrix(B_r))
@@ -1752,6 +1774,165 @@ SEXP amatrix_arrayfire_crossprod_correct_bridge(SEXP A_r, SEXP B_r) {
 #else
   error("amatrix_arrayfire_crossprod_correct requires ArrayFire");
   return R_NilValue;
+#endif
+}
+
+/* ── Full thin SVD  (af_svd) → list(d, u, v) matching base::svd ────────
+ *
+ * af_svd(U, s, Vt, A) for A [m×n] returns:
+ *   U  [m × k]   left  singular vectors  (thin, k = min(m,n))
+ *   s  [k]        singular values in descending order
+ *   Vt [k × n]   right singular vectors, TRANSPOSED
+ *
+ * R's base::svd returns V = Vt^T [n × k], so we call af_transpose on Vt.
+ * nu / nv control how many columns of U / V to return (columns 1..nu, 1..nv).
+ * d always has length k regardless of nu/nv — identical to base::svd behaviour.
+ * ─────────────────────────────────────────────────────────────────────────── */
+SEXP amatrix_arrayfire_svd_bridge(SEXP x, SEXP nu_r, SEXP nv_r) {
+  if (!isReal(x) || !isMatrix(x))
+    error("x must be a real numeric matrix");
+  int nu = asInteger(nu_r);
+  int nv = asInteger(nv_r);
+  if (nu < 0 || nv < 0)
+    error("nu and nv must be non-negative integers");
+#ifdef HAVE_ARRAYFIRE
+  bool lapack = false;
+  af_is_lapack_available(&lapack);
+  if (!lapack)
+    error("amatrix_arrayfire_svd: LAPACK not available in this ArrayFire build");
+
+  SEXP dim = getAttrib(x, R_DimSymbol);
+  int m = INTEGER(dim)[0], n = INTEGER(dim)[1];
+  int k = m < n ? m : n;   /* thin rank */
+
+  af_array ax = 0, U_a = 0, s_a = 0, Vt_a = 0, V_a = 0;
+  ax = amatrix_af_from_r(x);
+  if (!ax) error("amatrix_arrayfire_svd: af_from_r returned NULL");
+  af_err err = af_svd(&U_a, &s_a, &Vt_a, ax);
+  af_release_array(ax);
+  if (err != AF_SUCCESS) {
+    if (U_a)  af_release_array(U_a);
+    if (s_a)  af_release_array(s_a);
+    if (Vt_a) af_release_array(Vt_a);
+    error("amatrix_arrayfire_svd: af_svd failed (%d)", (int)err);
+  }
+  if (!U_a || !s_a || !Vt_a) {
+    if (U_a)  af_release_array(U_a);
+    if (s_a)  af_release_array(s_a);
+    if (Vt_a) af_release_array(Vt_a);
+    error("amatrix_arrayfire_svd: af_svd returned NULL output(s) U=%p s=%p Vt=%p",
+          (void*)U_a, (void*)s_a, (void*)Vt_a);
+  }
+
+  /* Transpose Vt → V to match base::svd's $v convention */
+  err = af_transpose(&V_a, Vt_a, false);
+  af_release_array(Vt_a);
+  if (err != AF_SUCCESS || !V_a) {
+    if (U_a) af_release_array(U_a);
+    if (s_a) af_release_array(s_a);
+    if (V_a) af_release_array(V_a);
+    error("amatrix_arrayfire_svd: af_transpose failed (%d)", (int)err);
+  }
+
+  /* Read actual output shapes from AF (af_svd may return full or thin matrices
+   * depending on the backend/version — never assume thin without checking). */
+  dim_t u_dims[4] = {0,0,0,0}, v_dims[4] = {0,0,0,0}, s_dims[4] = {0,0,0,0};
+  af_get_dims(&u_dims[0], &u_dims[1], &u_dims[2], &u_dims[3], U_a);
+  af_get_dims(&v_dims[0], &v_dims[1], &v_dims[2], &v_dims[3], V_a);
+  af_get_dims(&s_dims[0], &s_dims[1], &s_dims[2], &s_dims[3], s_a);
+  /* s_a is 1-D of length k; u_dims[0]=m, u_dims[1]=cols_u;
+   * V_a = transpose(Vt) has dims [n, cols_vt] or possibly [cols_vt, n].
+   * Actual k from s: */
+  int k_actual = (int)s_dims[0];
+  int u_rows = (int)u_dims[0], u_cols = (int)u_dims[1];
+  int v_rows = (int)v_dims[0], v_cols = (int)v_dims[1];
+
+  /* --- Singular values --- */
+  size_t s_total = (size_t)k_actual;
+  float *s_buf = (float *) arrayfire_xmalloc(s_total * sizeof(float));
+  af_get_data_ptr(s_buf, s_a);
+  af_release_array(s_a);
+  SEXP d_r = PROTECT(allocVector(REALSXP, k_actual));
+  for (int i = 0; i < k_actual; i++) REAL(d_r)[i] = (double)s_buf[i];
+  free(s_buf);
+
+  /* --- Left singular vectors U: copy first nu_eff columns --- */
+  int nu_eff = (nu > k_actual) ? k_actual : nu;
+  SEXP u_r = PROTECT(allocMatrix(REALSXP, m, nu_eff));  /* (1) */
+  if (nu_eff > 0) {
+    size_t u_total = (size_t)u_rows * u_cols;
+    float *u_buf = (float *) arrayfire_xmalloc(u_total * sizeof(float));
+    af_get_data_ptr(u_buf, U_a);
+    double *up = REAL(u_r);
+    /* AF column-major: U[i,j] = u_buf[i + u_rows * j]. */
+    for (int j = 0; j < nu_eff; j++)
+      for (int i = 0; i < m; i++)
+        up[i + m * j] = (double)u_buf[i + u_rows * j];
+    free(u_buf);
+  }
+  af_release_array(U_a);
+
+  /* --- Right singular vectors V: copy first nv_eff columns ---
+   * V_a = af_transpose(Vt_a) has shape [n × k_actual] (or [n × n] if full).
+   * We want the first nv_eff columns of V.                                  */
+  int nv_eff = (nv > k_actual) ? k_actual : nv;
+  SEXP v_r = PROTECT(allocMatrix(REALSXP, n, nv_eff));  /* (2) */
+  if (nv_eff > 0) {
+    size_t v_total = (size_t)v_rows * v_cols;
+    float *v_buf = (float *) arrayfire_xmalloc(v_total * sizeof(float));
+    af_get_data_ptr(v_buf, V_a);
+    double *vp = REAL(v_r);
+    /* V_a is [n × v_cols] column-major: V[i,j] = v_buf[i + v_rows * j]. */
+    for (int j = 0; j < nv_eff; j++)
+      for (int i = 0; i < n; i++)
+        vp[i + n * j] = (double)v_buf[i + v_rows * j];
+    free(v_buf);
+  }
+  af_release_array(V_a);
+
+  /* --- Assemble list(d, u, v) --- */
+  SEXP names = PROTECT(allocVector(STRSXP, 3));   /* (3) */
+  SET_STRING_ELT(names, 0, mkChar("d"));
+  SET_STRING_ELT(names, 1, mkChar("u"));
+  SET_STRING_ELT(names, 2, mkChar("v"));
+  SEXP result = PROTECT(allocVector(VECSXP, 3));  /* (4) */
+  SET_VECTOR_ELT(result, 0, d_r);
+  SET_VECTOR_ELT(result, 1, u_r);
+  SET_VECTOR_ELT(result, 2, v_r);
+  setAttrib(result, R_NamesSymbol, names);
+
+  UNPROTECT(5);  /* d_r u_r v_r names result */
+  return result;
+#else
+  error("amatrix_arrayfire_svd requires arrayfire");
+  return R_NilValue;
+#endif
+}
+
+/* ── amatrix_arrayfire_svd_safe_bridge() → logical(1) ───────────────────
+ *
+ * Returns TRUE if af_svd is known safe on the current active backend:
+ *   CUDA  (AF_BACKEND_CUDA)    — cuBLAS/NVBLAS path, stable
+ *   oneAPI (AF_BACKEND_ONEAPI) — MKL path, stable
+ * Metal/OpenCL/CPU backends are NOT guaranteed stable here; use the R-level
+ * subprocess probe or fall back to QR→SVD(R) for those.
+ *
+ * Compile-time override: define AMATRIX_AF_NATIVE_SVD_SAFE (e.g. for a known-
+ * good CUDA build) to skip the runtime check and always return TRUE.
+ * ─────────────────────────────────────────────────────────────────────────── */
+SEXP amatrix_arrayfire_svd_safe_bridge(void) {
+#ifdef AMATRIX_AF_NATIVE_SVD_SAFE
+  return ScalarLogical(1);
+#elif defined(HAVE_ARRAYFIRE)
+  af_backend active = AF_BACKEND_DEFAULT;
+  af_get_active_backend(&active);
+  int safe = (active == AF_BACKEND_CUDA);
+#  ifdef AF_BACKEND_ONEAPI
+  if (active == AF_BACKEND_ONEAPI) safe = 1;
+#  endif
+  return ScalarLogical(safe);
+#else
+  return ScalarLogical(0);
 #endif
 }
 

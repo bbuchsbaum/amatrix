@@ -1,6 +1,6 @@
 amatrix_arrayfire_capabilities <- function() {
   c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
-    "qr", "rsvd", "chol", "solve", "covariance")
+    "qr", "rsvd", "chol", "solve", "covariance", "svd")
 }
 
 amatrix_arrayfire_features <- function() {
@@ -193,14 +193,16 @@ amatrix_arrayfire_rowSums_resident <- function(x_key, na.rm = FALSE, dims = 1L) 
   if (isTRUE(na.rm) || !identical(dims, 1L)) {
     return(base::rowSums(amatrix_arrayfire_resident_materialize(x_key), na.rm = na.rm, dims = dims))
   }
-  .Call("amatrix_arrayfire_sum_axis_resident_bridge", as.character(x_key), 0L)
+  # Resident arrays use column-major (amatrix_af_from_r): axis=1 sums along columns → rowSums
+  .Call("amatrix_arrayfire_sum_axis_resident_bridge", as.character(x_key), 1L)
 }
 
 amatrix_arrayfire_colSums_resident <- function(x_key, na.rm = FALSE, dims = 1L) {
   if (isTRUE(na.rm) || !identical(dims, 1L)) {
     return(base::colSums(amatrix_arrayfire_resident_materialize(x_key), na.rm = na.rm, dims = dims))
   }
-  .Call("amatrix_arrayfire_sum_axis_resident_bridge", as.character(x_key), 1L)
+  # Resident arrays use column-major (amatrix_af_from_r): axis=0 sums along rows → colSums
+  .Call("amatrix_arrayfire_sum_axis_resident_bridge", as.character(x_key), 0L)
 }
 
 amatrix_arrayfire_chol <- function(x) {
@@ -264,6 +266,11 @@ amatrix_arrayfire_chol_resident <- function(x_key, out_key) {
   }
 }
 
+amatrix_arrayfire_qr_Q_resident <- function(x_key, q_out_key) {
+  invisible(.Call("amatrix_arrayfire_qr_Q_resident_bridge",
+                  as.character(x_key), as.character(q_out_key)))
+}
+
 .amatrix_arrayfire_forced_available <- function() {
   isTRUE(getOption("amatrix.arrayfire.available", FALSE))
 }
@@ -284,6 +291,156 @@ amatrix_arrayfire_chol_resident <- function(x_key, out_key) {
   !is.null(dims) && length(dims) == 2L && max(dims) >= threshold
 }
 
+# Layer 1: R-QR + GPU matmul SVD — always safe.
+# af_qr crashes on Metal/OpenCL for matrices >= ~90 rows, so QR is done on CPU.
+# Only the two large matmuls (projection B = Q^T A, back-transform U = Q * U_R)
+# are offloaded to GPU via the proven-stable correct bridges.
+# Pattern mirrors amatrix_arrayfire_rsvd (which already uses CPU QR + GPU matmul).
+amatrix_arrayfire_ts_svd <- function(x, nu, nv) {
+  mat <- if (is.matrix(x)) x else as.matrix(x)
+  storage.mode(mat) <- "double"
+  m <- nrow(mat); n <- ncol(mat); k <- min(m, n)
+  # Step 1: thin QR on CPU — safe for any size
+  Q <- qr.Q(qr(mat))          # m×k orthonormal basis
+  storage.mode(Q) <- "double"
+  # Step 2: B = Q^T A  [k×n] on GPU (crossprod = t(Q) %*% mat)
+  B <- .Call("amatrix_arrayfire_crossprod_correct_bridge", Q, mat,
+             PACKAGE = "amatrix.arrayfire")
+  # Step 3: exact SVD of B [k×n] on CPU
+  nu_eff <- min(as.integer(nu), k)
+  nv_eff <- min(as.integer(nv), k)
+  sv_B <- base::svd(B, nu = nu_eff, nv = nv_eff)
+  # Step 4: U = Q * U_B  [m×nu_eff] on GPU
+  U_B <- sv_B$u
+  storage.mode(U_B) <- "double"
+  U <- .Call("amatrix_arrayfire_matmul_correct_bridge", Q, U_B,
+             PACKAGE = "amatrix.arrayfire")
+  list(u = U, d = sv_B$d, v = sv_B$v)
+}
+
+# ── Persistent probe/quarantine ───────────────────────────────────────────────
+#
+# Probe result is keyed by:
+#   package version + R arch + OS type + AF lib mtime (catches upgrades)
+# Stored in tools::R_user_dir("amatrix","cache")/af-probe.json.
+# Falls back to session-only caching if the cache dir is unwritable.
+
+.amatrix_arrayfire_probe_cache_key <- function() {
+  ver   <- tryCatch(as.character(utils::packageVersion("amatrix.arrayfire")),
+                    error = function(e) "unknown")
+  arch  <- R.version$arch
+  os    <- .Platform$OS.type
+  # Include the AF library mtime so a library upgrade invalidates the cache.
+  af_mtime <- tryCatch({
+    info <- .Call("amatrix_arrayfire_bridge_info_bridge",
+                  PACKAGE = "amatrix.arrayfire")
+    lib  <- info$lib_path
+    if (!is.null(lib) && nzchar(lib) && file.exists(lib))
+      format(file.mtime(lib), "%Y%m%d%H%M%S")
+    else
+      "nomtime"
+  }, error = function(e) "nomtime")
+  paste(ver, arch, os, af_mtime, sep = ":")
+}
+
+.amatrix_arrayfire_probe_cache_file <- function() {
+  d <- tryCatch(
+    tools::R_user_dir("amatrix", "cache"),
+    error = function(e) NULL
+  )
+  if (is.null(d)) return(NULL)
+  file.path(d, "af-probe.json")
+}
+
+.amatrix_arrayfire_probe_read_cache <- function(key) {
+  path <- .amatrix_arrayfire_probe_cache_file()
+  if (is.null(path) || !file.exists(path)) return(NULL)
+  tryCatch({
+    entries <- jsonlite::fromJSON(path, simplifyVector = FALSE)
+    entries[[key]]   # NULL if key absent
+  }, error = function(e) NULL)
+}
+
+.amatrix_arrayfire_probe_write_cache <- function(key, value) {
+  path <- .amatrix_arrayfire_probe_cache_file()
+  if (is.null(path)) return(invisible(NULL))
+  tryCatch({
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    entries <- if (file.exists(path)) {
+      tryCatch(jsonlite::fromJSON(path, simplifyVector = FALSE),
+               error = function(e) list())
+    } else {
+      list()
+    }
+    entries[[key]] <- value
+    writeLines(jsonlite::toJSON(entries, auto_unbox = TRUE), path)
+  }, error = function(e) invisible(NULL))
+}
+
+# Layer 2: subprocess probe — tests af_svd(100×100) in a fresh Rscript child.
+# Non-zero exit (SIGSEGV → 139, abort → non-zero) → quarantined.
+# Result persisted to ~/.cache/amatrix/af-probe.json and also session-cached.
+.amatrix_arrayfire_probe_native_svd <- function() {
+  # Fast path: session cache
+  cached <- getOption("amatrix.arrayfire.native_svd_available")
+  if (!is.null(cached)) return(isTRUE(cached))
+
+  # Persistent cache (keyed by env signature)
+  key <- .amatrix_arrayfire_probe_cache_key()
+  persisted <- .amatrix_arrayfire_probe_read_cache(key)
+  if (!is.null(persisted)) {
+    options(amatrix.arrayfire.native_svd_available = isTRUE(persisted))
+    return(isTRUE(persisted))
+  }
+
+  # Run probe subprocess
+  script <- paste0(
+    'suppressPackageStartupMessages(library(amatrix.arrayfire));',
+    'x <- matrix(rnorm(100*100), 100L, 100L);',
+    'storage.mode(x) <- "double";',
+    '.Call("amatrix_arrayfire_svd_bridge", x, 5L, 5L,',
+    ' PACKAGE="amatrix.arrayfire");',
+    'cat("OK\\n")'
+  )
+  ok <- tryCatch({
+    ret <- system2(
+      file.path(R.home("bin"), "Rscript"),
+      c("--vanilla", "-e", shQuote(script)),
+      stdout = FALSE, stderr = FALSE
+    )
+    identical(ret, 0L)
+  }, error = function(e) FALSE)
+
+  .amatrix_arrayfire_probe_write_cache(key, ok)
+  options(amatrix.arrayfire.native_svd_available = ok)
+  ok
+}
+
+# Layer 3 helper: C bridge checks af_get_active_backend(); TRUE for CUDA/oneAPI.
+.amatrix_arrayfire_svd_safe_backend <- function() {
+  tryCatch(
+    isTRUE(.Call("amatrix_arrayfire_svd_safe_bridge",
+                 PACKAGE = "amatrix.arrayfire")),
+    error = function(e) FALSE
+  )
+}
+
+# Top-level SVD dispatcher: prefer native af_svd when known safe (Layers 3→2),
+# fall back to QR→SVD(R) (Layer 1) otherwise.
+amatrix_arrayfire_svd <- function(x, nu, nv) {
+  use_native <- .amatrix_arrayfire_svd_safe_backend() ||
+                .amatrix_arrayfire_probe_native_svd()
+  if (use_native) {
+    mat <- if (is.matrix(x)) x else as.matrix(x)
+    storage.mode(mat) <- "double"
+    .Call("amatrix_arrayfire_svd_bridge", mat,
+          as.integer(nu), as.integer(nv),
+          PACKAGE = "amatrix.arrayfire")
+  } else {
+    amatrix_arrayfire_ts_svd(x, nu = nu, nv = nv)
+  }
+}
+
 amatrix_arrayfire_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 4L) {
   mat <- as.matrix(x)
   storage.mode(mat) <- "double"
@@ -292,7 +449,7 @@ amatrix_arrayfire_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 4L) {
   p <- min(k + n_oversamples, m, n)
   k <- min(k, p)
   # Sketch: Y = A * Omega (m x p) on GPU
-  Omega <- matrix(rnorm(n * p), n, p)
+  Omega <- matrix(stats::rnorm(n * p), n, p)
   storage.mode(Omega) <- "double"
   Y <- .Call("amatrix_arrayfire_matmul_correct_bridge", mat, Omega, PACKAGE = "amatrix.arrayfire")
   # Thin QR on CPU: p is small (<=60), so O(m*p^2) cost is negligible
@@ -318,7 +475,6 @@ amatrix_arrayfire_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 4L) {
 }
 
 amatrix_arrayfire_backend <- function() {
-  cpu <- amatrix:::.amatrix_cpu_backend()
   capabilities <- amatrix_arrayfire_capabilities()
   features <- amatrix_arrayfire_features()
   precision_modes <- amatrix_arrayfire_precision_modes()
@@ -347,6 +503,11 @@ amatrix_arrayfire_backend <- function() {
       }
 
       if (.amatrix_arrayfire_forced_available()) {
+        # Bypass size thresholds for GEMM-class ops (testing convenience),
+        # but keep LAPACK availability gate for decomposition ops.
+        if (op %in% c("chol", "solve")) {
+          return(amatrix_arrayfire_lapack_available())
+        }
         return(TRUE)
       }
 
@@ -379,7 +540,12 @@ amatrix_arrayfire_backend <- function() {
       }
 
       if (op %in% c("chol", "solve")) {
-        return(.amatrix_arrayfire_meets_threshold(x, getOption("amatrix.arrayfire.lapack_min_dim", 256L)))
+        return(amatrix_arrayfire_lapack_available() &&
+               .amatrix_arrayfire_meets_threshold(x, getOption("amatrix.arrayfire.lapack_min_dim", 256L)))
+      }
+
+      if (identical(op, "svd")) {
+        return(.amatrix_arrayfire_meets_threshold(x, getOption("amatrix.arrayfire.svd_min_dim", 256L)))
       }
 
       if (identical(op, "covariance")) {
@@ -402,19 +568,19 @@ amatrix_arrayfire_backend <- function() {
     },
     rowSums = function(x, na.rm = FALSE, dims = 1L) {
       if (isTRUE(na.rm) || !identical(dims, 1L)) {
-        return(cpu$rowSums(x, na.rm = na.rm, dims = dims))
+        return(base::rowSums(as.matrix(x), na.rm = na.rm, dims = dims))
       }
       amatrix_arrayfire_axis_sums(x, axis = 0L)
     },
     colSums = function(x, na.rm = FALSE, dims = 1L) {
       if (isTRUE(na.rm) || !identical(dims, 1L)) {
-        return(cpu$colSums(x, na.rm = na.rm, dims = dims))
+        return(base::colSums(as.matrix(x), na.rm = na.rm, dims = dims))
       }
       amatrix_arrayfire_axis_sums(x, axis = 1L)
     },
     qr = function(x, ...) {
       if (!.amatrix_arrayfire_qr_safe()) {
-        return(cpu$qr(x, ...))
+        return(base::qr(as.matrix(x), ...))
       }
       amatrix_arrayfire_qr(x)
     },
@@ -462,6 +628,12 @@ amatrix_arrayfire_backend <- function() {
     },
     chol_resident = function(x_key, out_key) {
       amatrix_arrayfire_chol_resident(x_key, out_key)
+    },
+    qr_Q_resident = function(x_key, q_out_key) {
+      amatrix_arrayfire_qr_Q_resident(x_key, q_out_key)
+    },
+    svd = function(x, nu, nv, ...) {
+      amatrix_arrayfire_svd(x, nu = nu, nv = nv)
     },
     rsvd = function(x, k, n_oversamples = 10L, n_iter = 4L) {
       amatrix_arrayfire_rsvd(x, k = k, n_oversamples = n_oversamples, n_iter = n_iter)

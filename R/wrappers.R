@@ -528,6 +528,49 @@ am_qr <- function(x, ...) {
   .amatrix_wrap_qr(qr_value, x)
 }
 
+# ── Resident QR helper ────────────────────────────────────────────────────────
+#
+# Given an adgeMatrix z_am that is already (or can be) resident on the backend,
+# run QR and return Q as a new resident adgeMatrix — no R-memory round-trip for
+# the QR step itself.
+#
+# Falls back to qr.Q(qr(as.matrix(z_am))) + re-upload when the backend does
+# not support qr_Q_resident (e.g. the cpu backend).
+.amatrix_try_resident_qr_Q <- function(z_am) {
+  if (!inherits(z_am, "adgeMatrix")) {
+    z_am <- adgeMatrix(as.matrix(z_am))
+  }
+  choice       <- .amatrix_backend_for(z_am, "qr")
+  backend_name <- choice$name
+  backend      <- choice$backend
+
+  if (is.function(backend$qr_Q_resident) &&
+      .amatrix_backend_residency_capable(backend)) {
+    z_info <- .amatrix_prepare_resident_arg(z_am, backend_name)
+    if (!is.null(z_info)) {
+      q_key <- .amatrix_next_resident_key(backend_name)
+      backend$qr_Q_resident(z_info$key, q_key)
+      .amatrix_cleanup_temp_resident(list(z_info), backend_name)
+      # Materialize Q for the host slot (dims/fallback paths).
+      # Q is p×k_over — small relative to the data matrix.
+      q_mat <- backend$resident_materialize(q_key)
+      q_am  <- new_adgeMatrix(q_mat,
+                  preferred_backend = backend_name,
+                  policy            = z_am@policy,
+                  precision         = z_am@precision)
+      .amatrix_bind_resident(q_am, backend_name, q_key)
+      return(q_am)
+    }
+  }
+  {
+    q_mat <- qr.Q(qr(as.matrix(amatrix_materialize_host(z_am))))
+    adgeMatrix(q_mat,
+      preferred_backend = backend_name,
+      policy            = z_am@policy,
+      precision         = z_am@precision)
+  }
+}
+
 am_svd <- function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
   amatrix_dispatch_op(
     x = x,

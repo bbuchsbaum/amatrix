@@ -1,0 +1,63 @@
+#!/bin/sh
+# configure.win — ArrayFire detection for Windows (Rtools/MSYS2 shell)
+#
+# Detection order:
+#   1. ARRAYFIRE_PREFIX env var
+#   2. Common Windows install locations
+
+set -eu
+
+src_dir="src"
+makevars="${src_dir}/Makevars"
+prefix=""
+
+# ── 1. User override ──────────────────────────────────────────────────────────
+if [ -n "${ARRAYFIRE_PREFIX:-}" ] && [ -d "${ARRAYFIRE_PREFIX}" ]; then
+  prefix="${ARRAYFIRE_PREFIX}"
+  echo "configure.win: ARRAYFIRE_PREFIX=${prefix}"
+else
+  # ── 2. Common Windows paths ──────────────────────────────────────────────────
+  for d in \
+    "/c/Program Files/ArrayFire/v3" \
+    "/c/Program Files/ArrayFire" \
+    "/c/AF" \
+    "/c/ArrayFire" \
+    "${LOCALAPPDATA:-/c/Users/Public}/ArrayFire/v3" \
+    "/mingw64"
+  do
+    if [ -f "${d}/include/arrayfire.h" ]; then
+      prefix="${d}"
+      echo "configure.win: found ArrayFire at ${prefix}"
+      break
+    fi
+  done
+fi
+
+# ── Write src/Makevars ────────────────────────────────────────────────────────
+if [ -n "${prefix}" ] && [ -f "${prefix}/include/arrayfire.h" ]; then
+  # Prefer lib64 then lib
+  lib_dir=""
+  for d in "${prefix}/lib64" "${prefix}/lib"; do
+    if [ -f "${d}/af.lib" ] || [ -f "${d}/libaf.a" ] || [ -f "${d}/libaf.dll.a" ]; then
+      lib_dir="${d}"
+      break
+    fi
+  done
+  lib_dir="${lib_dir:-${prefix}/lib}"
+
+  prefix_esc="$(printf '%s' "${prefix}"  | sed 's/[\/&]/\\&/g')"
+  lib_esc="$(   printf '%s' "${lib_dir}" | sed 's/[\/&]/\\&/g')"
+  sed \
+    -e "s|@AF_CPPFLAGS@|-DHAVE_ARRAYFIRE -I${prefix_esc}/include|g" \
+    -e "s|@AF_LIBS@|-L${lib_esc} -laf|g" \
+    "${src_dir}/Makevars.in" > "${makevars}"
+  echo "configure.win: ArrayFire OK — include=${prefix}/include  lib=${lib_dir}"
+else
+  sed \
+    -e "s|@AF_CPPFLAGS@||g" \
+    -e "s|@AF_LIBS@||g" \
+    "${src_dir}/Makevars.in" > "${makevars}"
+  echo "configure.win: ArrayFire not found — building stub"
+fi
+
+exit 0

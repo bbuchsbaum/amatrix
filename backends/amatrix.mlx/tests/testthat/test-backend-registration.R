@@ -19,7 +19,7 @@ test_that("mlx capability list is stable and explicit", {
   expect_identical(
     amatrix_mlx_capabilities(),
     c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
-      "qr", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen")
+      "qr", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen", "covariance")
   )
 })
 

@@ -435,7 +435,7 @@ setMethod("show", "amSVD", function(object) {
 
 .amatrix_svd_factor_backend <- function(X, plan, svd_result) {
   if (identical(plan$method, "exact")) {
-    return(amatrix_backend_plan(X, "svd")$chosen)
+    return(.amatrix_backend_for(X, "svd")$name)
   }
 
   if (identical(plan$method, "rsvd")) {

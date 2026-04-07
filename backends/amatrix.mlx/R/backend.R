@@ -1,6 +1,6 @@
 amatrix_mlx_capabilities <- function() {
   c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
-    "qr", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen", "covariance")
+    "qr", "svd", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen", "covariance")
 }
 
 amatrix_mlx_features <- function() {
@@ -647,6 +647,52 @@ amatrix_mlx_tcrossprod_resident <- function(x_key, y_key = NULL, out_key) {
   .Call("amatrix_mlx_tcrossprod_resident_bridge", as.character(x_key), rhs_key, as.character(out_key))
 }
 
+amatrix_mlx_qr_Q_resident <- function(x_key, q_out_key) {
+  invisible(.Call("amatrix_mlx_qr_Q_resident_bridge",
+                  as.character(x_key), as.character(q_out_key)))
+}
+
+# ts_svd: QR on CPU + two GPU matmuls for tall-skinny matrices.
+# For A [m×n] with m >> n, QR→SVD(R) reduces the problem to an n×n SVD on CPU:
+#   A = Q R  (CPU QR, Q [m×n])
+#   SVD(R)   (CPU, R is n×n)
+#   U = Q U_R  (GPU matmul, result [m×k])
+# This avoids sending a large [m×n] matrix through mlx_linalg_svd and returns
+# the back-transform matmul to the GPU where it scales well.
+amatrix_mlx_ts_svd <- function(x, nu, nv) {
+  mat <- as.matrix(x)
+  if (!is.double(mat)) storage.mode(mat) <- "double"
+  m <- nrow(mat); n <- ncol(mat); k <- min(m, n)
+  # Step 1: thin QR on CPU
+  Q <- qr.Q(qr(mat))          # m×k orthonormal
+  storage.mode(Q) <- "double"
+  # Step 2: B = Q^T A  [k×n] on GPU
+  B <- .Call("amatrix_mlx_crossprod_bridge", Q, mat, PACKAGE = "amatrix.mlx")
+  # Step 3: exact SVD of small B on CPU
+  nu_eff <- min(as.integer(nu), k)
+  nv_eff <- min(as.integer(nv), k)
+  sv_B <- base::svd(B, nu = nu_eff, nv = nv_eff)
+  # Step 4: U = Q * U_B  [m×nu_eff] on GPU
+  U_B <- sv_B$u
+  storage.mode(U_B) <- "double"
+  U <- .Call("amatrix_mlx_matmul_bridge", Q, U_B, PACKAGE = "amatrix.mlx")
+  list(u = U, d = sv_B$d, v = sv_B$v)
+}
+
+amatrix_mlx_svd <- function(x, nu, nv) {
+  x_mat <- as.matrix(x)
+  if (!is.double(x_mat)) storage.mode(x_mat) <- "double"
+  m <- nrow(x_mat); n <- ncol(x_mat)
+  # Route tall-skinny matrices (aspect ratio > 4, narrow dim ≤ 512) to ts_svd.
+  # For m >> n, QR→SVD(R) reduces the SVD from O(mn²) to O(n³) on CPU plus
+  # two GPU matmuls — significantly cheaper than full mlx_linalg_svd.
+  ts_max_n <- getOption("amatrix.mlx.ts_svd_max_n", 512L)
+  if (m > 4L * n && n <= ts_max_n) {
+    return(amatrix_mlx_ts_svd(x_mat, nu = nu, nv = nv))
+  }
+  .Call("amatrix_mlx_svd_bridge", x_mat, as.integer(nu), as.integer(nv))
+}
+
 amatrix_mlx_rowSums_resident <- function(x_key, na.rm = FALSE, dims = 1L) {
   x_host <- amatrix_mlx_resident_materialize(x_key)
   base::rowSums(x_host, na.rm = na.rm, dims = dims)
@@ -891,8 +937,14 @@ amatrix_mlx_backend <- function() {
     chol_resident = function(x_key, out_key) {
       amatrix_mlx_chol_resident(x_key, out_key = out_key)
     },
+    qr_Q_resident = function(x_key, q_out_key) {
+      amatrix_mlx_qr_Q_resident(x_key, q_out_key)
+    },
     chol_solve_factor = function(R, B) {
       amatrix_mlx_chol_solve_factor(R, B)
+    },
+    svd = function(x, nu, nv, ...) {
+      amatrix_mlx_svd(x, nu = nu, nv = nv)
     },
     rsvd = function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
       amatrix_mlx_rsvd(x, k = k, n_oversamples = n_oversamples, n_iter = n_iter)

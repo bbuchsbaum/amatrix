@@ -24,7 +24,8 @@ test_that("arrayfire backend advertises dense-first capabilities", {
 test_that("arrayfire capability list is stable and explicit", {
   expect_identical(
     amatrix_arrayfire_capabilities(),
-    c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "qr")
+    c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
+      "qr", "rsvd", "chol", "solve", "covariance", "svd")
   )
 })
 
@@ -81,8 +82,9 @@ test_that("arrayfire availability can be enabled for routing tests", {
   on.exit(options(amatrix.arrayfire.available = old), add = TRUE)
 
   x <- amatrix::adgeMatrix(matrix(1:4, nrow = 2), preferred_backend = "arrayfire", precision = "fast")
-  dense_plan <- amatrix::amatrix_backend_plan(x, "matmul", y = diag(2))
-  unsupported_plan <- amatrix::amatrix_backend_plan(x, "solve")
+  dense_plan     <- amatrix::amatrix_backend_plan(x, "matmul", y = diag(2))
+  # Use an op not in AF capabilities at all — must always fall back to cpu.
+  not_in_caps_plan <- amatrix::amatrix_backend_plan(x, "fft")
   sparse_plan <- amatrix::amatrix_backend_plan(
     amatrix::adgCMatrix(matrix(c(1, 0, 0, 1), nrow = 2), preferred_backend = "arrayfire", precision = "fast"),
     "matmul",
@@ -91,7 +93,7 @@ test_that("arrayfire availability can be enabled for routing tests", {
 
   expect_true(amatrix_arrayfire_is_available())
   expect_identical(dense_plan$chosen, "arrayfire")
-  expect_identical(unsupported_plan$chosen, "cpu")
+  expect_identical(not_in_caps_plan$chosen, "cpu")
   expect_identical(sparse_plan$chosen, "cpu")
 })
 

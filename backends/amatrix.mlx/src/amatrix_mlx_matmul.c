@@ -582,6 +582,49 @@ static SEXP amatrix_mlx_qr_real(SEXP x, SEXP q_key) {
   return result;
 }
 
+/* ── qr_Q_resident: input key → thin Q stored as new resident key ───────── */
+static SEXP amatrix_mlx_qr_Q_resident_real(SEXP x_key, SEXP q_out_key) {
+  /* CPU stream is intentional: mlx_linalg_qr is not GPU-accelerated yet.    */
+  mlx_stream stream = mlx_default_cpu_stream_new();
+  mlx_array ax = mlx_array_new();
+  mlx_array q  = mlx_array_new();
+  mlx_array r  = mlx_array_new();
+  amatrix_mlx_resident_entry* entry = NULL;
+
+  amatrix_mlx_install_error_handler();
+
+  if (stream.ctx == NULL) {
+    error("mlx CPU stream is unavailable");
+  }
+
+  ax = amatrix_mlx_array_from_resident_key(x_key);
+
+  if (mlx_linalg_qr(&q, &r, ax, stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(q);
+    amatrix_mlx_free_array_if_needed(r);
+    error("mlx_linalg_qr failed in qr_Q_resident");
+  }
+
+  if (mlx_synchronize(stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(q);
+    amatrix_mlx_free_array_if_needed(r);
+    error("mlx_synchronize failed in qr_Q_resident");
+  }
+
+  entry = amatrix_mlx_registry_reserve(CHAR(asChar(q_out_key)));
+  entry->array = q;          /* Q stays resident; ownership transferred       */
+
+  mlx_stream_free(stream);
+  amatrix_mlx_free_array_if_needed(r);  /* R not needed                       */
+  return ScalarLogical(1);
+}
+
+SEXP amatrix_mlx_qr_Q_resident_bridge(SEXP x_key, SEXP q_out_key) {
+  return amatrix_mlx_qr_Q_resident_real(x_key, q_out_key);
+}
+
 static SEXP amatrix_mlx_qr_qty_key_real(SEXP q_key, SEXP y) {
   mlx_stream stream;
   mlx_array q = amatrix_mlx_array_from_resident_key(q_key);
@@ -1225,6 +1268,14 @@ static SEXP amatrix_mlx_ewise_real(SEXP lhs, SEXP rhs, SEXP op) {
         amatrix_mlx_free_array_if_needed(out);
         error("mlx_multiply failed");
       }
+    } else if (strcmp(op_name, "/") == 0) {
+      if (mlx_divide(&out, a, b, stream) != 0) {
+        mlx_stream_free(stream);
+        amatrix_mlx_free_array_if_needed(a);
+        amatrix_mlx_free_array_if_needed(b);
+        amatrix_mlx_free_array_if_needed(out);
+        error("mlx_divide failed");
+      }
     } else {
       mlx_stream_free(stream);
       amatrix_mlx_free_array_if_needed(a);
@@ -1546,6 +1597,13 @@ static SEXP amatrix_mlx_ewise_resident_real(SEXP lhs_key, SEXP rhs, SEXP op, SEX
         if (owns_rhs) amatrix_mlx_free_array_if_needed(b);
         amatrix_mlx_free_array_if_needed(out);
         error("mlx resident multiply failed");
+      }
+    } else if (strcmp(op_name, "/") == 0) {
+      if (mlx_divide(&out, a, b, stream) != 0) {
+        mlx_stream_free(stream);
+        if (owns_rhs) amatrix_mlx_free_array_if_needed(b);
+        amatrix_mlx_free_array_if_needed(out);
+        error("mlx resident divide failed");
       }
     } else {
       mlx_stream_free(stream);
@@ -3197,6 +3255,172 @@ SEXP amatrix_mlx_covariance_bridge(SEXP x_r, SEXP center_r, SEXP denom_r) {
   return amatrix_mlx_covariance_real(x_r, center_r, denom_r);
 #else
   error("amatrix_mlx_covariance requires mlx-c (HAVE_MLXC not defined)");
+  return R_NilValue;
+#endif
+}
+
+/* =========================================================================
+ * MLX full SVD bridge  (mlx_linalg_svd)
+ *
+ * Input  : x_r  — real m×n R matrix (column-major, double)
+ *          nu_r — integer scalar: number of left  singular vectors to return
+ *          nv_r — integer scalar: number of right singular vectors to return
+ * Output : list(d = numeric(k), u = matrix(m,nu), v = matrix(n,nv))
+ *          k = min(m,n), singular values in DESCENDING order.
+ *          Matches base::svd() return convention.
+ *
+ * Note: mlx_linalg_svd is CPU-stream only (not yet GPU-accelerated in MLX).
+ * We still get a large speedup vs R's reference BLAS because MLX uses
+ * optimised LAPACK (Accelerate) internally on Apple Silicon.
+ * ========================================================================= */
+#ifdef HAVE_MLXC
+static SEXP amatrix_mlx_svd_real(SEXP x_r, int nu, int nv) {
+  SEXP dim  = getAttrib(x_r, R_DimSymbol);
+  int  m    = INTEGER(dim)[0];
+  int  n    = INTEGER(dim)[1];
+  int  k    = m < n ? m : n;               /* min(m, n) */
+  int  compute_uv = (nu > 0 || nv > 0);
+
+  mlx_stream        cpu_stream = mlx_default_cpu_stream_new();
+  mlx_array         ax  = mlx_array_new();
+  mlx_vector_array  res = mlx_vector_array_new();
+  mlx_array         U_a = mlx_array_new();
+  mlx_array         S_a = mlx_array_new();
+  mlx_array         Vt_a= mlx_array_new();
+  SEXP result = R_NilValue;
+
+  amatrix_mlx_install_error_handler();
+
+  if (cpu_stream.ctx == NULL) {
+    error("amatrix_mlx_svd: CPU stream unavailable");
+  }
+
+  ax = amatrix_mlx_matrix_from_r(x_r);
+  if (mlx_array_eval(ax) != 0) {
+    mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(ax);
+    mlx_vector_array_free(res);
+    error("amatrix_mlx_svd: eval of input failed");
+  }
+
+  if (mlx_linalg_svd(&res, ax, (bool)compute_uv, cpu_stream) != 0) {
+    mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(ax);
+    mlx_vector_array_free(res);
+    error("amatrix_mlx_svd: mlx_linalg_svd failed");
+  }
+
+  /* Extract arrays: [U, S, Vt] when compute_uv, else [S] */
+  if (compute_uv) {
+    mlx_vector_array_get(&U_a,  res, 0);
+    mlx_vector_array_get(&S_a,  res, 1);
+    mlx_vector_array_get(&Vt_a, res, 2);
+  } else {
+    mlx_vector_array_get(&S_a, res, 0);
+  }
+
+  /* Evaluate output arrays */
+  if (mlx_array_eval(S_a) != 0 ||
+      (compute_uv && (mlx_array_eval(U_a) != 0 || mlx_array_eval(Vt_a) != 0))) {
+    mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(ax);
+    mlx_vector_array_free(res);
+    amatrix_mlx_free_array_if_needed(U_a);
+    amatrix_mlx_free_array_if_needed(S_a);
+    amatrix_mlx_free_array_if_needed(Vt_a);
+    error("amatrix_mlx_svd: eval of SVD outputs failed");
+  }
+
+  /* --- Singular values (d) --- */
+  const float *s_ptr = mlx_array_data_float32(S_a);
+  if (!s_ptr) {
+    mlx_stream_free(cpu_stream);
+    amatrix_mlx_free_array_if_needed(ax);
+    mlx_vector_array_free(res);
+    amatrix_mlx_free_array_if_needed(U_a);
+    amatrix_mlx_free_array_if_needed(S_a);
+    amatrix_mlx_free_array_if_needed(Vt_a);
+    error("amatrix_mlx_svd: singular value data pointer is NULL");
+  }
+  SEXP d_r = PROTECT(allocVector(REALSXP, k));
+  for (int i = 0; i < k; i++) REAL(d_r)[i] = (double)s_ptr[i];
+
+  /* --- Left singular vectors U (m × nu) --- */
+  /* MLX svd returns full U with shape [m, m] row-major.
+   * U_data[i*m + j] = U[row=i, col=j].
+   * R col-major m×nu: REAL(u_r)[i + m*j] = U[row=i, col=j].           */
+  SEXP u_r = PROTECT(allocMatrix(REALSXP, m, nu));
+  if (compute_uv && nu > 0) {
+    const float *u_ptr = mlx_array_data_float32(U_a);
+    if (!u_ptr) {
+      mlx_stream_free(cpu_stream); mlx_vector_array_free(res);
+      amatrix_mlx_free_array_if_needed(ax);
+      amatrix_mlx_free_array_if_needed(U_a);
+      amatrix_mlx_free_array_if_needed(S_a);
+      amatrix_mlx_free_array_if_needed(Vt_a);
+      UNPROTECT(2); error("amatrix_mlx_svd: U data pointer is NULL");
+    }
+    double *up = REAL(u_r);
+    for (int j = 0; j < nu; j++)
+      for (int i = 0; i < m; i++)
+        up[i + m * j] = (double)u_ptr[i * m + j];
+  }
+
+  /* --- Right singular vectors V (n × nv) --- */
+  /* MLX Vt is row-major k×n: Vt_data[j*n + i] = Vt[row=j, col=i].
+   * V = Vt^T.  R col-major n×nv: REAL(v_r)[i + n*j] = V[i,j] = Vt[j,i]
+   *            = Vt_data[j*n + i].                                       */
+  SEXP v_r = PROTECT(allocMatrix(REALSXP, n, nv));
+  if (compute_uv && nv > 0) {
+    const float *vt_ptr = mlx_array_data_float32(Vt_a);
+    if (!vt_ptr) {
+      mlx_stream_free(cpu_stream); mlx_vector_array_free(res);
+      amatrix_mlx_free_array_if_needed(ax);
+      amatrix_mlx_free_array_if_needed(U_a);
+      amatrix_mlx_free_array_if_needed(S_a);
+      amatrix_mlx_free_array_if_needed(Vt_a);
+      UNPROTECT(3); error("amatrix_mlx_svd: Vt data pointer is NULL");
+    }
+    double *vp = REAL(v_r);
+    for (int j = 0; j < nv; j++)
+      for (int i = 0; i < n; i++)
+        vp[i + n * j] = (double)vt_ptr[j * n + i];
+  }
+
+  /* --- Assemble list(d, u, v) --- */
+  SEXP names = PROTECT(allocVector(STRSXP, 3));
+  SET_STRING_ELT(names, 0, mkChar("d"));
+  SET_STRING_ELT(names, 1, mkChar("u"));
+  SET_STRING_ELT(names, 2, mkChar("v"));
+  result = PROTECT(allocVector(VECSXP, 3));
+  SET_VECTOR_ELT(result, 0, d_r);
+  SET_VECTOR_ELT(result, 1, u_r);
+  SET_VECTOR_ELT(result, 2, v_r);
+  setAttrib(result, R_NamesSymbol, names);
+
+  mlx_stream_free(cpu_stream);
+  amatrix_mlx_free_array_if_needed(ax);
+  mlx_vector_array_free(res);
+  amatrix_mlx_free_array_if_needed(U_a);
+  amatrix_mlx_free_array_if_needed(S_a);
+  amatrix_mlx_free_array_if_needed(Vt_a);
+
+  UNPROTECT(5);
+  return result;
+}
+#endif /* HAVE_MLXC */
+
+SEXP amatrix_mlx_svd_bridge(SEXP x_r, SEXP nu_r, SEXP nv_r) {
+  if (!isReal(x_r) || !isMatrix(x_r))
+    error("x must be a real numeric matrix");
+  int nu = asInteger(nu_r);
+  int nv = asInteger(nv_r);
+  if (nu < 0 || nv < 0)
+    error("nu and nv must be non-negative integers");
+#ifdef HAVE_MLXC
+  return amatrix_mlx_svd_real(x_r, nu, nv);
+#else
+  error("amatrix_mlx_svd requires mlx-c (HAVE_MLXC not defined)");
   return R_NilValue;
 #endif
 }

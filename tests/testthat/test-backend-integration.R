@@ -48,8 +48,10 @@ for (spec in optional_backend_specs()) {
       expect_identical(qr_fast_plan$chosen, qr_expected)
       expect_identical(unsupported_plan$chosen, "cpu")
       expect_identical(sparse_plan$chosen, "cpu")
-      expect_identical(summary$chosen, c(spec$backend, qr_expected, "cpu"))
-      expect_identical(summary$cpu_fallback, c(FALSE, identical(qr_expected, "cpu"), TRUE))
+      # "solve" is now a backend capability for fast-precision matrices
+      solve_expected <- if ("solve" %in% amatrix_backend_capabilities(spec$backend)) spec$backend else "cpu"
+      expect_identical(summary$chosen, c(spec$backend, qr_expected, solve_expected))
+      expect_identical(summary$cpu_fallback, c(FALSE, identical(qr_expected, "cpu"), identical(solve_expected, "cpu")))
 
       expect_s4_class(dense_fast %*% diag(2), "adgeMatrix")
       expect_s3_class(fac, "amQR")

@@ -1,4 +1,11 @@
 #!/bin/sh
+# configure — detect ArrayFire and write src/Makevars from src/Makevars.in
+#
+# Detection order:
+#   1. ARRAYFIRE_PREFIX env var (user override)
+#   2. pkg-config arrayfire
+#   3. Homebrew (macOS)
+#   4. Common Linux/Unix system paths (/usr/local, /usr, /opt/arrayfire)
 
 set -eu
 
@@ -6,26 +13,78 @@ src_dir="src"
 makevars="${src_dir}/Makevars"
 prefix=""
 
+# ── 1. User override ──────────────────────────────────────────────────────────
 if [ -n "${ARRAYFIRE_PREFIX:-}" ] && [ -d "${ARRAYFIRE_PREFIX}" ]; then
   prefix="${ARRAYFIRE_PREFIX}"
+  echo "configure: ARRAYFIRE_PREFIX=${prefix}"
+
+# ── 2. pkg-config ─────────────────────────────────────────────────────────────
+elif command -v pkg-config >/dev/null 2>&1 && pkg-config --exists arrayfire 2>/dev/null; then
+  prefix="$(pkg-config --variable=prefix arrayfire 2>/dev/null || true)"
+  echo "configure: pkg-config found ArrayFire at ${prefix}"
+
+# ── 3. Homebrew (macOS) ───────────────────────────────────────────────────────
 elif command -v brew >/dev/null 2>&1; then
   maybe_prefix="$(brew --prefix arrayfire 2>/dev/null || true)"
   if [ -n "${maybe_prefix}" ] && [ -d "${maybe_prefix}" ]; then
     prefix="${maybe_prefix}"
+    echo "configure: Homebrew found ArrayFire at ${prefix}"
   fi
 fi
 
-if [ -n "${prefix}" ] && [ -f "${prefix}/include/arrayfire.h" ] && [ -f "${prefix}/lib/libaf.dylib" ]; then
-  prefix_escaped="$(printf '%s' "${prefix}" | sed 's/[\/&]/\\&/g')"
+# ── 4. Common system paths (Linux/Unix) ───────────────────────────────────────
+if [ -z "${prefix}" ]; then
+  for d in /usr/local /usr /opt/arrayfire /opt/local; do
+    if [ -f "${d}/include/arrayfire.h" ]; then
+      prefix="${d}"
+      echo "configure: found ArrayFire at ${prefix}"
+      break
+    fi
+  done
+fi
+
+# ── Locate lib dir and set platform flags ─────────────────────────────────────
+lib_dir=""
+rpath_flag=""
+
+if [ -n "${prefix}" ] && [ -f "${prefix}/include/arrayfire.h" ]; then
+  os_name="$(uname -s 2>/dev/null || echo unknown)"
+  case "${os_name}" in
+    Darwin)            lib_ext="dylib" ;;
+    CYGWIN*|MINGW*|MSYS*) lib_ext="dll" ;;
+    *)                 lib_ext="so" ;;
+  esac
+
+  # lib64 takes priority on 64-bit Linux
+  for d in "${prefix}/lib64" "${prefix}/lib"; do
+    if [ -f "${d}/libaf.${lib_ext}" ] || [ -f "${d}/libaf.a" ]; then
+      lib_dir="${d}"
+      break
+    fi
+  done
+
+  # rpath is meaningful on ELF and Mach-O; skip on Windows
+  case "${os_name}" in
+    Darwin|Linux) rpath_flag="-Wl,-rpath,${lib_dir}" ;;
+  esac
+fi
+
+# ── Write src/Makevars ────────────────────────────────────────────────────────
+if [ -n "${lib_dir}" ]; then
+  prefix_esc="$(printf '%s' "${prefix}"    | sed 's/[\/&]/\\&/g')"
+  lib_esc="$(   printf '%s' "${lib_dir}"   | sed 's/[\/&]/\\&/g')"
+  rpath_esc="$( printf '%s' "${rpath_flag}" | sed 's/[\/&]/\\&/g')"
   sed \
-    -e "s|@AF_CPPFLAGS@|-DHAVE_ARRAYFIRE -I${prefix_escaped}/include|g" \
-    -e "s|@AF_LIBS@|-L${prefix_escaped}/lib -Wl,-rpath,${prefix_escaped}/lib -laf|g" \
+    -e "s|@AF_CPPFLAGS@|-DHAVE_ARRAYFIRE -I${prefix_esc}/include|g" \
+    -e "s|@AF_LIBS@|-L${lib_esc} ${rpath_esc} -laf|g" \
     "${src_dir}/Makevars.in" > "${makevars}"
-  echo "configure: using ArrayFire from ${prefix}"
+  echo "configure: ArrayFire OK — include=${prefix}/include  lib=${lib_dir}"
 else
   sed \
     -e "s|@AF_CPPFLAGS@||g" \
     -e "s|@AF_LIBS@||g" \
     "${src_dir}/Makevars.in" > "${makevars}"
-  echo "configure: ArrayFire not found, building mock bridge only"
+  echo "configure: ArrayFire not found — building stub (native unavailable at runtime)"
 fi
+
+exit 0
