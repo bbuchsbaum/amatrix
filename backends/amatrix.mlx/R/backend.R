@@ -638,8 +638,9 @@ amatrix_mlx_transpose_resident <- function(x_key, out_key) {
   invisible(.Call("amatrix_mlx_transpose_resident_bridge", as.character(x_key), as.character(out_key)))
 }
 
-amatrix_mlx_matmul_resident <- function(x_key, y_key, out_key) {
-  .Call("amatrix_mlx_matmul_resident_bridge", as.character(x_key), as.character(y_key), as.character(out_key))
+amatrix_mlx_matmul_resident <- function(x_key, y_key, out_key, defer = FALSE) {
+  val <- .Call("amatrix_mlx_matmul_resident_bridge", as.character(x_key), as.character(y_key), as.character(out_key))
+  if (defer) NULL else val
 }
 
 amatrix_mlx_matmul_resident_host <- function(x_key, y) {
@@ -650,14 +651,16 @@ amatrix_mlx_matmul_resident_host <- function(x_key, y) {
   .Call("amatrix_mlx_matmul_resident_host_bridge", as.character(x_key), y_mat)
 }
 
-amatrix_mlx_crossprod_resident <- function(x_key, y_key = NULL, out_key) {
+amatrix_mlx_crossprod_resident <- function(x_key, y_key = NULL, out_key, defer = FALSE) {
   rhs_key <- if (is.null(y_key)) NULL else as.character(y_key)
-  .Call("amatrix_mlx_crossprod_resident_bridge", as.character(x_key), rhs_key, as.character(out_key))
+  val <- .Call("amatrix_mlx_crossprod_resident_bridge", as.character(x_key), rhs_key, as.character(out_key))
+  if (defer) NULL else val
 }
 
-amatrix_mlx_tcrossprod_resident <- function(x_key, y_key = NULL, out_key) {
+amatrix_mlx_tcrossprod_resident <- function(x_key, y_key = NULL, out_key, defer = FALSE) {
   rhs_key <- if (is.null(y_key)) NULL else as.character(y_key)
-  .Call("amatrix_mlx_tcrossprod_resident_bridge", as.character(x_key), rhs_key, as.character(out_key))
+  val <- .Call("amatrix_mlx_tcrossprod_resident_bridge", as.character(x_key), rhs_key, as.character(out_key))
+  if (defer) NULL else val
 }
 
 amatrix_mlx_qr_Q_resident <- function(x_key, q_out_key) {
@@ -708,15 +711,25 @@ amatrix_mlx_svd <- function(x, nu, nv) {
 
 amatrix_mlx_rowSums_resident <- function(x_key, na.rm = FALSE, dims = 1L) {
   x_host <- amatrix_mlx_resident_materialize(x_key)
-  base::rowSums(x_host, na.rm = na.rm, dims = dims)
+  if (isTRUE(na.rm) || !identical(dims, 1L)) {
+    return(base::rowSums(x_host, na.rm = na.rm, dims = dims))
+  }
+  amatrix_mlx_axis_sums(x_host, axis = 1L)
 }
 
 amatrix_mlx_colSums_resident <- function(x_key, na.rm = FALSE, dims = 1L) {
   x_host <- amatrix_mlx_resident_materialize(x_key)
-  base::colSums(x_host, na.rm = na.rm, dims = dims)
+  if (isTRUE(na.rm) || !identical(dims, 1L)) {
+    return(base::colSums(x_host, na.rm = na.rm, dims = dims))
+  }
+  amatrix_mlx_axis_sums(x_host, axis = 0L)
 }
 
 amatrix_mlx_solve_resident <- function(a_key, b_key = NULL, out_key) {
+  # NOTE: resident_materialize retrieves the R matrix from the C resident store
+
+  # without as.matrix() conversion.  A fully on-device solve would require a new
+  # C bridge that accepts resident keys — not yet implemented.
   a_host <- amatrix_mlx_resident_materialize(a_key)
   result <- if (is.null(b_key)) {
     # Matrix inverse (small p×p): keep on CPU — result is also small.
@@ -799,14 +812,16 @@ amatrix_mlx_argreduce <- function(x_key, axis, is_max) {
         PACKAGE = "amatrix.mlx")
 }
 
-amatrix_mlx_broadcast_ewise_resident <- function(lhs_key, v, margin, op, out_key) {
-  .Call("amatrix_mlx_broadcast_ewise_resident_bridge",
-        as.character(lhs_key), as.double(v), as.integer(margin),
-        as.character(op), as.character(out_key),
-        PACKAGE = "amatrix.mlx")
+amatrix_mlx_broadcast_ewise_resident <- function(lhs_key, v, margin, op, out_key,
+                                                  defer = FALSE) {
+  val <- .Call("amatrix_mlx_broadcast_ewise_resident_bridge",
+               as.character(lhs_key), as.double(v), as.integer(margin),
+               as.character(op), as.character(out_key),
+               PACKAGE = "amatrix.mlx")
+  if (defer) NULL else val
 }
 
-amatrix_mlx_ewise_resident <- function(lhs_key, rhs, op, out_key) {
+amatrix_mlx_ewise_resident <- function(lhs_key, rhs, op, out_key, defer = FALSE) {
   rhs_arg <- rhs
   if (is.character(rhs_arg)) {
     rhs_arg <- as.character(rhs_arg)
@@ -816,7 +831,8 @@ amatrix_mlx_ewise_resident <- function(lhs_key, rhs, op, out_key) {
     stop("rhs must be NULL, a resident key, or a numeric scalar")
   }
 
-  .Call("amatrix_mlx_ewise_resident_bridge", as.character(lhs_key), rhs_arg, as.character(op), as.character(out_key))
+  val <- .Call("amatrix_mlx_ewise_resident_bridge", as.character(lhs_key), rhs_arg, as.character(op), as.character(out_key))
+  if (defer) NULL else val
 }
 
 .amatrix_mlx_product_thresholds <- function() {
@@ -969,8 +985,8 @@ amatrix_mlx_backend <- function() {
     broadcast_ewise = function(x, lhs, v, margin, op, ...) {
       base::sweep(as.matrix(lhs), MARGIN = margin, STATS = v, FUN = op)
     },
-    broadcast_ewise_resident = function(lhs_key, v, margin, op, out_key) {
-      amatrix_mlx_broadcast_ewise_resident(lhs_key, v, margin, op, out_key)
+    broadcast_ewise_resident = function(lhs_key, v, margin, op, out_key, defer = FALSE) {
+      amatrix_mlx_broadcast_ewise_resident(lhs_key, v, margin, op, out_key, defer = defer)
     },
     scatter_mean_resident = function(x_key, labels, K) {
       amatrix_mlx_scatter_mean(x_key, labels, K)
@@ -1018,20 +1034,20 @@ amatrix_mlx_backend <- function() {
     transpose_resident = function(x_key, out_key) {
       amatrix_mlx_transpose_resident(x_key, out_key)
     },
-    matmul_resident = function(x_key, y_key, out_key) {
-      amatrix_mlx_matmul_resident(x_key, y_key, out_key)
+    matmul_resident = function(x_key, y_key, out_key, defer = FALSE) {
+      amatrix_mlx_matmul_resident(x_key, y_key, out_key, defer = defer)
     },
     matmul_resident_host = function(x_key, y) {
       amatrix_mlx_matmul_resident_host(x_key, y)
     },
-    crossprod_resident = function(x_key, y_key = NULL, out_key) {
-      amatrix_mlx_crossprod_resident(x_key, y_key = y_key, out_key = out_key)
+    crossprod_resident = function(x_key, y_key = NULL, out_key, defer = FALSE) {
+      amatrix_mlx_crossprod_resident(x_key, y_key = y_key, out_key = out_key, defer = defer)
     },
-    tcrossprod_resident = function(x_key, y_key = NULL, out_key) {
-      amatrix_mlx_tcrossprod_resident(x_key, y_key = y_key, out_key = out_key)
+    tcrossprod_resident = function(x_key, y_key = NULL, out_key, defer = FALSE) {
+      amatrix_mlx_tcrossprod_resident(x_key, y_key = y_key, out_key = out_key, defer = defer)
     },
-    ewise_resident = function(lhs_key, rhs, op, out_key) {
-      amatrix_mlx_ewise_resident(lhs_key, rhs, op, out_key)
+    ewise_resident = function(lhs_key, rhs, op, out_key, defer = FALSE) {
+      amatrix_mlx_ewise_resident(lhs_key, rhs, op, out_key, defer = defer)
     },
     rowSums_resident = function(x_key, na.rm = FALSE, dims = 1L) {
       amatrix_mlx_rowSums_resident(x_key, na.rm = na.rm, dims = dims)
