@@ -1,3 +1,15 @@
+.amatrix_model_sparse_or_dense_arg <- function(x, template = NULL) {
+  if (inherits(x, "adgCMatrix")) return(x)
+  if (inherits(x, "dgCMatrix") || inherits(x, "sparseMatrix")) {
+    preferred_backend <- if (is.null(template)) "cpu" else template@preferred_backend
+    policy <- if (is.null(template)) amatrix_default_policy() else template@policy
+    precision <- if (is.null(template)) amatrix_default_precision() else template@precision
+    return(new_adgCMatrix(x, preferred_backend = preferred_backend,
+                          policy = policy, precision = precision))
+  }
+  .amatrix_model_dense_arg(x, template)
+}
+
 .amatrix_model_dense_arg <- function(x, template = NULL) {
   if (inherits(x, "adgeMatrix")) {
     return(x)
@@ -335,6 +347,25 @@
     qr_meta <- .amatrix_qr_fit_metadata(qr_fit)
     XtX <- NULL
     XtY <- NULL
+  } else if (inherits(X_arg, "adgCMatrix")) {
+    # Sparse "normal" path: bypass cache (which requires adgeMatrix)
+    Y_arg <- .amatrix_model_response_arg(Y, template = X_arg)
+    XtX <- am_crossprod(X_arg)
+    XtY <- am_crossprod(X_arg, Y_arg)
+    coefficients <- am_solve(XtX, XtY)
+    outputs <- .amatrix_model_outputs(
+      X_arg,
+      Y_arg,
+      coefficients,
+      include_fitted = include_fitted,
+      include_residuals = include_residuals
+    )
+    fitted_values <- outputs$fitted_values
+    residuals <- outputs$residuals
+    qr_meta <- .amatrix_qr_fit_metadata(NULL)
+    rank_qr <- base::qr(as.matrix(amatrix_materialize_host(X_arg)))
+    cache_value <- list(rank = rank_qr$rank, cache_key = NA_character_,
+                        cache_reused = FALSE)
   } else {
     Y_arg <- .amatrix_model_response_arg(Y, template = X_arg)
     cache_value <- .amatrix_lm_cache_value(X_arg, cache = cache, need_xtx = TRUE, need_qr = FALSE)
@@ -437,6 +468,31 @@
 .amatrix_apply_row_weights <- function(X_arg, weights) {
   stopifnot(inherits(X_arg, "adgeMatrix"))
   sqrt_w <- sqrt(as.double(weights))
+
+  # GPU-resident path: scale rows on GPU via broadcast_ewise, no host round-trip
+  backend_name <- .amatrix_live_resident_backend(X_arg)
+  if (!is.null(backend_name)) {
+    backend <- .amatrix_get_backend(backend_name)
+    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise")) {
+      lhs <- .amatrix_prepare_resident_arg(X_arg, backend_name)
+      if (!is.null(lhs)) {
+        out_key <- .amatrix_next_resident_key(backend_name)
+        result <- tryCatch({
+          val <- backend$broadcast_ewise_resident(lhs$key, sqrt_w, 1L, "*", out_key)
+          .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+          val
+        }, error = function(e) NULL)
+        if (!is.null(result)) {
+          value <- .amatrix_rewrap_like(X_arg, result)
+          return(.amatrix_bind_resident(value, backend_name, out_key))
+        }
+        try(backend$resident_drop(out_key), silent = TRUE)
+        .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+      }
+    }
+  }
+
+  # CPU fallback
   x_host <- as.matrix(amatrix_materialize_host(X_arg))
   weighted <- x_host * sqrt_w
   adgeMatrix(
@@ -648,7 +704,17 @@ lm_fit <- function(
   cache = TRUE,
   method = c("normal", "qr")
 ) {
-  X_arg <- .amatrix_model_design_arg(X, intercept = intercept)
+  method <- match.arg(method)
+
+  # For "normal" method, preserve sparsity if X is sparse (no intercept —
+
+  # intercept column forces dense anyway).
+  if (identical(method, "normal") && !isTRUE(intercept)) {
+    X_arg <- .amatrix_model_sparse_or_dense_arg(X)
+  } else {
+    X_arg <- .amatrix_model_design_arg(X, intercept = intercept)
+  }
+
   core <- .amatrix_lm_core(
     X_arg,
     Y,

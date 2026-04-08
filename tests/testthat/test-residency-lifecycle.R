@@ -257,13 +257,13 @@ test_that("Fallback drops residency honestly when op is not resident-capable", {
 
     # Now call rowSums — this goes through amatrix_dispatch_op.
     # The backend has rowSums (cold) but NOT rowSums_resident, so the
-    # dispatch code detects x is live-resident, drops the binding, then
-    # materializes x from host.
+    # dispatch code materializes x from host for the cold method, but
+    # preserves the resident binding so future ops can reuse the GPU data.
     rs <- rowSums(x)
 
-    # Residency binding must have been dropped.
-    expect_false(has_residency_entry(x),
-      label = "residency entry must be dropped after cold-path fallback"
+    # Residency binding must be preserved (no needless re-upload next time).
+    expect_true(has_residency_entry(x),
+      label = "residency entry must be preserved after cold-path fallback"
     )
 
     # Result must still be numerically correct.

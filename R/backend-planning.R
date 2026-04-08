@@ -197,8 +197,31 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
     return(fallback())
   }
 
-  if (!is.null(.amatrix_live_resident_backend(x))) {
-    .amatrix_drop_resident_binding(x)
+  # Try resident path if x is GPU-resident and the backend supports this op
+  # as a resident operation. This avoids dropping the binding + re-uploading.
+  resident_backend_name <- .amatrix_live_resident_backend(x)
+  if (!is.null(resident_backend_name)) {
+    backend <- .amatrix_get_backend(resident_backend_name)
+    resident_op_name <- paste0(method, "_resident")
+    if (is.function(backend[[resident_op_name]])) {
+      lhs <- .amatrix_prepare_resident_arg(x, resident_backend_name)
+      if (!is.null(lhs)) {
+        out_key <- .amatrix_next_resident_key(resident_backend_name)
+        result <- tryCatch(
+          backend[[resident_op_name]](lhs$key, out_key),
+          error = function(e) NULL
+        )
+        .amatrix_cleanup_temp_resident(list(lhs), resident_backend_name)
+        if (!is.null(result)) {
+          return(result)
+        }
+        # Clean up out_key on failure
+        try(backend$resident_drop(out_key), silent = TRUE)
+      }
+    }
+
+    # No resident path available or it failed — materialize but preserve
+    # the binding so future ops on x don't need to re-upload.
   }
 
   do.call(backend_method, c(list(x = amatrix_materialize_host(x)), args))

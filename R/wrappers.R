@@ -678,6 +678,37 @@ crossprod_weighted <- function(X, w) {
     stop("length(w) must equal nrow(X)", call. = FALSE)
   }
   sqrt_w <- sqrt(w)
+
+  # GPU-resident path: scale rows on GPU, then crossprod on GPU — no host round-trip
+  backend_name <- .amatrix_live_resident_backend(X_arg)
+  if (!is.null(backend_name)) {
+    backend <- .amatrix_get_backend(backend_name)
+    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise") &&
+        .amatrix_backend_supports_resident_op(backend, "crossprod")) {
+      lhs <- .amatrix_prepare_resident_arg(X_arg, backend_name)
+      if (!is.null(lhs)) {
+        scaled_key <- .amatrix_next_resident_key(backend_name)
+        out_key    <- .amatrix_next_resident_key(backend_name)
+        result <- tryCatch({
+          backend$broadcast_ewise_resident(lhs$key, sqrt_w, 1L, "*", scaled_key)
+          val <- backend$crossprod_resident(scaled_key, NULL, out_key)
+          backend$resident_drop(scaled_key)
+          .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+          val
+        }, error = function(e) NULL)
+        if (!is.null(result)) {
+          value <- .amatrix_rewrap_value(X_arg, result)
+          return(.amatrix_bind_resident(value, backend_name, out_key))
+        }
+        # Clean up on failure
+        try(backend$resident_drop(scaled_key), silent = TRUE)
+        try(backend$resident_drop(out_key), silent = TRUE)
+        .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+      }
+    }
+  }
+
+  # CPU fallback
   x_host <- as.matrix(amatrix_materialize_host(X_arg))
   x_scaled <- x_host * sqrt_w
   am_crossprod(.amatrix_rewrap_like(X_arg, x_scaled))
@@ -691,6 +722,36 @@ tcrossprod_weighted <- function(X, w) {
     stop("length(w) must equal nrow(X)", call. = FALSE)
   }
   sqrt_w <- sqrt(w)
+
+  # GPU-resident path: scale rows on GPU, then tcrossprod on GPU
+  backend_name <- .amatrix_live_resident_backend(X_arg)
+  if (!is.null(backend_name)) {
+    backend <- .amatrix_get_backend(backend_name)
+    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise") &&
+        .amatrix_backend_supports_resident_op(backend, "tcrossprod")) {
+      lhs <- .amatrix_prepare_resident_arg(X_arg, backend_name)
+      if (!is.null(lhs)) {
+        scaled_key <- .amatrix_next_resident_key(backend_name)
+        out_key    <- .amatrix_next_resident_key(backend_name)
+        result <- tryCatch({
+          backend$broadcast_ewise_resident(lhs$key, sqrt_w, 1L, "*", scaled_key)
+          val <- backend$tcrossprod_resident(scaled_key, NULL, out_key)
+          backend$resident_drop(scaled_key)
+          .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+          val
+        }, error = function(e) NULL)
+        if (!is.null(result)) {
+          value <- .amatrix_rewrap_value(X_arg, result)
+          return(.amatrix_bind_resident(value, backend_name, out_key))
+        }
+        try(backend$resident_drop(scaled_key), silent = TRUE)
+        try(backend$resident_drop(out_key), silent = TRUE)
+        .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+      }
+    }
+  }
+
+  # CPU fallback
   x_host <- as.matrix(amatrix_materialize_host(X_arg))
   x_scaled <- x_host * sqrt_w
   am_tcrossprod(.amatrix_rewrap_like(X_arg, x_scaled))
@@ -704,11 +765,52 @@ xty_weighted <- function(X, w, y) {
     stop("length(w) must equal nrow(X)", call. = FALSE)
   }
   sqrt_w <- sqrt(w)
-  x_host <- as.matrix(amatrix_materialize_host(X_arg))
   y_mat <- if (is.vector(y)) matrix(y, ncol = 1L) else as.matrix(y)
   if (nrow(y_mat) != nrow(X_arg)) {
     stop("nrow(y) must equal nrow(X)", call. = FALSE)
   }
+
+  # GPU-resident path: scale X and y on GPU, crossprod on GPU
+  backend_name <- .amatrix_live_resident_backend(X_arg)
+  if (!is.null(backend_name)) {
+    backend <- .amatrix_get_backend(backend_name)
+    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise") &&
+        .amatrix_backend_supports_resident_op(backend, "crossprod")) {
+      lhs <- .amatrix_prepare_resident_arg(X_arg, backend_name)
+      if (!is.null(lhs)) {
+        x_scaled_key <- .amatrix_next_resident_key(backend_name)
+        y_scaled_key <- .amatrix_next_resident_key(backend_name)
+        out_key      <- .amatrix_next_resident_key(backend_name)
+        result <- tryCatch({
+          # Scale X rows by sqrt(w) on GPU
+          backend$broadcast_ewise_resident(lhs$key, sqrt_w, 1L, "*", x_scaled_key)
+          # Upload and scale y rows by sqrt(w) on GPU
+          y_key <- .amatrix_next_resident_key(backend_name)
+          backend$resident_store(y_key, y_mat)
+          backend$broadcast_ewise_resident(y_key, sqrt_w, 1L, "*", y_scaled_key)
+          backend$resident_drop(y_key)
+          # crossprod(X_scaled, y_scaled)
+          val <- backend$crossprod_resident(x_scaled_key, y_scaled_key, out_key)
+          backend$resident_drop(x_scaled_key)
+          backend$resident_drop(y_scaled_key)
+          .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+          val
+        }, error = function(e) NULL)
+        if (!is.null(result)) {
+          value <- .amatrix_rewrap_value(X_arg, result)
+          return(.amatrix_bind_resident(value, backend_name, out_key))
+        }
+        # Clean up on failure
+        try(backend$resident_drop(x_scaled_key), silent = TRUE)
+        try(backend$resident_drop(y_scaled_key), silent = TRUE)
+        try(backend$resident_drop(out_key), silent = TRUE)
+        .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+      }
+    }
+  }
+
+  # CPU fallback
+  x_host <- as.matrix(amatrix_materialize_host(X_arg))
   x_scaled <- x_host * sqrt_w
   y_scaled <- y_mat * sqrt_w
   am_crossprod(
