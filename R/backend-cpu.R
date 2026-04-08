@@ -63,15 +63,21 @@
       Matrix::colSums(x, na.rm = na.rm, dims = dims)
     },
     solve = function(x, b = NULL, ...) {
+      if (inherits(x, "sparseMatrix")) {
+        if (is.null(b)) return(Matrix::solve(x, ...))
+        return(Matrix::solve(x, b, ...))
+      }
       if (is.null(b)) {
         return(base::solve(as.matrix(x), ...))
       }
       base::solve(as.matrix(x), as.matrix(.amatrix_host_arg(b)), ...)
     },
     chol = function(x, ...) {
+      if (inherits(x, "sparseMatrix")) return(Matrix::chol(x, ...))
       base::chol(as.matrix(x), ...)
     },
     qr = function(x, ...) {
+      if (inherits(x, "sparseMatrix")) return(Matrix::qr(x, ...))
       base::qr(as.matrix(x), ...)
     },
     svd = function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
@@ -84,6 +90,7 @@
       base::eigen(as.matrix(x), symmetric = symmetric, only.values = only.values, EISPACK = EISPACK)
     },
     diag = function(x, nrow, ncol, names = TRUE) {
+      if (inherits(x, "sparseMatrix")) return(Matrix::diag(x))
       base::diag(as.matrix(x), nrow = nrow, ncol = ncol, names = names)
     }
   )

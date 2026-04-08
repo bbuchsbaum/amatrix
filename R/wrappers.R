@@ -929,11 +929,23 @@ trace_estim <- function(A = NULL, k = 30L, seed = NULL,
 # ── Row / column means ────────────────────────────────────────────────────────
 
 rowmeans <- function(x, na.rm = FALSE) {
+  if (inherits(x, "adgCMatrix")) {
+    return(Matrix::rowMeans(amatrix_materialize_host(x), na.rm = na.rm))
+  }
+  if (inherits(x, "adgeMatrix")) {
+    return(rowsums(x, na.rm = na.rm) / ncol(x))
+  }
   x_host <- as.matrix(amatrix_materialize_host(x))
   base::rowMeans(x_host, na.rm = na.rm)
 }
 
 colmeans <- function(x, na.rm = FALSE) {
+  if (inherits(x, "adgCMatrix")) {
+    return(Matrix::colMeans(amatrix_materialize_host(x), na.rm = na.rm))
+  }
+  if (inherits(x, "adgeMatrix")) {
+    return(colsums(x, na.rm = na.rm) / nrow(x))
+  }
   x_host <- as.matrix(amatrix_materialize_host(x))
   base::colMeans(x_host, na.rm = na.rm)
 }
@@ -941,13 +953,20 @@ colmeans <- function(x, na.rm = FALSE) {
 # ── Matrix trace ──────────────────────────────────────────────────────────────
 
 trace <- function(x) {
-  x_host <- as.matrix(amatrix_materialize_host(x))
-  sum(base::diag(x_host))
+  host <- amatrix_materialize_host(x)
+  if (inherits(host, "sparseMatrix")) return(sum(Matrix::diag(host)))
+  sum(base::diag(as.matrix(host)))
 }
 
 # ── Symmetry enforcement ──────────────────────────────────────────────────────
 
 sym <- function(x) {
+  if (inherits(x, "adgCMatrix")) {
+    host <- amatrix_materialize_host(x)
+    result <- (host + Matrix::t(host)) / 2
+    return(new_adgCMatrix(result, preferred_backend = x@preferred_backend,
+                          precision = x@precision, policy = x@policy))
+  }
   X_arg <- .amatrix_model_dense_arg(x)
   x_host <- as.matrix(amatrix_materialize_host(X_arg))
   .amatrix_rewrap_like(X_arg, (x_host + t(x_host)) / 2)
@@ -1015,6 +1034,14 @@ dot <- function(x, y) {
 segment_sum <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
+  if (inherits(x, "adgCMatrix")) {
+    sums_raw <- rowsum.adgCMatrix(x, group = labels, reorder = FALSE)
+    out <- matrix(0, K, ncol(x))
+    idx <- as.integer(rownames(sums_raw))
+    valid <- idx >= 1L & idx <= K
+    if (any(valid)) out[idx[valid], ] <- sums_raw[valid, , drop = FALSE]
+    return(out)
+  }
   if (!inherits(x, "adgeMatrix"))
     return(.am_segment_sum_cpu(as.matrix(x), labels, K))
   # Size gate: GPU kernel launch overhead exceeds compute for small matrices.
@@ -1032,6 +1059,21 @@ segment_sum <- function(x, labels, K) {
 segment_mean <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
+  if (inherits(x, "adgCMatrix")) {
+    sums_raw <- rowsum.adgCMatrix(x, group = labels, reorder = FALSE)
+    idx    <- as.integer(rownames(sums_raw))
+    counts <- tabulate(labels, nbins = K)
+    out    <- matrix(NA_real_, K, ncol(x))
+    valid  <- idx >= 1L & idx <= K
+    if (any(valid)) {
+      k  <- idx[valid]
+      nz <- counts[k] > 0L
+      if (any(nz))
+        out[k[nz], ] <- sums_raw[valid, , drop = FALSE][nz, , drop = FALSE] /
+          counts[k[nz]]
+    }
+    return(out)
+  }
   if (!inherits(x, "adgeMatrix"))
     return(.am_segment_mean_cpu(as.matrix(x), labels, K))
   # Size gate: same as segment_sum — CPU is faster for small n*p.
@@ -1134,7 +1176,22 @@ sweep.adgCMatrix <- function(x, MARGIN, STATS, FUN = "-",
     return(new_adgCMatrix(result, preferred_backend = x@preferred_backend,
                           precision = x@precision, policy = x@policy))
   }
-  # Fallback: densify for other margins/ops
+  # MARGIN=1 with * or /: row-scale preserving sparsity — O(nnz)
+  if (identical(as.integer(MARGIN), 1L) && is.character(FUN) &&
+      FUN %in% c("*", "/") && length(STATS) == nrow(x)) {
+    host <- amatrix_materialize_host(x)
+    xi <- host@i  # 0-based row indices
+    if (identical(FUN, "*")) {
+      new_x <- host@x * STATS[xi + 1L]
+    } else {
+      new_x <- host@x / STATS[xi + 1L]
+    }
+    result <- new("dgCMatrix", i = host@i, p = host@p, Dim = host@Dim,
+                  Dimnames = host@Dimnames, x = new_x, factors = list())
+    return(new_adgCMatrix(result, preferred_backend = x@preferred_backend,
+                          precision = x@precision, policy = x@policy))
+  }
+  # Fallback: densify for other margins/ops (e.g., +/- which destroy sparsity)
   base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, ...)
 }
 
@@ -1416,9 +1473,8 @@ am_colargmin <- function(x) .am_argreduce(x, "colargmin")
 
 ewise <- function(op, e1, e2 = NULL) {
   template <- .amatrix_template(e1, e2)
-  host_e1 <- .amatrix_host_arg(e1)
-  host_e2 <- .amatrix_host_arg(e2)
 
+  # Try GPU resident path FIRST — no host materialization needed
   if (!is.null(template)) {
     choice <- .amatrix_backend_for(template, "ewise", y = e2)
     resident <- .amatrix_try_resident_ewise(op, e1, e2, choice$name)
@@ -1427,6 +1483,10 @@ ewise <- function(op, e1, e2 = NULL) {
       return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
     }
   }
+
+  # Only materialize on the cold/fallback path
+  host_e1 <- .amatrix_host_arg(e1)
+  host_e2 <- .amatrix_host_arg(e2)
 
   value <- amatrix_dispatch_op(
     x = template,
