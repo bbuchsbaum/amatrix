@@ -762,6 +762,34 @@ test_that("ridge_fit matches penalized least-squares coefficients", {
   expect_identical(fit$precision, "strict")
 })
 
+test_that("ridge_fit penalizes the first predictor when no intercept column is present", {
+  set.seed(1401)
+  X_host <- matrix(rnorm(48), nrow = 12, ncol = 4)
+  beta_host <- matrix(rnorm(12), nrow = 4, ncol = 3)
+  Y_host <- X_host %*% beta_host + matrix(rnorm(36, sd = 1e-6), nrow = 12, ncol = 3)
+  lambda <- 0.75
+
+  fit <- ridge_fit(adgeMatrix(X_host), Y_host, lambda = lambda, intercept = FALSE, penalize_intercept = FALSE)
+  coef_host <- solve(crossprod(X_host) + diag(lambda, ncol(X_host)), crossprod(X_host, Y_host))
+
+  expect_equal(as.matrix(coef(fit)), coef_host, tolerance = 1e-8)
+})
+
+test_that("ridge_fit leaves only the explicit intercept column unpenalized", {
+  set.seed(1402)
+  X_host <- matrix(rnorm(48), nrow = 12, ncol = 4)
+  beta_host <- matrix(rnorm(15), nrow = 5, ncol = 3)
+  X_design <- cbind(1, X_host)
+  Y_host <- X_design %*% beta_host + matrix(rnorm(36, sd = 1e-6), nrow = 12, ncol = 3)
+  lambda <- 0.5
+
+  fit <- ridge_fit(adgeMatrix(X_host), Y_host, lambda = lambda, intercept = TRUE, penalize_intercept = FALSE)
+  penalty <- diag(c(0, rep(lambda, ncol(X_host))))
+  coef_host <- solve(crossprod(X_design) + penalty, crossprod(X_design, Y_host))
+
+  expect_equal(as.matrix(coef(fit)), coef_host, tolerance = 1e-8)
+})
+
 test_that("ridge_fit reuses cached shared-X work across repeated fits", {
   counter <- new.env(parent = emptyenv())
   counter$crossprod <- 0L

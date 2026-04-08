@@ -1,4 +1,6 @@
-test_that("arrayfire backend registers with amatrix", {
+test_that("arrayfire backend can be registered with amatrix", {
+  options(amatrix.enable_arrayfire = TRUE)
+  amatrix_arrayfire_register(overwrite = TRUE)
   expect_true("arrayfire" %in% amatrix::amatrix_backend_names())
 })
 
@@ -27,7 +29,7 @@ test_that("arrayfire capability list is stable and explicit", {
     c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax",
       "scatter_mean", "segment_sum", "segment_mean",
       "rowSums", "colSums",
-      "qr", "rsvd", "chol", "solve", "covariance", "svd")
+      "qr", "rsvd", "chol", "solve", "covariance", "svd", "kernel_resident")
   )
 })
 

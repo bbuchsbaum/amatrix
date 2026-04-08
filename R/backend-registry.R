@@ -6,13 +6,23 @@
   list(
     mlx = list(
       package = "amatrix.mlx",
-      register_fun = "amatrix_mlx_register"
+      register_fun = "amatrix_mlx_register",
+      enabled = function() TRUE
     ),
     arrayfire = list(
       package = "amatrix.arrayfire",
-      register_fun = "amatrix_arrayfire_register"
+      register_fun = "amatrix_arrayfire_register",
+      enabled = function() isTRUE(getOption("amatrix.enable_arrayfire", FALSE))
     )
   )
+}
+
+.amatrix_optional_backend_enabled <- function(spec) {
+  enabled <- spec$enabled
+  if (is.null(enabled)) {
+    return(TRUE)
+  }
+  isTRUE(tryCatch(enabled(), error = function(e) FALSE))
 }
 
 .amatrix_try_register_optional_backend <- function(name) {
@@ -28,6 +38,9 @@
 
   spec <- .amatrix_optional_backend_specs()[[name]]
   if (is.null(spec)) {
+    return(FALSE)
+  }
+  if (!.amatrix_optional_backend_enabled(spec)) {
     return(FALSE)
   }
 

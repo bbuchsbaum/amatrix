@@ -28,6 +28,7 @@ test_that("qr works on sparse tall matrix", {
   X_dn <- matrix(rnorm(n * p), n, p)
   X_sp <- new_adgCMatrix(Matrix::Matrix(X_dn, sparse = TRUE))
   qr_sp <- qr(X_sp)
+  expect_s3_class(qr_sp, "amQR")
   # QR result should be a valid decomposition; verify via solve
   b <- rnorm(n)
   coef_sp <- qr.coef(qr_sp, b)

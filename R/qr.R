@@ -169,6 +169,10 @@ setOldClass(c("amQR", "amDenseQR"))
 }
 
 .amatrix_qr_rank <- function(qr) {
+  if (inherits(qr, "amQR") && !is.null(qr$rank)) {
+    return(as.integer(qr$rank))
+  }
+
   if (inherits(qr, "amDenseQR")) {
     return(as.integer(qr$rank))
   }
@@ -179,6 +183,35 @@ setOldClass(c("amQR", "amDenseQR"))
   }
 
   .amatrix_explicit_qr_rank(payload)
+}
+
+.amatrix_wrap_sparse_qr <- function(qr_obj, x, method = "cpu") {
+  stopifnot(inherits(qr_obj, "sparseQR"))
+
+  pivot <- tryCatch(as.integer(qr_obj@q) + 1L, error = function(e) NULL)
+  pivoted <- !is.null(pivot) && !identical(pivot, seq_along(pivot))
+  source_dim <- dim(.amatrix_host_arg(x))
+  rank <- as.integer(Matrix::rankMatrix(qr_obj@R)[1L])
+
+  structure(
+    list(
+      qr = qr_obj,
+      representation = "base_qr",
+      rank = rank,
+      backend = if (inherits(x, "aMatrix")) x@preferred_backend else "cpu",
+      precision = if (inherits(x, "aMatrix")) x@precision else amatrix_default_precision(),
+      method = method,
+      source_class = class(x)[[1L]],
+      source_dim = source_dim,
+      thin = TRUE,
+      pivoted = pivoted,
+      pivot = pivot,
+      state = .amatrix_qr_state(factor = qr_obj, factor_source = "native"),
+      q_materialized = FALSE,
+      r_materialized = FALSE
+    ),
+    class = "amQR"
+  )
 }
 
 .amatrix_qr_source_dim <- function(qr) {
@@ -377,12 +410,12 @@ qr_info <- function(qr) {
 
 .amatrix_base_qr_q <- function(qr, complete = FALSE) {
   payload <- .amatrix_unwrap_qr(qr)
-  base::qr.Q(payload, complete = complete)
+  qr.Q(payload, complete = complete)
 }
 
 .amatrix_base_qr_r <- function(qr, complete = FALSE) {
   payload <- .amatrix_unwrap_qr(qr)
-  base::qr.R(payload, complete = complete)
+  qr.R(payload, complete = complete)
 }
 
 .amatrix_qr_q <- function(qr, complete = FALSE) {
@@ -395,7 +428,7 @@ qr_info <- function(qr) {
     if (identical(factor_source, "tsqr_blocked")) {
       return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_tsqr_q", .amatrix_qr_factor(qr), complete = complete))
     }
-    return(base::qr.Q(.amatrix_qr_factor(qr), complete = complete))
+    return(qr.Q(.amatrix_qr_factor(qr), complete = complete))
   }
   if (identical(.amatrix_qr_kind(qr), "explicit_qr")) {
     return(.amatrix_explicit_qr_q(qr))
@@ -412,7 +445,7 @@ qr_info <- function(qr) {
     if (!is.null(payload$r_key) && identical(.amatrix_qr_backend_ops(qr), "mlx")) {
       return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_resident_materialize", payload$r_key))
     }
-    return(base::qr.R(.amatrix_qr_factor(qr), complete = complete))
+    return(qr.R(.amatrix_qr_factor(qr), complete = complete))
   }
   if (identical(.amatrix_qr_kind(qr), "explicit_qr")) {
     return(.amatrix_explicit_qr_r(qr))
@@ -424,21 +457,21 @@ qr_info <- function(qr) {
   if (identical(.amatrix_qr_or(qr$state$factor_source, NULL), "tsqr_blocked")) {
     return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_tsqr_qty", .amatrix_qr_factor(qr), y))
   }
-  base::qr.qty(.amatrix_qr_factor(qr), y)
+  qr.qty(.amatrix_qr_factor(qr), y)
 }
 
 .amatrix_mlx_compact_qr_qy <- function(qr, y) {
   if (identical(.amatrix_qr_or(qr$state$factor_source, NULL), "tsqr_blocked")) {
     return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_tsqr_qy", .amatrix_qr_factor(qr), y))
   }
-  base::qr.qy(.amatrix_qr_factor(qr), y)
+  qr.qy(.amatrix_qr_factor(qr), y)
 }
 
 .amatrix_mlx_compact_qr_coef <- function(qr, y) {
   if (identical(.amatrix_qr_or(qr$state$factor_source, NULL), "tsqr_blocked")) {
     return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_tsqr_coef", .amatrix_qr_factor(qr), y))
   }
-  base::qr.coef(.amatrix_qr_factor(qr), y)
+  qr.coef(.amatrix_qr_factor(qr), y)
 }
 
 .amatrix_mlx_compact_qr_solve <- function(qr, b = NULL, tol = 1e-07) {
@@ -446,23 +479,23 @@ qr_info <- function(qr) {
     return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_tsqr_solve", .amatrix_qr_factor(qr), b, tol = tol))
   }
   if (is.null(b)) {
-    return(base::qr.solve(.amatrix_qr_factor(qr), tol = tol))
+    return(qr.solve(.amatrix_qr_factor(qr), tol = tol))
   }
-  base::qr.solve(.amatrix_qr_factor(qr), b = b, tol = tol)
+  qr.solve(.amatrix_qr_factor(qr), b = b, tol = tol)
 }
 
 .amatrix_mlx_compact_qr_fitted <- function(qr, y, k = NULL) {
   if (identical(.amatrix_qr_or(qr$state$factor_source, NULL), "tsqr_blocked")) {
     return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_tsqr_fitted", .amatrix_qr_factor(qr), y, k = k))
   }
-  base::qr.fitted(.amatrix_qr_factor(qr), y, k = k)
+  qr.fitted(.amatrix_qr_factor(qr), y, k = k)
 }
 
 .amatrix_mlx_compact_qr_resid <- function(qr, y) {
   if (identical(.amatrix_qr_or(qr$state$factor_source, NULL), "tsqr_blocked")) {
     return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_tsqr_resid", .amatrix_qr_factor(qr), y))
   }
-  base::qr.resid(.amatrix_qr_factor(qr), y)
+  qr.resid(.amatrix_qr_factor(qr), y)
 }
 
 .amatrix_explicit_qr_qty <- function(qr, y) {
@@ -581,22 +614,22 @@ qr_info <- function(qr) {
   if (identical(.amatrix_qr_kind(a), "explicit_qr")) {
     if (is.null(b)) {
       if (identical(.amatrix_qr_helper_path(a), "compact_factor") && .amatrix_qr_compact_available(a)) {
-        return(base::qr.solve(.amatrix_qr_factor(a), tol = tol))
+        return(qr.solve(.amatrix_qr_factor(a), tol = tol))
       }
       return(.amatrix_explicit_qr_solve(a, tol = tol))
     }
 
     if (identical(.amatrix_qr_helper_path(a), "compact_factor") && .amatrix_qr_compact_available(a)) {
-      return(base::qr.solve(.amatrix_qr_factor(a), b = b, tol = tol))
+      return(qr.solve(.amatrix_qr_factor(a), b = b, tol = tol))
     }
     return(.amatrix_explicit_qr_solve(a, b = b, tol = tol))
   }
 
   if (is.null(b)) {
-    return(base::qr.solve(.amatrix_qr_factor(a), tol = tol))
+    return(qr.solve(.amatrix_qr_factor(a), tol = tol))
   }
 
-  base::qr.solve(.amatrix_qr_factor(a), b = b, tol = tol)
+  qr.solve(.amatrix_qr_factor(a), b = b, tol = tol)
 }
 
 .amatrix_qr_coef_value <- function(qr, y) {
@@ -605,12 +638,12 @@ qr_info <- function(qr) {
   }
   if (identical(.amatrix_qr_kind(qr), "explicit_qr")) {
     if (identical(.amatrix_qr_helper_path(qr), "compact_factor") && .amatrix_qr_compact_available(qr)) {
-      return(base::qr.coef(.amatrix_qr_factor(qr), y))
+      return(qr.coef(.amatrix_qr_factor(qr), y))
     }
     return(.amatrix_explicit_qr_solve(qr, b = y))
   }
 
-  base::qr.coef(.amatrix_qr_factor(qr), y)
+  qr.coef(.amatrix_qr_factor(qr), y)
 }
 
 .amatrix_qr_fitted_value <- function(qr, y, k = NULL) {
@@ -624,12 +657,12 @@ qr_info <- function(qr) {
 
   if (identical(.amatrix_qr_kind(qr), "explicit_qr")) {
     if (identical(.amatrix_qr_helper_path(qr), "compact_factor") && .amatrix_qr_compact_available(qr)) {
-      return(base::qr.fitted(.amatrix_qr_factor(qr), y, k = k))
+      return(qr.fitted(.amatrix_qr_factor(qr), y, k = k))
     }
     return(.amatrix_explicit_qr_fitted(qr, y, k = k))
   }
 
-  base::qr.fitted(.amatrix_qr_factor(qr), y, k = k)
+  qr.fitted(.amatrix_qr_factor(qr), y, k = k)
 }
 
 .amatrix_qr_resid_value <- function(qr, y) {
@@ -638,12 +671,12 @@ qr_info <- function(qr) {
   }
   if (identical(.amatrix_qr_kind(qr), "explicit_qr")) {
     if (identical(.amatrix_qr_helper_path(qr), "compact_factor") && .amatrix_qr_compact_available(qr)) {
-      return(base::qr.resid(.amatrix_qr_factor(qr), y))
+      return(qr.resid(.amatrix_qr_factor(qr), y))
     }
     return(y - .amatrix_qr_fitted_value(qr, y, k = .amatrix_qr_rank(qr)))
   }
 
-  base::qr.resid(.amatrix_qr_factor(qr), y)
+  qr.resid(.amatrix_qr_factor(qr), y)
 }
 
 .amatrix_rewrap_qr_result <- function(qr, value) {
@@ -713,11 +746,11 @@ setMethod("qr.qty", signature(qr = "amQR", y = "ANY"), function(qr, y) {
   }
   if (identical(.amatrix_qr_kind(qr), "explicit_qr")) {
     if (identical(.amatrix_qr_helper_path(qr), "compact_factor") && .amatrix_qr_compact_available(qr)) {
-      return(.amatrix_rewrap_qr_result(qr, base::qr.qty(.amatrix_qr_factor(qr), y_mat)))
+      return(.amatrix_rewrap_qr_result(qr, qr.qty(.amatrix_qr_factor(qr), y_mat)))
     }
     return(.amatrix_rewrap_qr_result(qr, .amatrix_explicit_qr_qty(qr, y_mat)))
   }
-  .amatrix_rewrap_qr_result(qr, base::qr.qty(.amatrix_qr_factor(qr), y_mat))
+  .amatrix_rewrap_qr_result(qr, qr.qty(.amatrix_qr_factor(qr), y_mat))
 })
 
 setMethod("qr.qy", signature(qr = "amQR", y = "ANY"), function(qr, y) {
@@ -727,11 +760,11 @@ setMethod("qr.qy", signature(qr = "amQR", y = "ANY"), function(qr, y) {
   }
   if (identical(.amatrix_qr_kind(qr), "explicit_qr")) {
     if (identical(.amatrix_qr_helper_path(qr), "compact_factor") && .amatrix_qr_compact_available(qr)) {
-      return(.amatrix_rewrap_qr_result(qr, base::qr.qy(.amatrix_qr_factor(qr), y_mat)))
+      return(.amatrix_rewrap_qr_result(qr, qr.qy(.amatrix_qr_factor(qr), y_mat)))
     }
     return(.amatrix_rewrap_qr_result(qr, .amatrix_explicit_qr_qy(qr, y_mat)))
   }
-  .amatrix_rewrap_qr_result(qr, base::qr.qy(.amatrix_qr_factor(qr), y_mat))
+  .amatrix_rewrap_qr_result(qr, qr.qy(.amatrix_qr_factor(qr), y_mat))
 })
 
 setMethod("qr.fitted", signature(qr = "amQR", y = "ANY"), function(qr, y, k = NULL) {

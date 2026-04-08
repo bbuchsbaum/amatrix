@@ -6,6 +6,12 @@
 
 #ifdef HAVE_ARRAYFIRE
 #include <arrayfire.h>
+
+extern int amatrix_arrayfire_safe_native_available_cpp(void);
+extern int amatrix_arrayfire_safe_diagnostics_cpp(int* init_ok, int* backends,
+                                                  int* devices, int* active_backend,
+                                                  int* lapack_available);
+extern int amatrix_arrayfire_safe_set_backend_cpp(int backend_id);
 #endif
 
 static void copy_r_to_row_major_f32(float* out, const double* in, int nrow, int ncol) {
@@ -200,18 +206,7 @@ static void amatrix_af_registry_drop(const char* key) {
 
 SEXP amatrix_arrayfire_native_available_bridge(void) {
 #ifdef HAVE_ARRAYFIRE
-  af_err err_init = af_init();
-  int devices = 0;
-
-  if (err_init != AF_SUCCESS) {
-    return ScalarLogical(0);
-  }
-
-  if (af_get_device_count(&devices) != AF_SUCCESS) {
-    return ScalarLogical(0);
-  }
-
-  return ScalarLogical(devices > 0);
+  return ScalarLogical(amatrix_arrayfire_safe_native_available_cpp());
 #else
   return ScalarLogical(0);
 #endif
@@ -253,21 +248,19 @@ SEXP amatrix_arrayfire_diagnostics_bridge(void) {
   SET_VECTOR_ELT(out, 0, ScalarLogical(1));
 
 #ifdef HAVE_ARRAYFIRE
-  af_err err_init = af_init();
+  int init_ok = 0;
   int backends = 0;
   int devices = 0;
-  af_backend active = AF_BACKEND_DEFAULT;
-  bool lapack = false;
+  int active = 0;
+  int lapack = 0;
 
-  af_get_available_backends(&backends);
-  af_get_device_count(&devices);
-  af_get_active_backend(&active);
-  af_is_lapack_available(&lapack);
+  init_ok = amatrix_arrayfire_safe_diagnostics_cpp(&init_ok, &backends, &devices,
+                                                   &active, &lapack);
 
-  SET_VECTOR_ELT(out, 1, ScalarLogical(err_init == AF_SUCCESS));
+  SET_VECTOR_ELT(out, 1, ScalarLogical(init_ok));
   SET_VECTOR_ELT(out, 2, ScalarInteger(backends));
   SET_VECTOR_ELT(out, 3, ScalarInteger(devices));
-  SET_VECTOR_ELT(out, 4, ScalarInteger((int)active));
+  SET_VECTOR_ELT(out, 4, ScalarInteger(active));
   SET_VECTOR_ELT(out, 5, ScalarLogical(lapack));
 #else
   SET_VECTOR_ELT(out, 1, ScalarLogical(0));
@@ -288,8 +281,7 @@ SEXP amatrix_arrayfire_set_backend_bridge(SEXP backend) {
   }
 
 #ifdef HAVE_ARRAYFIRE
-  af_err err = af_set_backend((af_backend) INTEGER(backend)[0]);
-  if (err != AF_SUCCESS) {
+  if (!amatrix_arrayfire_safe_set_backend_cpp(INTEGER(backend)[0])) {
     error("af_set_backend failed");
   }
   return ScalarLogical(1);

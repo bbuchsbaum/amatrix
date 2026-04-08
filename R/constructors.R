@@ -71,6 +71,39 @@ new_adgeMatrix <- function(
   )
 }
 
+# Deferred-materialization variant: GPU result exists as a resident key but
+# the host copy is not yet downloaded.  @x holds a NaN sentinel (valid
+# dgeMatrix structurally) and the actual data lives only on the device until
+# the first host access triggers a transparent download.
+new_adgeMatrix_deferred <- function(
+  dim,
+  dimnames = list(NULL, NULL),
+  preferred_backend = "cpu",
+  policy = amatrix_default_policy(),
+  precision = amatrix_default_precision(),
+  src_id = ""
+) {
+  n <- as.integer(dim[1L]) * as.integer(dim[2L])
+  object_id <- .amatrix_next_object_id()
+  fenv <- .amatrix_make_finalizer_env(object_id)
+  fenv$host_deferred <- TRUE
+  fenv$host_x <- NULL
+
+  new(
+    "adgeMatrix",
+    x = rep(NaN, n),
+    Dim = as.integer(dim),
+    Dimnames = if (is.null(dimnames)) list(NULL, NULL) else dimnames,
+    factors = list(),
+    preferred_backend = preferred_backend,
+    policy = policy,
+    precision = precision,
+    object_id = object_id,
+    src_id = src_id,
+    finalizer_env = fenv
+  )
+}
+
 new_adgCMatrix <- function(
   x,
   preferred_backend = "cpu",
@@ -129,6 +162,10 @@ as_adgeMatrix <- function(
   policy           = NULL,
   precision        = NULL
 ) {
+  # resident_handle → adgeMatrix with ownership transfer
+  if (inherits(x, "resident_handle")) {
+    return(as_adgeMatrix.resident_handle(x))
+  }
   params <- .amatrix_resolve_mode(mode, backend, preferred_backend, policy, precision)
   new_adgeMatrix(x, preferred_backend = params$preferred_backend,
                  policy = params$policy, precision = params$precision)

@@ -196,6 +196,28 @@ amatrix_residency_info <- function(x) {
 amatrix_materialize_dense <- function(x) {
   stopifnot(inherits(x, "adgeMatrix"))
 
+  # ── Deferred path: host data not yet downloaded ──────────────────────────
+  fenv <- x@finalizer_env
+  if (isTRUE(fenv$host_deferred)) {
+    if (is.null(fenv$host_x)) {
+      # First host access — download from GPU and cache in the shared env
+      entry <- .amatrix_resident_entry(x)
+      if (!is.null(entry)) {
+        backend <- tryCatch(.amatrix_get_backend(entry$backend), error = function(e) NULL)
+        if (!is.null(backend) && is.function(backend$resident_materialize) &&
+            isTRUE(backend$resident_has(entry$resident_key))) {
+          mat <- backend$resident_materialize(entry$resident_key)
+          fenv$host_x <- if (is.matrix(mat)) mat else as.matrix(mat)
+        }
+      }
+      if (is.null(fenv$host_x)) {
+        stop("deferred adgeMatrix lost its GPU resident data", call. = FALSE)
+      }
+    }
+    return(.amatrix_dense_base(fenv$host_x))
+  }
+
+  # ── Eager path (existing logic) ─────────────────────────────────────────
   entry <- .amatrix_resident_entry(x)
   if (is.null(entry)) {
     return(new("dgeMatrix", x = x@x, Dim = x@Dim, Dimnames = x@Dimnames, factors = x@factors))

@@ -2,19 +2,23 @@ for (spec in optional_backend_specs()) {
   test_that(sprintf("core harness integrates with optional backend package %s", spec$package), {
     skip_if_backend_package_missing(spec)
 
-    capabilities <- backend_package_capabilities(spec)
-    backend_available <- backend_package_available(spec)
-    status <- amatrix_backend_status(spec$backend)
-
-    expect_true(spec$backend %in% amatrix_backend_names())
-    expect_identical(amatrix_backend_capabilities(spec$backend), capabilities)
-    expect_identical(status$name, spec$backend)
-    expect_identical(status$available, backend_available)
-    expect_identical(status$precision_modes, "fast")
-    expect_true(nzchar(status$features))
-    expect_identical(status$capabilities, paste(capabilities, collapse = ","))
+    ns <- optional_backend_namespace(spec$package)
+    register_backend <- get(spec$register_fun, envir = ns, inherits = FALSE)
 
     with_optional_backend_available(spec, {
+      capabilities <- backend_package_capabilities(spec)
+      backend_available <- backend_package_available(spec)
+      register_backend(overwrite = TRUE)
+      status <- amatrix_backend_status(spec$backend)
+
+      expect_true(spec$backend %in% amatrix_backend_names())
+      expect_identical(amatrix_backend_capabilities(spec$backend), capabilities)
+      expect_identical(status$name, spec$backend)
+      expect_identical(status$available, backend_available)
+      expect_identical(status$precision_modes, "fast")
+      expect_true(nzchar(status$features))
+      expect_identical(status$capabilities, paste(capabilities, collapse = ","))
+
       if (identical(spec$backend, "arrayfire")) {
         old_af_backend <- amatrix.arrayfire:::amatrix_arrayfire_active_backend()
         amatrix.arrayfire:::amatrix_arrayfire_set_backend("cpu")
@@ -41,15 +45,15 @@ for (spec in optional_backend_specs()) {
       )
       fac <- qr(dense_fast)
       fac_base <- base::qr(x_host)
-      qr_expected <- spec$backend
+      backend_impl <- amatrix:::.amatrix_get_backend(spec$backend)
+      qr_expected <- if (isTRUE(backend_impl$supports("qr", dense_fast))) spec$backend else "cpu"
 
       expect_identical(dense_plan$chosen, "cpu")
       expect_identical(dense_fast_plan$chosen, spec$backend)
       expect_identical(qr_fast_plan$chosen, qr_expected)
       expect_identical(unsupported_plan$chosen, "cpu")
       expect_identical(sparse_plan$chosen, "cpu")
-      # "solve" is now a backend capability for fast-precision matrices
-      solve_expected <- if ("solve" %in% amatrix_backend_capabilities(spec$backend)) spec$backend else "cpu"
+      solve_expected <- if (isTRUE(backend_impl$supports("solve", dense_fast))) spec$backend else "cpu"
       expect_identical(summary$chosen, c(spec$backend, qr_expected, solve_expected))
       expect_identical(summary$cpu_fallback, c(FALSE, identical(qr_expected, "cpu"), identical(solve_expected, "cpu")))
 
@@ -98,6 +102,17 @@ for (spec in optional_backend_specs()) {
 
     expect_false(exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE))
 
+    if (!is.null(spec$enable_option)) {
+      old_enable <- getOption(spec$enable_option)
+      options(structure(list(FALSE), names = spec$enable_option))
+      on.exit(options(structure(list(old_enable), names = spec$enable_option)), add = TRUE)
+
+      expect_false(amatrix:::.amatrix_try_register_optional_backend(spec$backend))
+      expect_false(exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE))
+
+      options(structure(list(TRUE), names = spec$enable_option))
+    }
+
     backend <- amatrix:::.amatrix_get_backend(spec$backend)
     status <- amatrix_backend_status(spec$backend)
 
@@ -112,6 +127,12 @@ for (spec in optional_backend_specs()) {
     old_opt <- getOption("amatrix.optional_backends")
     options(amatrix.optional_backends = FALSE)
     on.exit(options(amatrix.optional_backends = old_opt), add = TRUE)
+
+    if (!is.null(spec$enable_option)) {
+      old_enable <- getOption(spec$enable_option)
+      options(structure(list(TRUE), names = spec$enable_option))
+      on.exit(options(structure(list(old_enable), names = spec$enable_option)), add = TRUE)
+    }
 
     had_backend <- exists(spec$backend, envir = amatrix:::.amatrix_state$backends, inherits = FALSE)
     saved_backend <- if (had_backend) {

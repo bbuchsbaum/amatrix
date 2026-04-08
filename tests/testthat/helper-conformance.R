@@ -123,7 +123,7 @@ make_recording_backend <- function(
   )
 
   if ("matmul" %in% resident_supported_ops) {
-    backend$matmul_resident <- function(x_key, y_key, out_key) {
+    backend$matmul_resident <- function(x_key, y_key, out_key, defer = FALSE) {
       if (is.null(counter$matmul)) {
         counter$matmul <- 0L
       }
@@ -139,7 +139,7 @@ make_recording_backend <- function(
   }
 
   if ("crossprod" %in% resident_supported_ops) {
-    backend$crossprod_resident <- function(x_key, y_key = NULL, out_key) {
+    backend$crossprod_resident <- function(x_key, y_key = NULL, out_key, defer = FALSE) {
       if (is.null(counter$crossprod)) {
         counter$crossprod <- 0L
       }
@@ -156,7 +156,7 @@ make_recording_backend <- function(
   }
 
   if ("tcrossprod" %in% resident_supported_ops) {
-    backend$tcrossprod_resident <- function(x_key, y_key = NULL, out_key) {
+    backend$tcrossprod_resident <- function(x_key, y_key = NULL, out_key, defer = FALSE) {
       if (is.null(counter$tcrossprod)) {
         counter$tcrossprod <- 0L
       }
@@ -173,7 +173,7 @@ make_recording_backend <- function(
   }
 
   if ("ewise" %in% resident_supported_ops) {
-    backend$ewise_resident <- function(lhs_key, rhs, op, out_key) {
+    backend$ewise_resident <- function(lhs_key, rhs, op, out_key, defer = FALSE) {
       if (is.null(counter$ewise)) {
         counter$ewise <- 0L
       }
@@ -199,6 +199,7 @@ optional_backend_specs <- function() {
       package = "amatrix.mlx",
       backend = "mlx",
       option = "amatrix.mlx.available",
+      enable_option = NULL,
       register_fun = "amatrix_mlx_register",
       capabilities_fun = "amatrix_mlx_capabilities",
       available_fun = "amatrix_mlx_is_available"
@@ -207,6 +208,7 @@ optional_backend_specs <- function() {
       package = "amatrix.arrayfire",
       backend = "arrayfire",
       option = "amatrix.arrayfire.available",
+      enable_option = "amatrix.enable_arrayfire",
       register_fun = "amatrix_arrayfire_register",
       capabilities_fun = "amatrix_arrayfire_capabilities",
       available_fun = "amatrix_arrayfire_is_available"
@@ -229,6 +231,12 @@ optional_backend_namespace <- function(package) {
 }
 
 with_optional_backend_available <- function(spec, code) {
+  if (!is.null(spec$enable_option)) {
+    old_enable <- getOption(spec$enable_option)
+    options(structure(list(TRUE), names = spec$enable_option))
+    on.exit(options(structure(list(old_enable), names = spec$enable_option)), add = TRUE)
+  }
+
   old <- getOption(spec$option)
   options(structure(list(TRUE), names = spec$option))
   on.exit(options(structure(list(old), names = spec$option)), add = TRUE)

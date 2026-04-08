@@ -41,6 +41,54 @@ test_that("tcrossprod(matrix, adgeMatrix) routes to GPU path, not base coercion"
                label = "tcrossprod(matrix, adgeMatrix) numerics")
 })
 
+test_that("matrix %*% adgCMatrix routes through amatrix dispatch", {
+  set.seed(41)
+  A_r <- matrix(rnorm(3 * 4), 3, 4)
+  B_r <- matrix(rnorm(4 * 5), 4, 5)
+  B   <- adgCMatrix(B_r, preferred_backend = "cpu")
+
+  result <- A_r %*% B
+
+  expect_true(inherits(result, "adgeMatrix"))
+  expect_equal(as.matrix(result), A_r %*% B_r, tolerance = .disp_tol)
+})
+
+test_that("numeric %*% adgCMatrix routes through amatrix dispatch", {
+  set.seed(42)
+  x_r <- rnorm(4)
+  B_r <- matrix(rnorm(4 * 3), 4, 3)
+  B   <- adgCMatrix(B_r, preferred_backend = "cpu")
+
+  result <- x_r %*% B
+
+  expect_true(inherits(result, "adgeMatrix"))
+  expect_equal(as.matrix(result), x_r %*% B_r, tolerance = .disp_tol)
+})
+
+test_that("crossprod(matrix, adgCMatrix) routes through amatrix dispatch", {
+  set.seed(43)
+  A_r <- matrix(rnorm(5 * 4), 5, 4)
+  B_r <- matrix(rnorm(5 * 3), 5, 3)
+  B   <- adgCMatrix(B_r, preferred_backend = "cpu")
+
+  result <- crossprod(A_r, B)
+
+  expect_true(inherits(result, "adgeMatrix"))
+  expect_equal(as.matrix(result), base::crossprod(A_r, B_r), tolerance = .disp_tol)
+})
+
+test_that("tcrossprod(matrix, adgCMatrix) routes through amatrix dispatch", {
+  set.seed(44)
+  A_r <- matrix(rnorm(3 * 4), 3, 4)
+  B_r <- matrix(rnorm(2 * 4), 2, 4)
+  B   <- adgCMatrix(B_r, preferred_backend = "cpu")
+
+  result <- tcrossprod(A_r, B)
+
+  expect_true(inherits(result, "adgeMatrix"))
+  expect_equal(as.matrix(result), base::tcrossprod(A_r, B_r), tolerance = .disp_tol)
+})
+
 test_that("crossprod(numeric, adgeMatrix) routes to GPU path", {
   set.seed(33)
   v   <- rnorm(10)                       # length-10 numeric vector

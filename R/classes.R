@@ -78,7 +78,13 @@ setMethod("show", "adgeMatrix", function(object) {
     object@policy,
     object@precision
   ))
-  callNextMethod()
+  # Deferred objects: materialize before callNextMethod() reads @x
+  if (isTRUE(object@finalizer_env$host_deferred)) {
+    mat <- amatrix_materialize_dense(object)
+    show(mat)
+  } else {
+    callNextMethod()
+  }
 })
 
 setMethod("show", "adgCMatrix", function(object) {

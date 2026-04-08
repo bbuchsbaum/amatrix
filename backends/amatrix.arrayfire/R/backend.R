@@ -1,3 +1,26 @@
+ .amatrix_arrayfire_probe_var <- "AMATRIX_ARRAYFIRE_PROBE_GPU"
+ .amatrix_arrayfire_state <- new.env(parent = emptyenv())
+
+ .amatrix_arrayfire_probe_enabled <- function() {
+   identical(Sys.getenv(.amatrix_arrayfire_probe_var, unset = ""), "1")
+ }
+
+ .amatrix_arrayfire_probe_cache_get <- function() {
+   get0("native_available", envir = .amatrix_arrayfire_state, inherits = FALSE)
+ }
+
+ .amatrix_arrayfire_probe_cache_set <- function(value) {
+   assign("native_available", isTRUE(value), envir = .amatrix_arrayfire_state)
+   invisible(isTRUE(value))
+ }
+
+ .amatrix_arrayfire_probe_cache_clear <- function() {
+   if (exists("native_available", envir = .amatrix_arrayfire_state, inherits = FALSE)) {
+     rm("native_available", envir = .amatrix_arrayfire_state)
+   }
+   invisible(NULL)
+ }
+
 amatrix_arrayfire_capabilities <- function() {
   c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean", "segment_sum", "segment_mean",
     "rowSums", "colSums",
@@ -17,8 +40,33 @@ amatrix_arrayfire_precision_modes <- function() {
   "fast"
 }
 
-amatrix_arrayfire_native_available <- function() {
-  .Call("amatrix_arrayfire_native_available_bridge")
+amatrix_arrayfire_native_available <- function(force = FALSE) {
+  if (!force) {
+    cached <- .amatrix_arrayfire_probe_cache_get()
+    if (!is.null(cached)) {
+      return(cached)
+    }
+  }
+
+  if (!.amatrix_arrayfire_probe_enabled()) {
+    return(FALSE)
+  }
+
+  available <- isTRUE(.Call("amatrix_arrayfire_native_available_bridge"))
+  .amatrix_arrayfire_probe_cache_set(available)
+}
+
+amatrix_arrayfire_enable_probe <- function(register = TRUE) {
+  Sys.setenv(AMATRIX_ARRAYFIRE_PROBE_GPU = "1")
+  options(amatrix.enable_arrayfire = TRUE)
+  .amatrix_arrayfire_probe_cache_clear()
+
+  available <- amatrix_arrayfire_native_available(force = TRUE)
+  if (isTRUE(register)) {
+    try(amatrix_arrayfire_register(overwrite = TRUE), silent = TRUE)
+  }
+
+  invisible(available)
 }
 
 amatrix_arrayfire_is_available <- function() {
@@ -196,24 +244,24 @@ amatrix_arrayfire_resident_materialize <- function(key) {
   .Call("amatrix_arrayfire_resident_materialize_bridge", as.character(key))
 }
 
-amatrix_arrayfire_matmul_resident <- function(x_key, y_key, out_key) {
+amatrix_arrayfire_matmul_resident <- function(x_key, y_key, out_key, defer = FALSE) {
   .Call("amatrix_arrayfire_matmul_resident_bridge",
         as.character(x_key), as.character(y_key), as.character(out_key))
-  amatrix_arrayfire_resident_materialize(out_key)
+  if (defer) NULL else amatrix_arrayfire_resident_materialize(out_key)
 }
 
-amatrix_arrayfire_crossprod_resident <- function(x_key, y_key = NULL, out_key) {
+amatrix_arrayfire_crossprod_resident <- function(x_key, y_key = NULL, out_key, defer = FALSE) {
   rhs_key <- if (is.null(y_key)) NULL else as.character(y_key)
   .Call("amatrix_arrayfire_crossprod_resident_bridge",
         as.character(x_key), rhs_key, as.character(out_key))
-  amatrix_arrayfire_resident_materialize(out_key)
+  if (defer) NULL else amatrix_arrayfire_resident_materialize(out_key)
 }
 
-amatrix_arrayfire_tcrossprod_resident <- function(x_key, y_key = NULL, out_key) {
+amatrix_arrayfire_tcrossprod_resident <- function(x_key, y_key = NULL, out_key, defer = FALSE) {
   rhs_key <- if (is.null(y_key)) NULL else as.character(y_key)
   .Call("amatrix_arrayfire_tcrossprod_resident_bridge",
         as.character(x_key), rhs_key, as.character(out_key))
-  amatrix_arrayfire_resident_materialize(out_key)
+  if (defer) NULL else amatrix_arrayfire_resident_materialize(out_key)
 }
 
 amatrix_arrayfire_kernel_resident <- function(out_key, X_mat, Y_mat = NULL,
@@ -251,21 +299,22 @@ amatrix_arrayfire_argreduce <- function(x_key, axis, is_max) {
         PACKAGE = "amatrix.arrayfire")
 }
 
-amatrix_arrayfire_broadcast_ewise_resident <- function(lhs_key, v, margin, op, out_key) {
+amatrix_arrayfire_broadcast_ewise_resident <- function(lhs_key, v, margin, op, out_key,
+                                                        defer = FALSE) {
   .Call("amatrix_arrayfire_broadcast_ewise_resident_bridge",
         as.character(lhs_key), as.double(v), as.integer(margin),
         as.character(op), as.character(out_key),
         PACKAGE = "amatrix.arrayfire")
-  amatrix_arrayfire_resident_materialize(out_key)
+  if (defer) NULL else amatrix_arrayfire_resident_materialize(out_key)
 }
 
-amatrix_arrayfire_ewise_resident <- function(lhs_key, rhs, op, out_key) {
+amatrix_arrayfire_ewise_resident <- function(lhs_key, rhs, op, out_key, defer = FALSE) {
   rhs_arg <- if (is.character(rhs)) as.character(rhs)
              else if (is.numeric(rhs) && length(rhs) == 1L) as.double(rhs)
              else stop("rhs must be a resident key or numeric scalar")
   .Call("amatrix_arrayfire_ewise_resident_bridge",
         as.character(lhs_key), rhs_arg, as.character(op), as.character(out_key))
-  amatrix_arrayfire_resident_materialize(out_key)
+  if (defer) NULL else amatrix_arrayfire_resident_materialize(out_key)
 }
 
 amatrix_arrayfire_rowSums_resident <- function(x_key, na.rm = FALSE, dims = 1L) {
@@ -913,8 +962,9 @@ amatrix_arrayfire_backend <- function() {
     broadcast_ewise = function(x, lhs, v, margin, op, ...) {
       base::sweep(as.matrix(lhs), MARGIN = margin, STATS = v, FUN = op)
     },
-    broadcast_ewise_resident = function(lhs_key, v, margin, op, out_key) {
-      amatrix_arrayfire_broadcast_ewise_resident(lhs_key, v, margin, op, out_key)
+    broadcast_ewise_resident = function(lhs_key, v, margin, op, out_key, defer = FALSE) {
+      amatrix_arrayfire_broadcast_ewise_resident(lhs_key, v, margin, op, out_key,
+                                                  defer = defer)
     },
     scatter_mean_resident = function(x_key, labels, K) {
       amatrix_arrayfire_scatter_mean(x_key, labels, K)
@@ -964,17 +1014,19 @@ amatrix_arrayfire_backend <- function() {
     resident_materialize = function(key) {
       amatrix_arrayfire_resident_materialize(key)
     },
-    matmul_resident = function(x_key, y_key, out_key) {
-      amatrix_arrayfire_matmul_resident(x_key, y_key, out_key)
+    matmul_resident = function(x_key, y_key, out_key, defer = FALSE) {
+      amatrix_arrayfire_matmul_resident(x_key, y_key, out_key, defer = defer)
     },
-    crossprod_resident = function(x_key, y_key = NULL, out_key) {
-      amatrix_arrayfire_crossprod_resident(x_key, y_key = y_key, out_key = out_key)
+    crossprod_resident = function(x_key, y_key = NULL, out_key, defer = FALSE) {
+      amatrix_arrayfire_crossprod_resident(x_key, y_key = y_key, out_key = out_key,
+                                            defer = defer)
     },
-    tcrossprod_resident = function(x_key, y_key = NULL, out_key) {
-      amatrix_arrayfire_tcrossprod_resident(x_key, y_key = y_key, out_key = out_key)
+    tcrossprod_resident = function(x_key, y_key = NULL, out_key, defer = FALSE) {
+      amatrix_arrayfire_tcrossprod_resident(x_key, y_key = y_key, out_key = out_key,
+                                             defer = defer)
     },
-    ewise_resident = function(lhs_key, rhs, op, out_key) {
-      amatrix_arrayfire_ewise_resident(lhs_key, rhs, op, out_key)
+    ewise_resident = function(lhs_key, rhs, op, out_key, defer = FALSE) {
+      amatrix_arrayfire_ewise_resident(lhs_key, rhs, op, out_key, defer = defer)
     },
     rowSums_resident = function(x_key, na.rm = FALSE, dims = 1L) {
       amatrix_arrayfire_rowSums_resident(x_key, na.rm = na.rm, dims = dims)
