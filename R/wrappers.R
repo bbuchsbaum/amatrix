@@ -136,6 +136,45 @@
   invisible(NULL)
 }
 
+# ── Deferred host materialization helpers ──────────────────────────────────
+# When active, resident ops skip the GPU→CPU download.  The result is wrapped
+# in a deferred adgeMatrix whose @x holds NaN until the first host access
+# triggers a transparent download via amatrix_materialize_dense().
+
+# Returns TRUE when the caller should skip host materialization.
+# Currently always FALSE for the public adgeMatrix path — deferred
+# materialization is used internally by resident_handle and future
+# fused pipelines.  A discrete-GPU backend could flip this via a
+# backend-level flag rather than a global option.
+.amatrix_defer_host_active <- function() {
+  FALSE
+}
+
+# Wrap a resident op result as either a deferred or eager adgeMatrix.
+# `template` is the source adgeMatrix (provides backend/policy/precision).
+# `resident` is the list(value, backend, resident_key) from _try_resident_*.
+# `out_dim` is required when resident$value is NULL (deferred mode).
+.amatrix_resident_wrap <- function(template, resident, out_dim = NULL) {
+  if (is.null(resident$value) && !is.null(out_dim)) {
+    # Deferred path
+    dn <- if (inherits(template, "aMatrix")) template@Dimnames else list(NULL, NULL)
+    # Dims may have changed (e.g., crossprod changes shape) — only reuse
+    # dimnames if they match the output shape.
+    if (!identical(as.integer(out_dim), template@Dim)) dn <- list(NULL, NULL)
+    obj <- new_adgeMatrix_deferred(
+      dim      = out_dim,
+      dimnames = dn,
+      preferred_backend = template@preferred_backend,
+      policy    = template@policy,
+      precision = template@precision
+    )
+    return(.amatrix_bind_resident(obj, resident$backend, resident$resident_key))
+  }
+  # Eager path
+  value <- .amatrix_rewrap_like(template, resident$value)
+  .amatrix_bind_resident(value, resident$backend, resident$resident_key)
+}
+
 .amatrix_try_resident_matmul <- function(x, y, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
 
@@ -163,9 +202,14 @@
     return(NULL)
   }
 
+  defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
-  value <- backend$matmul_resident(lhs$key, rhs$key, out_key)
+  value <- tryCatch(
+    backend$matmul_resident(lhs$key, rhs$key, out_key, defer = defer),
+    error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+  )
   .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
+  if (is.null(value)) return(NULL)
 
   list(value = value, backend = backend_name, resident_key = out_key)
 }
@@ -196,10 +240,15 @@
     return(NULL)
   }
 
+  defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
   rhs_key <- if (is.null(rhs)) NULL else rhs$key
-  value <- backend$crossprod_resident(lhs$key, rhs_key, out_key)
+  value <- tryCatch(
+    backend$crossprod_resident(lhs$key, rhs_key, out_key, defer = defer),
+    error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+  )
   .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
+  if (is.null(value)) return(NULL)
 
   list(value = value, backend = backend_name, resident_key = out_key)
 }
@@ -217,10 +266,15 @@
     return(NULL)
   }
 
+  defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
   rhs_key <- if (is.null(rhs)) NULL else rhs$key
-  value <- backend$tcrossprod_resident(lhs$key, rhs_key, out_key)
+  value <- tryCatch(
+    backend$tcrossprod_resident(lhs$key, rhs_key, out_key, defer = defer),
+    error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+  )
   .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
+  if (is.null(value)) return(NULL)
 
   list(value = value, backend = backend_name, resident_key = out_key)
 }
@@ -259,8 +313,9 @@
     return(NULL)
   }
 
+  defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
-  value <- backend$ewise_resident(lhs$key, rhs_payload, op, out_key)
+  value <- backend$ewise_resident(lhs$key, rhs_payload, op, out_key, defer = defer)
   .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
 
   list(value = value, backend = backend_name, resident_key = out_key)
@@ -295,7 +350,10 @@
   if (is.null(lhs)) return(NULL)
   out_key <- .amatrix_next_resident_key(backend_name)
   if (is.null(b)) {
-    value <- backend$solve_resident(lhs$key, NULL, out_key)
+    value <- tryCatch(
+      backend$solve_resident(lhs$key, NULL, out_key),
+      error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+    )
     .amatrix_cleanup_temp_resident(list(lhs), backend_name)
   } else {
     b_arg <- if (is.vector(b)) matrix(b, ncol = 1L) else b
@@ -304,9 +362,13 @@
       .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       return(NULL)
     }
-    value <- backend$solve_resident(lhs$key, rhs$key, out_key)
+    value <- tryCatch(
+      backend$solve_resident(lhs$key, rhs$key, out_key),
+      error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+    )
     .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
   }
+  if (is.null(value)) return(NULL)
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
@@ -317,8 +379,12 @@
   lhs <- .amatrix_prepare_resident_arg(x, backend_name)
   if (is.null(lhs)) return(NULL)
   out_key <- .amatrix_next_resident_key(backend_name)
-  value <- backend$chol_resident(lhs$key, out_key)
+  value <- tryCatch(
+    backend$chol_resident(lhs$key, out_key),
+    error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+  )
   .amatrix_cleanup_temp_resident(list(lhs), backend_name)
+  if (is.null(value)) return(NULL)
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
@@ -345,8 +411,8 @@ matmul <- function(x, y) {
       }
       return(drop(mat_result))
     }
-    value <- .amatrix_rewrap_like(x, resident$value)
-    return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
+    return(.amatrix_resident_wrap(x, resident,
+                                   out_dim = c(nrow(x), ncol(y_eff))))
   }
 
   .amatrix_rewrap_like(
@@ -370,8 +436,8 @@ am_crossprod <- function(x, y = NULL, ...) {
   choice <- .amatrix_backend_for(x, "crossprod", y = y)
   resident <- .amatrix_try_resident_crossprod(x, y, choice$name)
   if (!is.null(resident)) {
-    value <- .amatrix_rewrap_like(x, resident$value)
-    return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
+    nc <- if (is.null(y)) ncol(x) else ncol(y)
+    return(.amatrix_resident_wrap(x, resident, out_dim = c(ncol(x), nc)))
   }
 
   .amatrix_rewrap_like(
@@ -400,8 +466,8 @@ am_tcrossprod <- function(x, y = NULL, ...) {
   choice <- .amatrix_backend_for(x, "tcrossprod", y = y)
   resident <- .amatrix_try_resident_tcrossprod(x, y, choice$name)
   if (!is.null(resident)) {
-    value <- .amatrix_rewrap_like(x, resident$value)
-    return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
+    nr <- if (is.null(y)) nrow(x) else nrow(y)
+    return(.amatrix_resident_wrap(x, resident, out_dim = c(nrow(x), nr)))
   }
 
   .amatrix_rewrap_like(
@@ -512,9 +578,15 @@ am_solve <- function(a, b = NULL, ...) {
   }
   if (inherits(a, "adgCMatrix")) {
     host <- amatrix_materialize_host(a)
-    if (is.null(b_arg)) return(Matrix::solve(host, ...))
+    if (is.null(b_arg)) {
+      result <- Matrix::solve(host, ...)
+      if (inherits(result, "sparseMatrix")) return(new_adgCMatrix(result, preferred_backend = a@preferred_backend, precision = a@precision, policy = a@policy))
+      return(as_adgeMatrix(as.matrix(result), preferred_backend = a@preferred_backend, precision = a@precision, policy = a@policy))
+    }
     b_mat <- if (inherits(b_arg, "adgCMatrix")) amatrix_materialize_host(b_arg) else b_arg
-    return(Matrix::solve(host, b_mat, ...))
+    result <- Matrix::solve(host, b_mat, ...)
+    if (inherits(result, "sparseMatrix")) return(new_adgCMatrix(result, preferred_backend = a@preferred_backend, precision = a@precision, policy = a@policy))
+    return(as_adgeMatrix(as.matrix(result), preferred_backend = a@preferred_backend, precision = a@precision, policy = a@policy))
   }
   b_was_vector <- !is.null(b_arg) && is.numeric(b_arg) && is.null(dim(b_arg))
   choice <- .amatrix_backend_for(a, "solve", y = b_arg)
@@ -554,7 +626,9 @@ am_solve <- function(a, b = NULL, ...) {
 am_chol <- function(x, ...) {
   if (inherits(x, "adgCMatrix")) {
     host <- amatrix_materialize_host(x)
-    return(Matrix::chol(host, ...))
+    result <- Matrix::chol(host, ...)
+    if (inherits(result, "sparseMatrix")) return(new_adgCMatrix(result, preferred_backend = x@preferred_backend, precision = x@precision, policy = x@policy))
+    return(result)
   }
   choice <- .amatrix_backend_for(x, "chol")
   resident <- .amatrix_try_resident_chol(x, choice$name)
@@ -1147,7 +1221,7 @@ rowsum.adgCMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
 # Lets idiomatic R code (sweep, max.col) route to GPU kernels automatically.
 
 sweep.adgeMatrix <- function(x, MARGIN, STATS, FUN = "-",
-                             check.margins = TRUE, ...) {
+                             check.margin = TRUE, ...) {
   am_sweep(x, MARGIN, STATS, FUN)
 }
 
@@ -1399,8 +1473,10 @@ am_scatter_mean <- function(x, labels, K) {
   if (!.amatrix_backend_supports_resident_op(backend, "broadcast_ewise")) return(NULL)
   lhs <- .amatrix_prepare_resident_arg(x, backend_name)
   if (is.null(lhs)) return(NULL)
+  defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
-  value <- backend$broadcast_ewise_resident(lhs$key, v, margin, op, out_key)
+  value <- backend$broadcast_ewise_resident(lhs$key, v, margin, op, out_key,
+                                             defer = defer)
   .amatrix_cleanup_temp_resident(list(lhs), backend_name)
   list(value = value, backend = backend_name, resident_key = out_key)
 }
@@ -1422,8 +1498,7 @@ am_sweep <- function(x, MARGIN, STATS, FUN = "+") {
   choice <- .amatrix_backend_for(x, "broadcast_ewise")
   resident <- .amatrix_try_resident_broadcast_ewise(x, v, MARGIN, op, choice$name)
   if (!is.null(resident)) {
-    value <- .amatrix_rewrap_value(x, resident$value)
-    return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
+    return(.amatrix_resident_wrap(x, resident, out_dim = dim(x)))
   }
   result <- amatrix_dispatch_op(
     x = x,
@@ -1479,8 +1554,7 @@ ewise <- function(op, e1, e2 = NULL) {
     choice <- .amatrix_backend_for(template, "ewise", y = e2)
     resident <- .amatrix_try_resident_ewise(op, e1, e2, choice$name)
     if (!is.null(resident)) {
-      value <- .amatrix_rewrap_value(template, resident$value)
-      return(.amatrix_bind_resident(value, resident$backend, resident$resident_key))
+      return(.amatrix_resident_wrap(template, resident, out_dim = dim(template)))
     }
   }
 

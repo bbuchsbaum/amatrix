@@ -1,6 +1,6 @@
 amatrix_mlx_capabilities <- function() {
   c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean", "segment_sum", "segment_mean", "addmm",
-    "rowSums", "colSums",
+    "rowSums", "colSums", "solve",
     "qr", "svd", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen", "covariance")
 }
 

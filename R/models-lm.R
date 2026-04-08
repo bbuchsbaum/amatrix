@@ -625,7 +625,7 @@ covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_si
       mu  <- Matrix::colMeans(X)             # length-p vector
       XtX <- XtX - n * tcrossprod(mu)
     }
-    return(XtX / denom)
+    return(as_adgeMatrix(XtX / denom))
   }
 
   X_arg <- .amatrix_model_dense_arg(X)

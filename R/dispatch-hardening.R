@@ -52,3 +52,18 @@ setMethod("crossprod",
     crossprod(x_wrapped, y, ...)
   }
 )
+
+# ── Sparse RHS dispatch hardening ────────────────────────────────────────────
+# Without these, `matrix %*% adgCMatrix` etc. fall through to Matrix/base,
+# silently returning unwrapped dgeMatrix and losing GPU residency.
+
+setMethod("%*%", signature(x = "matrix",     y = "adgCMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "numeric",    y = "adgCMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "dgeMatrix",  y = "adgCMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "dgCMatrix",  y = "adgCMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"), function(x, y) matmul(x, y))
+
+setMethod("crossprod",  signature(x = "matrix",  y = "adgCMatrix"), function(x, y, ...) am_crossprod(x, y = y, ...))
+setMethod("crossprod",  signature(x = "numeric", y = "adgCMatrix"), function(x, y, ...) am_crossprod(x, y = y, ...))
+setMethod("tcrossprod", signature(x = "matrix",  y = "adgCMatrix"), function(x, y, ...) am_tcrossprod(x, y = y, ...))
+setMethod("tcrossprod", signature(x = "numeric", y = "adgCMatrix"), function(x, y, ...) am_tcrossprod(x, y = y, ...))

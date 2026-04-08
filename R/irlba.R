@@ -142,8 +142,9 @@ irlba_native <- function(A,
 
   m    <- nrow(A_mat)
   n    <- ncol(A_mat)
-  work <- min(as.integer(work), n)
+  work <- min(as.integer(work), m, n)
   nv   <- min(as.integer(nv), work - 1L)
+  if (nv < 1L) stop("nv must be >= 1 after clamping to work size", call. = FALSE)
   nu   <- min(as.integer(nu), nv)
 
   if (is.null(v0)) v0 <- rnorm(n)
@@ -854,7 +855,7 @@ block_lanczos <- function(A,
     d     = svd_B$d[seq_len(k_out)],
     v     = V[, seq_len(min(nv, k_out)), drop = FALSE],
     iter  = J,
-    mprod = 2L * J + 1L
+    mprod = 2L * J * as.integer(b)
   )
 }
 

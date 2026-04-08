@@ -229,41 +229,4 @@ setMethod("Ops", signature(e1 = "Matrix", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
-# ---------------------------------------------------------------------------
-# norm()  — matrix / vector norms dispatched on adgeMatrix
-# ---------------------------------------------------------------------------
-if (!isGeneric("norm")) {
-  setGeneric("norm", function(x, type = "F", ...) standardGeneric("norm"))
-}
-
-setMethod("norm", "adgeMatrix", function(x, type = "F", ...) {
-  type <- match.arg(toupper(substr(type, 1L, 1L)),
-                    c("F", "1", "O", "I", "M", "2"))
-  X_mat <- as.matrix(amatrix_materialize_host(x))
-  switch(type,
-    "F" = sqrt(sum(X_mat * X_mat)),
-    "1" = ,
-    "O" = max(colSums(abs(X_mat))),
-    "I" = max(rowSums(abs(X_mat))),
-    "M" = max(abs(X_mat)),
-    "2" = {
-      sv <- rsvd(x, k = 1L)
-      sv$d[[1L]]
-    }
-  )
-})
-
-# Fallback for plain matrix — delegate to base::norm
-setMethod("norm", "matrix", function(x, type = "F", ...) {
-  base::norm(x, type = type, ...)
-})
-
-# Vector norms (no base::norm equivalent for numeric vectors)
-setMethod("norm", "numeric", function(x, type = "2", ...) {
-  type <- match.arg(toupper(substr(type, 1L, 1L)), c("2", "1", "I"))
-  switch(type,
-    "2" = sqrt(sum(x * x)),
-    "1" = sum(abs(x)),
-    "I" = max(abs(x))
-  )
-})
+# norm() methods live in R/wrappers.R — removed duplicate definitions here
