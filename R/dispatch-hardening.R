@@ -15,6 +15,39 @@
 # The temporary object is short-lived (no object_id binding needed beyond the
 # call) and carries no resident key, so no residency leak occurs.
 
+.amatrix_wrap_for_sparse_rhs <- function(x, y, vector_as = c("row", "col")) {
+  stopifnot(inherits(y, "adgCMatrix"))
+  vector_as <- match.arg(vector_as)
+
+  if (inherits(x, "aMatrix")) {
+    return(x)
+  }
+
+  if (is.numeric(x) && is.null(dim(x))) {
+    x <- if (identical(vector_as, "row")) {
+      matrix(x, nrow = 1L)
+    } else {
+      matrix(x, ncol = 1L)
+    }
+  }
+
+  if (inherits(x, "dgCMatrix")) {
+    return(new_adgCMatrix(
+      x,
+      preferred_backend = y@preferred_backend,
+      policy = y@policy,
+      precision = y@precision
+    ))
+  }
+
+  new_adgeMatrix(
+    as.matrix(x),
+    preferred_backend = y@preferred_backend,
+    policy = y@policy,
+    precision = y@precision
+  )
+}
+
 # ── crossprod(matrix, adgeMatrix) ─────────────────────────────────────────────
 # crossprod(A, B) = t(A) %*% B
 # A: k×m plain matrix   B: m×n adgeMatrix   result: k×n
@@ -57,13 +90,27 @@ setMethod("crossprod",
 # Without these, `matrix %*% adgCMatrix` etc. fall through to Matrix/base,
 # silently returning unwrapped dgeMatrix and losing GPU residency.
 
-setMethod("%*%", signature(x = "matrix",     y = "adgCMatrix"), function(x, y) matmul(x, y))
-setMethod("%*%", signature(x = "numeric",    y = "adgCMatrix"), function(x, y) matmul(x, y))
-setMethod("%*%", signature(x = "dgeMatrix",  y = "adgCMatrix"), function(x, y) matmul(x, y))
-setMethod("%*%", signature(x = "dgCMatrix",  y = "adgCMatrix"), function(x, y) matmul(x, y))
-setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"), function(x, y) matmul(x, y))
-
-setMethod("crossprod",  signature(x = "matrix",  y = "adgCMatrix"), function(x, y, ...) am_crossprod(x, y = y, ...))
-setMethod("crossprod",  signature(x = "numeric", y = "adgCMatrix"), function(x, y, ...) am_crossprod(x, y = y, ...))
-setMethod("tcrossprod", signature(x = "matrix",  y = "adgCMatrix"), function(x, y, ...) am_tcrossprod(x, y = y, ...))
-setMethod("tcrossprod", signature(x = "numeric", y = "adgCMatrix"), function(x, y, ...) am_tcrossprod(x, y = y, ...))
+setMethod("%*%", signature(x = "matrix",     y = "adgCMatrix"), function(x, y) {
+  matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
+})
+setMethod("%*%", signature(x = "numeric",    y = "adgCMatrix"), function(x, y) {
+  matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
+})
+setMethod("%*%", signature(x = "dgeMatrix",  y = "adgCMatrix"), function(x, y) {
+  matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
+})
+setMethod("%*%", signature(x = "dgCMatrix",  y = "adgCMatrix"), function(x, y) {
+  matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
+})
+setMethod("crossprod",  signature(x = "matrix",  y = "adgCMatrix"), function(x, y, ...) {
+  crossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "col"), y, ...)
+})
+setMethod("crossprod",  signature(x = "numeric", y = "adgCMatrix"), function(x, y, ...) {
+  crossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "col"), y, ...)
+})
+setMethod("tcrossprod", signature(x = "matrix",  y = "adgCMatrix"), function(x, y, ...) {
+  tcrossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y, ...)
+})
+setMethod("tcrossprod", signature(x = "numeric", y = "adgCMatrix"), function(x, y, ...) {
+  tcrossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y, ...)
+})

@@ -132,6 +132,17 @@
   )
 }
 
+.amatrix_has_explicit_intercept_column <- function(X_arg) {
+  stopifnot(inherits(X_arg, "adgeMatrix"))
+
+  if (ncol(X_arg) < 1L) {
+    return(FALSE)
+  }
+
+  first_col <- as.matrix(amatrix_materialize_host(X_arg))[, 1L, drop = TRUE]
+  isTRUE(all(first_col == 1))
+}
+
 .amatrix_lm_cache_key <- function(X_arg, extra = NULL, object_id = NULL) {
   stopifnot(inherits(X_arg, "adgeMatrix"))
   paste(
@@ -441,10 +452,10 @@
   )
 }
 
-.amatrix_penalty_matrix <- function(X_arg, lambda, penalize_intercept = FALSE) {
+.amatrix_penalty_matrix <- function(X_arg, lambda, penalize_intercept = FALSE, has_intercept = FALSE) {
   stopifnot(inherits(X_arg, "adgeMatrix"))
   penalty <- diag(as.double(lambda), ncol(X_arg))
-  if (!isTRUE(penalize_intercept) && ncol(X_arg) >= 1L) {
+  if (isTRUE(has_intercept) && !isTRUE(penalize_intercept) && ncol(X_arg) >= 1L) {
     penalty[1, 1] <- 0
   }
   adgeMatrix(
@@ -747,7 +758,12 @@ ridge_fit <- function(
   cache_value <- .amatrix_lm_cache_value(X_arg, cache = cache)
   XtX <- cache_value$xtx
   XtY <- am_crossprod(X_arg, Y_arg)
-  penalty <- .amatrix_penalty_matrix(X_arg, lambda, penalize_intercept = penalize_intercept)
+  penalty <- .amatrix_penalty_matrix(
+    X_arg,
+    lambda,
+    penalize_intercept = penalize_intercept,
+    has_intercept = isTRUE(intercept) || .amatrix_has_explicit_intercept_column(X_arg)
+  )
   penalized_xtx <- ewise("+", XtX, penalty)
   coefficients <- am_solve(penalized_xtx, XtY)
   outputs <- .amatrix_model_outputs(

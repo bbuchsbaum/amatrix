@@ -651,7 +651,7 @@ am_chol <- function(x, ...) {
 am_qr <- function(x, ...) {
   if (inherits(x, "adgCMatrix")) {
     host <- amatrix_materialize_host(x)
-    return(Matrix::qr(host, ...))
+    return(.amatrix_wrap_sparse_qr(Matrix::qr(host, ...), x, method = "cpu"))
   }
   qr_value <- amatrix_dispatch_op(
     x = x,
