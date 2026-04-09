@@ -98,6 +98,19 @@
   min(as.integer(dims)) >= threshold
 }
 
+.amatrix_opencl_qr_use_cholqr <- function(x_mat) {
+  if (!isTRUE(.amatrix_opencl_device_linalg_available())) {
+    return(FALSE)
+  }
+
+  n <- nrow(x_mat)
+  p <- ncol(x_mat)
+  n >= getOption("amatrix.opencl.qr_min_n", 512L) &&
+    p >= 8L &&
+    p <= getOption("amatrix.opencl.qr_max_p", 256L) &&
+    n >= (4L * p)
+}
+
 .amatrix_opencl_device_linalg_available <- function(force = FALSE) {
   .amatrix_opencl_factor_gpu_enabled() &&
     isTRUE(amatrix_opencl_native_available(force = force)) &&
@@ -348,6 +361,18 @@ amatrix_opencl_solve <- function(a, b = NULL) {
 
 amatrix_opencl_qr <- function(x, ...) {
   x_host <- .amatrix_opencl_dense_host(x)
+  extra_args <- list(...)
+
+  if (length(extra_args) == 0L && .amatrix_opencl_qr_use_cholqr(x_host)) {
+    qr_fast <- tryCatch(
+      amatrix_opencl_qr_cholqr(x_host),
+      error = function(e) NULL
+    )
+    if (!is.null(qr_fast)) {
+      return(qr_fast)
+    }
+  }
+
   qr_host <- base::qr(x_host, ...)
   q_key <- .amatrix_opencl_temp_key("qr-q")
   amatrix_opencl_resident_store(q_key, qr.Q(qr_host, complete = FALSE))
@@ -360,6 +385,85 @@ amatrix_opencl_qr <- function(x, ...) {
     factor = qr_host,
     factor_source = "native",
     backend_ops = "opencl"
+  )
+}
+
+amatrix_opencl_qr_cholqr <- function(x) {
+  x_mat <- .amatrix_opencl_dense_host(x)
+  n <- nrow(x_mat)
+  p <- ncol(x_mat)
+  diag_tol <- sqrt(.Machine$double.eps)
+  success <- FALSE
+
+  x_key <- .amatrix_opencl_temp_key("cholqr-x")
+  gram1_key <- .amatrix_opencl_temp_key("cholqr-gram1")
+  r1_key <- .amatrix_opencl_temp_key("cholqr-r1")
+  inv1_key <- .amatrix_opencl_temp_key("cholqr-inv1")
+  q1_key <- .amatrix_opencl_temp_key("cholqr-q1")
+  gram2_key <- .amatrix_opencl_temp_key("cholqr-gram2")
+  r2_key <- .amatrix_opencl_temp_key("cholqr-r2")
+  inv2_key <- .amatrix_opencl_temp_key("cholqr-inv2")
+  q_key <- .amatrix_opencl_temp_key("cholqr-q")
+  cleanup_keys <- c(x_key, gram1_key, r1_key, inv1_key, q1_key, gram2_key, r2_key, inv2_key)
+
+  on.exit({
+    for (key in cleanup_keys) {
+      .amatrix_opencl_drop_if_present(key)
+    }
+    if (!success) {
+      .amatrix_opencl_drop_if_present(q_key)
+    }
+  }, add = TRUE)
+
+  amatrix_opencl_resident_store(x_key, x_mat)
+  amatrix_opencl_crossprod_resident(x_key, out_key = gram1_key, defer = TRUE)
+  amatrix_opencl_chol_resident(gram1_key, out_key = r1_key, defer = TRUE)
+  r1 <- amatrix_opencl_resident_materialize(r1_key)
+  inv_r1 <- backsolve(r1, diag(p))
+  amatrix_opencl_resident_store(inv1_key, inv_r1)
+  amatrix_opencl_matmul_resident(x_key, inv1_key, q1_key, defer = TRUE)
+
+  amatrix_opencl_crossprod_resident(q1_key, out_key = gram2_key, defer = TRUE)
+  amatrix_opencl_chol_resident(gram2_key, out_key = r2_key, defer = TRUE)
+  r2 <- amatrix_opencl_resident_materialize(r2_key)
+  inv_r2 <- backsolve(r2, diag(p))
+  amatrix_opencl_resident_store(inv2_key, inv_r2)
+  amatrix_opencl_matmul_resident(q1_key, inv2_key, q_key, defer = TRUE)
+
+  r <- r2 %*% r1
+  diag_r <- abs(diag(r))
+  if (length(diag_r) != p || any(!is.finite(diag_r)) || any(diag_r <= diag_tol * max(1, max(diag_r)))) {
+    stop("OpenCL CholeskyQR2 failed numerical rank check", call. = FALSE)
+  }
+
+  success <- TRUE
+  list(
+    representation = "explicit_qr",
+    q_key = q_key,
+    r = r,
+    rank = p,
+    pivot = seq_len(p),
+    factor = NULL,
+    factor_source = "cholqr2",
+    backend_ops = "opencl"
+  )
+}
+
+amatrix_opencl_qr_qty_key <- function(q_key, y) {
+  .Call(
+    "amatrix_opencl_crossprod_resident_host_bridge",
+    as.character(q_key),
+    .amatrix_opencl_dense_host(y),
+    PACKAGE = "amatrix.opencl"
+  )
+}
+
+amatrix_opencl_qr_qy_key <- function(q_key, y) {
+  .Call(
+    "amatrix_opencl_matmul_resident_host_bridge",
+    as.character(q_key),
+    .amatrix_opencl_dense_host(y),
+    PACKAGE = "amatrix.opencl"
   )
 }
 
@@ -576,6 +680,24 @@ amatrix_opencl_tcrossprod_resident <- function(x_key, y_key = NULL, out_key, def
     PACKAGE = "amatrix.opencl"
   )
   if (defer) NULL else amatrix_opencl_resident_materialize(out_key)
+}
+
+amatrix_opencl_matmul_resident_host <- function(x_key, y) {
+  .Call(
+    "amatrix_opencl_matmul_resident_host_bridge",
+    as.character(x_key),
+    .amatrix_opencl_dense_host(y),
+    PACKAGE = "amatrix.opencl"
+  )
+}
+
+amatrix_opencl_crossprod_resident_host <- function(x_key, y) {
+  .Call(
+    "amatrix_opencl_crossprod_resident_host_bridge",
+    as.character(x_key),
+    .amatrix_opencl_dense_host(y),
+    PACKAGE = "amatrix.opencl"
+  )
 }
 
 amatrix_opencl_ewise_resident <- function(lhs_key, rhs, op, out_key, defer = FALSE) {

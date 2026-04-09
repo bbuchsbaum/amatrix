@@ -14,6 +14,38 @@
   TRUE
 }
 
+.amatrix_amchol_dim <- function(factor) {
+  stopifnot(inherits(factor, "amChol"))
+
+  if (length(factor@factor) > 0L) {
+    return(dim(factor@factor))
+  }
+  if (inherits(factor@factor_obj, "aMatrix")) {
+    return(dim(factor@factor_obj))
+  }
+  c(0L, 0L)
+}
+
+.amatrix_amchol_factor_matrix <- function(factor) {
+  stopifnot(inherits(factor, "amChol"))
+
+  if (length(factor@factor) > 0L) {
+    return(factor@factor)
+  }
+  if (!inherits(factor@factor_obj, "aMatrix")) {
+    return(matrix(numeric(0), 0L, 0L))
+  }
+
+  mat <- as.matrix(factor@factor_obj)
+  cache_key <- paste0("chol:", factor@source_id)
+  cached <- .amatrix_cache_get(cache_key)
+  if (inherits(cached, "amChol") && identical(cached@source_id, factor@source_id)) {
+    cached@factor <- mat
+    .amatrix_cache_set(cache_key, cached)
+  }
+  mat
+}
+
 setClass(
   "amChol",
   slots = list(
@@ -34,17 +66,18 @@ setClass(
 )
 
 setMethod("show", "amChol", function(object) {
+  dims <- .amatrix_amchol_dim(object)
   cat(sprintf(
     "amChol [%dx%d | %s | source: %s]\n",
-    nrow(object@factor),
-    ncol(object@factor),
+    dims[[1L]],
+    dims[[2L]],
     object@precision,
     object@source_id
   ))
   invisible(object)
 })
 
-as.matrix.amChol <- function(x, ...) x@factor
+as.matrix.amChol <- function(x, ...) .amatrix_amchol_factor_matrix(x)
 
 chol_factor <- function(X) {
   if (!inherits(X, "adgeMatrix")) {
@@ -59,7 +92,12 @@ chol_factor <- function(X) {
 
   factor_value <- am_chol(X)
   backend_name <- amatrix_backend_plan(X, "chol")$chosen
-  R <- as.matrix(factor_value)
+  factor_backend <- if (inherits(factor_value, "aMatrix")) .amatrix_live_resident_backend(factor_value) else NULL
+  R <- if (!is.null(factor_backend)) {
+    matrix(numeric(0), 0L, 0L)
+  } else {
+    as.matrix(factor_value)
+  }
 
   factor_obj <- new(
     "amChol",
@@ -165,7 +203,6 @@ chol_solve <- function(factor, B) {
     stop("factor must be an amChol object", call. = FALSE)
   }
 
-  R <- factor@factor
   B_in <- B
   B_arg <- .amatrix_triangular_rhs_arg(B)
   B_mat <- NULL
@@ -180,6 +217,7 @@ chol_solve <- function(factor, B) {
       if (!is.null(resident_value)) {
         resident_value
       } else {
+        R <- .amatrix_amchol_factor_matrix(factor)
         B_mat <- as.matrix(.amatrix_host_arg(B_arg))
         tryCatch(
           backend$chol_solve_factor(R, B_mat),
@@ -195,12 +233,14 @@ chol_solve <- function(factor, B) {
         )
       }
     } else {
+      R <- .amatrix_amchol_factor_matrix(factor)
       B_mat <- as.matrix(.amatrix_host_arg(B_arg))
       z <- forwardsolve(t(R), B_mat)
       backsolve(R, z)
     }
   } else {
     # CPU path: standard triangular solve
+    R <- .amatrix_amchol_factor_matrix(factor)
     B_mat <- as.matrix(.amatrix_host_arg(B_arg))
     z <- forwardsolve(t(R), B_mat)
     backsolve(R, z)
@@ -214,14 +254,14 @@ chol_diag <- function(factor) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
   }
-  diag(factor@factor)
+  diag(.amatrix_amchol_factor_matrix(factor))
 }
 
 chol_logdet <- function(factor) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
   }
-  2 * sum(log(diag(factor@factor)))
+  2 * sum(log(diag(.amatrix_amchol_factor_matrix(factor))))
 }
 
 solve_triangular <- function(R, B, lower = FALSE) {
@@ -235,14 +275,15 @@ solve_triangular <- function(R, B, lower = FALSE) {
     if (is.null(x)) {
       backend <- .amatrix_amchol_backend(R)
       if (!is.null(backend) && is.function(backend$solve_triangular_factor)) {
+        R_mat <- .amatrix_amchol_factor_matrix(R)
         B_mat <- as.matrix(.amatrix_host_arg(B_arg))
         x <- tryCatch(
-          backend$solve_triangular_factor(R@factor, B_mat, lower = lower, transpose = FALSE),
+          backend$solve_triangular_factor(R_mat, B_mat, lower = lower, transpose = FALSE),
           error = function(e) NULL
         )
       }
     }
-    R_mat <- R@factor
+    R_mat <- .amatrix_amchol_factor_matrix(R)
   } else {
     R_mat <- as.matrix(R)
     if (inherits(R, "adgeMatrix")) {

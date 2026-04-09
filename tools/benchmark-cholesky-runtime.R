@@ -125,7 +125,7 @@ benchmark_case <- function(case) {
       phase = "factor",
       runtime = backend_name,
       elapsed = elapsed,
-      rel_error = frob_norm(crossprod(fac@factor) - case$A) / frob_norm(case$A),
+      rel_error = frob_norm(crossprod(as.matrix(fac)) - case$A) / frob_norm(case$A),
       stringsAsFactors = FALSE
     )
   })

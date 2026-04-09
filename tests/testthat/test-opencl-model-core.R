@@ -205,3 +205,30 @@ test_that("OpenCL covariance uses the backend path and matches stats::cov", {
     .expect_opencl_fast_equal(fit, stats::cov(X_host))
   })
 })
+
+test_that("OpenCL tall-skinny QR uses resident Q helpers and matches base QR coefficients", {
+  spec <- .opencl_model_spec()
+  skip_if_backend_package_missing(spec)
+
+  register_backend <- .opencl_register_backend(spec)
+
+  with_optional_backend_available(spec, {
+    register_backend(overwrite = TRUE)
+
+    set.seed(20260409L)
+    X_host <- matrix(rnorm(2000 * 32), nrow = 2000, ncol = 32)
+    Y_host <- matrix(rnorm(2000 * 4), nrow = 2000, ncol = 4)
+    X_arg <- adgeMatrix(X_host, preferred_backend = "opencl", precision = "fast")
+
+    qr_fit <- am_qr(X_arg)
+    qr_ref <- qr(X_host)
+    coef_fit <- qr.coef(qr_fit, Y_host)
+    coef_ref <- qr.coef(qr_ref, Y_host)
+
+    expect_identical(.amatrix_qr_kind(qr_fit), "explicit_qr")
+    expect_identical(.amatrix_qr_helper_path(qr_fit), "native_resident_backend")
+    expect_identical(.amatrix_qr_backend_ops(qr_fit), "opencl")
+    expect_true(nzchar(.amatrix_qr_q_key(qr_fit)))
+    .expect_opencl_fast_equal(coef_fit, coef_ref, tolerance = 5e-5)
+  })
+})

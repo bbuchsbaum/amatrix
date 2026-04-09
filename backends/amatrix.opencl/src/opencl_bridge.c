@@ -20,6 +20,7 @@
 #define AMATRIX_OPENCL_MAX_RESIDENT 256
 #define AMATRIX_OPENCL_REDUCE_WG 64
 #define AMATRIX_OPENCL_CHOL_BLOCK 32
+#define AMATRIX_OPENCL_CHOL_PANEL_MAX 64
 
 typedef struct {
   char key[64];
@@ -58,9 +59,12 @@ static cl_kernel g_scalar_mul_kernel = NULL;
 static cl_kernel g_broadcast_sweep_kernel = NULL;
 static cl_kernel g_row_sum_kernel = NULL;
 static cl_kernel g_col_sum_kernel = NULL;
+static cl_kernel g_chol_panel_kernel = NULL;
 static cl_program g_sym_fill_program = NULL;
 static cl_kernel g_sym_fill_kernel = NULL;
+static cl_kernel g_zero_strict_lower_kernel = NULL;
 static amatrix_opencl_workspace g_factor_workspace = {NULL, 0};
+static amatrix_opencl_workspace g_status_workspace = {NULL, 0};
 static float *g_chol_panel_workspace = NULL;
 static size_t g_chol_panel_workspace_len = 0;
 #endif
@@ -111,6 +115,28 @@ static void amatrix_opencl_copy_f32_to_r(double *out, const float *in, size_t n)
   for (size_t i = 0; i < n; ++i) {
     out[i] = (double)in[i];
   }
+}
+
+static int amatrix_opencl_chol_block_size(void) {
+  const char *raw = getenv("AMATRIX_OPENCL_CHOL_BLOCK");
+  long value = AMATRIX_OPENCL_CHOL_BLOCK;
+  char *end = NULL;
+
+  if (raw != NULL && raw[0] != '\0') {
+    value = strtol(raw, &end, 10);
+    if (end == raw || *end != '\0') {
+      value = AMATRIX_OPENCL_CHOL_BLOCK;
+    }
+  }
+
+  if (value < 8L) {
+    value = 8L;
+  }
+  if (value > AMATRIX_OPENCL_CHOL_PANEL_MAX) {
+    value = AMATRIX_OPENCL_CHOL_PANEL_MAX;
+  }
+
+  return (int)value;
 }
 
 static int amatrix_opencl_find_entry(const char *key) {
@@ -265,6 +291,10 @@ static void amatrix_opencl_runtime_clear(void) {
     clReleaseKernel(g_col_sum_kernel);
     g_col_sum_kernel = NULL;
   }
+  if (g_chol_panel_kernel != NULL) {
+    clReleaseKernel(g_chol_panel_kernel);
+    g_chol_panel_kernel = NULL;
+  }
   if (g_custom_program != NULL) {
     clReleaseProgram(g_custom_program);
     g_custom_program = NULL;
@@ -272,6 +302,10 @@ static void amatrix_opencl_runtime_clear(void) {
   if (g_sym_fill_kernel != NULL) {
     clReleaseKernel(g_sym_fill_kernel);
     g_sym_fill_kernel = NULL;
+  }
+  if (g_zero_strict_lower_kernel != NULL) {
+    clReleaseKernel(g_zero_strict_lower_kernel);
+    g_zero_strict_lower_kernel = NULL;
   }
   if (g_sym_fill_program != NULL) {
     clReleaseProgram(g_sym_fill_program);
@@ -281,6 +315,11 @@ static void amatrix_opencl_runtime_clear(void) {
     clReleaseMemObject(g_factor_workspace.buffer);
     g_factor_workspace.buffer = NULL;
     g_factor_workspace.elements = 0;
+  }
+  if (g_status_workspace.buffer != NULL) {
+    clReleaseMemObject(g_status_workspace.buffer);
+    g_status_workspace.buffer = NULL;
+    g_status_workspace.elements = 0;
   }
   if (g_chol_panel_workspace != NULL) {
     free(g_chol_panel_workspace);
@@ -727,26 +766,9 @@ static int amatrix_opencl_write_block(
   return err == CL_SUCCESS;
 }
 
-static int amatrix_opencl_zero_block(
-  cl_mem buffer,
-  int ld,
-  int row_offset,
-  int col_offset,
-  int rows,
-  int cols
-) {
-  float *zeros = NULL;
-  size_t n = 0;
-
-  if (rows <= 0 || cols <= 0) {
-    return 1;
-  }
-
-  n = (size_t)rows * (size_t)cols;
-  zeros = (float *)R_alloc(n, sizeof(float));
-  memset(zeros, 0, n * sizeof(float));
-  return amatrix_opencl_write_block(buffer, ld, row_offset, col_offset, rows, cols, zeros);
-}
+static int amatrix_opencl_zero_strict_lower_buffer(cl_mem buffer, int n);
+static int amatrix_opencl_ensure_custom_kernels(void);
+static int amatrix_opencl_run_chol_panel_upper_inplace(cl_mem buffer, cl_mem status_buffer, int ld, int offset, int block);
 
 static int amatrix_opencl_host_chol_upper(float *block, int n) {
   for (int j = 0; j < n; ++j) {
@@ -899,29 +921,32 @@ static cl_mem amatrix_opencl_identity_buffer(int n) {
 }
 
 static int amatrix_opencl_run_chol_upper_inplace(cl_mem buffer, int n) {
-  float *panel = NULL;
+  int block_size = amatrix_opencl_chol_block_size();
+  cl_mem status_buffer = NULL;
+  cl_int status_value = 1;
 
   if (n <= 0) {
     return 1;
   }
 
-  for (int offset = 0; offset < n; offset += AMATRIX_OPENCL_CHOL_BLOCK) {
+  if (amatrix_opencl_ensure_custom_kernels() && g_chol_panel_kernel != NULL) {
+    if (!amatrix_opencl_workspace_ensure(&g_status_workspace, 1)) {
+      return 0;
+    }
+    status_buffer = g_status_workspace.buffer;
+    if (status_buffer == NULL ||
+        clEnqueueWriteBuffer(g_queue, status_buffer, CL_FALSE, 0, sizeof(cl_int), &status_value, 0, NULL, NULL) != CL_SUCCESS) {
+      return 0;
+    }
+  }
+
+  for (int offset = 0; offset < n; offset += block_size) {
     int block = n - offset;
-    if (block > AMATRIX_OPENCL_CHOL_BLOCK) {
-      block = AMATRIX_OPENCL_CHOL_BLOCK;
+    if (block > block_size) {
+      block = block_size;
     }
 
-    panel = amatrix_opencl_panel_workspace((size_t)block * (size_t)block);
-    if (panel == NULL) {
-      return 0;
-    }
-    if (!amatrix_opencl_read_block(buffer, n, offset, offset, block, block, panel)) {
-      return 0;
-    }
-    if (!amatrix_opencl_host_chol_upper(panel, block)) {
-      return 0;
-    }
-    if (!amatrix_opencl_write_block(buffer, n, offset, offset, block, block, panel)) {
+    if (!amatrix_opencl_run_chol_panel_upper_inplace(buffer, status_buffer, n, offset, block)) {
       return 0;
     }
 
@@ -939,10 +964,6 @@ static int amatrix_opencl_run_chol_upper_inplace(cl_mem buffer, int n) {
         return 0;
       }
 
-      if (!amatrix_opencl_zero_block(buffer, n, offset + block, offset, trailing, block)) {
-        return 0;
-      }
-
       if (!amatrix_opencl_run_syrk_update_upper(
             buffer, row_offset, (size_t)n,
             buffer, trail_offset, (size_t)n,
@@ -951,6 +972,16 @@ static int amatrix_opencl_run_chol_upper_inplace(cl_mem buffer, int n) {
         return 0;
       }
     }
+  }
+
+  if (!amatrix_opencl_zero_strict_lower_buffer(buffer, n)) {
+    return 0;
+  }
+
+  if (status_buffer != NULL &&
+      (clEnqueueReadBuffer(g_queue, status_buffer, CL_TRUE, 0, sizeof(cl_int), &status_value, 0, NULL, NULL) != CL_SUCCESS ||
+       status_value != 1)) {
+    return 0;
   }
 
   return 1;
@@ -1082,10 +1113,82 @@ static int amatrix_opencl_ensure_custom_kernels(void) {
     "    barrier(CLK_LOCAL_MEM_FENCE);\n"
     "  }\n"
     "  if (lid == 0 && col < ncol) out[col] = scratch[0];\n"
+    "}\n"
+    "#define AMATRIX_CHOL_PANEL_MAX 64\n"
+    "__kernel void chol_panel_upper(__global float* x, const int ld, const int offset, const int block, __global int* status) {\n"
+    "  const int lid = (int)get_local_id(0);\n"
+    "  const int lsize = (int)get_local_size(0);\n"
+    "  __local float tile[AMATRIX_CHOL_PANEL_MAX * AMATRIX_CHOL_PANEL_MAX];\n"
+    "  __local int ok;\n"
+    "  if (block > AMATRIX_CHOL_PANEL_MAX) { if (lid == 0) status[0] = 0; return; }\n"
+    "  for (int idx = lid; idx < block * block; idx += lsize) {\n"
+    "    const int row = idx % block;\n"
+    "    const int col = idx / block;\n"
+    "    tile[idx] = x[(offset + row) + (offset + col) * ld];\n"
+    "  }\n"
+    "  if (lid == 0) ok = 1;\n"
+    "  barrier(CLK_LOCAL_MEM_FENCE);\n"
+    "  for (int j = 0; j < block; ++j) {\n"
+    "    if (lid == 0) {\n"
+    "      float diag = tile[j + j * block];\n"
+    "      for (int k = 0; k < j; ++k) diag -= tile[k + j * block] * tile[k + j * block];\n"
+    "      if (!(diag > 0.0f)) { ok = 0; status[0] = 0; }\n"
+    "      else tile[j + j * block] = sqrt(diag);\n"
+    "    }\n"
+    "    barrier(CLK_LOCAL_MEM_FENCE);\n"
+    "    if (!ok) return;\n"
+    "    if (lid > j && lid < block) {\n"
+    "      const int col = lid;\n"
+    "      float value = tile[j + col * block];\n"
+    "      for (int k = 0; k < j; ++k) value -= tile[k + j * block] * tile[k + col * block];\n"
+    "      tile[j + col * block] = value / tile[j + j * block];\n"
+    "      tile[col + j * block] = 0.0f;\n"
+    "    }\n"
+    "    barrier(CLK_LOCAL_MEM_FENCE);\n"
+    "  }\n"
+    "  for (int idx = lid; idx < block * block; idx += lsize) {\n"
+    "    const int row = idx % block;\n"
+    "    const int col = idx / block;\n"
+    "    x[(offset + row) + (offset + col) * ld] = tile[idx];\n"
+    "  }\n"
     "}\n";
 
   if (g_custom_program != NULL) {
-    return 1;
+    if (g_ewise_add_kernel != NULL &&
+        g_ewise_sub_kernel != NULL &&
+        g_ewise_div_kernel != NULL &&
+        g_scalar_mul_kernel != NULL &&
+        g_broadcast_sweep_kernel != NULL &&
+        g_row_sum_kernel != NULL &&
+        g_col_sum_kernel != NULL &&
+        g_chol_panel_kernel != NULL) {
+      return 1;
+    }
+
+    if (g_chol_panel_kernel == NULL) {
+      cl_int err = CL_SUCCESS;
+      g_chol_panel_kernel = clCreateKernel(g_custom_program, "chol_panel_upper", &err);
+      if (err != CL_SUCCESS || g_chol_panel_kernel == NULL) {
+        if (g_chol_panel_kernel != NULL) {
+          clReleaseKernel(g_chol_panel_kernel);
+          g_chol_panel_kernel = NULL;
+        }
+        return 0;
+      }
+    }
+
+    if (g_ewise_add_kernel != NULL &&
+        g_ewise_sub_kernel != NULL &&
+        g_ewise_div_kernel != NULL &&
+        g_scalar_mul_kernel != NULL &&
+        g_broadcast_sweep_kernel != NULL &&
+        g_row_sum_kernel != NULL &&
+        g_col_sum_kernel != NULL &&
+        g_chol_panel_kernel != NULL) {
+      return 1;
+    }
+
+    return 0;
   }
 
   {
@@ -1119,6 +1222,8 @@ static int amatrix_opencl_ensure_custom_kernels(void) {
     if (err != CL_SUCCESS || g_row_sum_kernel == NULL) return 0;
     g_col_sum_kernel = clCreateKernel(g_custom_program, "col_sum", &err);
     if (err != CL_SUCCESS || g_col_sum_kernel == NULL) return 0;
+    g_chol_panel_kernel = clCreateKernel(g_custom_program, "chol_panel_upper", &err);
+    if (err != CL_SUCCESS || g_chol_panel_kernel == NULL) return 0;
   }
 
   return 1;
@@ -1129,6 +1234,39 @@ static int amatrix_opencl_run_opencl_kernel_1d(cl_kernel kernel, size_t global_s
   if (err != CL_SUCCESS) {
     return 0;
   }
+  return 1;
+}
+
+static int amatrix_opencl_run_chol_panel_upper_inplace(cl_mem buffer, cl_mem status_buffer, int ld, int offset, int block) {
+  cl_int err = CL_SUCCESS;
+  size_t global_size = (size_t)block;
+  size_t local_size = (size_t)block;
+  float *panel = NULL;
+
+  if (status_buffer == NULL || !amatrix_opencl_ensure_custom_kernels() || g_chol_panel_kernel == NULL) {
+    panel = amatrix_opencl_panel_workspace((size_t)block * (size_t)block);
+    if (panel == NULL) {
+      return 0;
+    }
+    if (!amatrix_opencl_read_block(buffer, ld, offset, offset, block, block, panel)) {
+      return 0;
+    }
+    if (!amatrix_opencl_host_chol_upper(panel, block)) {
+      return 0;
+    }
+    return amatrix_opencl_write_block(buffer, ld, offset, offset, block, block, panel);
+  }
+
+  err = clSetKernelArg(g_chol_panel_kernel, 0, sizeof(cl_mem), &buffer);
+  err |= clSetKernelArg(g_chol_panel_kernel, 1, sizeof(int), &ld);
+  err |= clSetKernelArg(g_chol_panel_kernel, 2, sizeof(int), &offset);
+  err |= clSetKernelArg(g_chol_panel_kernel, 3, sizeof(int), &block);
+  err |= clSetKernelArg(g_chol_panel_kernel, 4, sizeof(cl_mem), &status_buffer);
+  if (err != CL_SUCCESS ||
+      clEnqueueNDRangeKernel(g_queue, g_chol_panel_kernel, 1, NULL, &global_size, &local_size, 0, NULL, NULL) != CL_SUCCESS) {
+    return 0;
+  }
+
   return 1;
 }
 
@@ -1319,9 +1457,15 @@ static int amatrix_opencl_ensure_sym_fill_kernel(void) {
     "  } else {\n"
     "    if (i < j) x[i + j * n] = x[j + i * n];\n"
     "  }\n"
+    "}\n"
+    "__kernel void zero_strict_lower(__global float* x, const int n) {\n"
+    "  const int i = (int)get_global_id(0);\n"
+    "  const int j = (int)get_global_id(1);\n"
+    "  if (i >= n || j >= n) return;\n"
+    "  if (i > j) x[i + j * n] = 0.0f;\n"
     "}\n";
 
-  if (g_sym_fill_kernel != NULL) {
+  if (g_sym_fill_kernel != NULL && g_zero_strict_lower_kernel != NULL) {
     return 1;
   }
 
@@ -1351,6 +1495,19 @@ static int amatrix_opencl_ensure_sym_fill_kernel(void) {
       g_sym_fill_program = NULL;
       return 0;
     }
+
+    g_zero_strict_lower_kernel = clCreateKernel(g_sym_fill_program, "zero_strict_lower", &err);
+    if (err != CL_SUCCESS || g_zero_strict_lower_kernel == NULL) {
+      if (g_zero_strict_lower_kernel != NULL) {
+        clReleaseKernel(g_zero_strict_lower_kernel);
+        g_zero_strict_lower_kernel = NULL;
+      }
+      clReleaseKernel(g_sym_fill_kernel);
+      g_sym_fill_kernel = NULL;
+      clReleaseProgram(g_sym_fill_program);
+      g_sym_fill_program = NULL;
+      return 0;
+    }
   }
 
   return 1;
@@ -1374,6 +1531,30 @@ static int amatrix_opencl_sym_fill_buffer(cl_mem buffer, int n, int upper_to_low
   global[0] = (size_t)n;
   global[1] = (size_t)n;
   err = clEnqueueNDRangeKernel(g_queue, g_sym_fill_kernel, 2, NULL, global, NULL, 0, NULL, NULL);
+  if (err != CL_SUCCESS) {
+    return 0;
+  }
+
+  return 1;
+}
+
+static int amatrix_opencl_zero_strict_lower_buffer(cl_mem buffer, int n) {
+  cl_int err = CL_SUCCESS;
+  size_t global[2];
+
+  if (!amatrix_opencl_ensure_sym_fill_kernel()) {
+    return 0;
+  }
+
+  err = clSetKernelArg(g_zero_strict_lower_kernel, 0, sizeof(cl_mem), &buffer);
+  err |= clSetKernelArg(g_zero_strict_lower_kernel, 1, sizeof(int), &n);
+  if (err != CL_SUCCESS) {
+    return 0;
+  }
+
+  global[0] = (size_t)n;
+  global[1] = (size_t)n;
+  err = clEnqueueNDRangeKernel(g_queue, g_zero_strict_lower_kernel, 2, NULL, global, NULL, 0, NULL, NULL);
   if (err != CL_SUCCESS) {
     return 0;
   }
@@ -2349,6 +2530,88 @@ SEXP amatrix_opencl_tcrossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_
     amatrix_opencl_store_host_entry(CHAR(asChar(out_key)), out);
     UNPROTECT(3);
     return R_NilValue;
+  }
+}
+
+SEXP amatrix_opencl_matmul_resident_host_bridge(SEXP x_key, SEXP y) {
+  amatrix_opencl_require_matrix(y, "y");
+#ifdef HAVE_CLBLAST
+  if (amatrix_opencl_try_init()) {
+    amatrix_opencl_entry *x_entry = amatrix_opencl_lookup_entry(CHAR(asChar(x_key)));
+
+    if (x_entry->on_device && x_entry->buffer != NULL) {
+      cl_mem b_buffer = amatrix_opencl_buffer_from_r(y);
+      cl_mem out_buffer = NULL;
+      int out_nrow = 0;
+      int out_ncol = 0;
+      int ok = 0;
+
+      if (b_buffer != NULL) {
+        ok = amatrix_opencl_run_gemm(
+          x_entry->buffer, x_entry->nrow, x_entry->ncol, 0,
+          b_buffer, amatrix_opencl_nrow(y), amatrix_opencl_ncol(y), 0,
+          &out_buffer, &out_nrow, &out_ncol
+        );
+      }
+
+      if (b_buffer != NULL) clReleaseMemObject(b_buffer);
+
+      if (ok > 0) {
+        SEXP out = PROTECT(amatrix_opencl_matrix_from_buffer(out_buffer, out_nrow, out_ncol));
+        clReleaseMemObject(out_buffer);
+        UNPROTECT(1);
+        return out;
+      }
+      if (out_buffer != NULL) clReleaseMemObject(out_buffer);
+    }
+  }
+#endif
+  {
+    SEXP x = PROTECT(amatrix_opencl_get_entry_materialized(CHAR(asChar(x_key))));
+    SEXP out = PROTECT(amatrix_opencl_matmul_impl(x, y, 0, 0));
+    UNPROTECT(2);
+    return out;
+  }
+}
+
+SEXP amatrix_opencl_crossprod_resident_host_bridge(SEXP x_key, SEXP y) {
+  amatrix_opencl_require_matrix(y, "y");
+#ifdef HAVE_CLBLAST
+  if (amatrix_opencl_try_init()) {
+    amatrix_opencl_entry *x_entry = amatrix_opencl_lookup_entry(CHAR(asChar(x_key)));
+
+    if (x_entry->on_device && x_entry->buffer != NULL) {
+      cl_mem b_buffer = amatrix_opencl_buffer_from_r(y);
+      cl_mem out_buffer = NULL;
+      int out_nrow = 0;
+      int out_ncol = 0;
+      int ok = 0;
+
+      if (b_buffer != NULL) {
+        ok = amatrix_opencl_run_gemm(
+          x_entry->buffer, x_entry->nrow, x_entry->ncol, 1,
+          b_buffer, amatrix_opencl_nrow(y), amatrix_opencl_ncol(y), 0,
+          &out_buffer, &out_nrow, &out_ncol
+        );
+      }
+
+      if (b_buffer != NULL) clReleaseMemObject(b_buffer);
+
+      if (ok > 0) {
+        SEXP out = PROTECT(amatrix_opencl_matrix_from_buffer(out_buffer, out_nrow, out_ncol));
+        clReleaseMemObject(out_buffer);
+        UNPROTECT(1);
+        return out;
+      }
+      if (out_buffer != NULL) clReleaseMemObject(out_buffer);
+    }
+  }
+#endif
+  {
+    SEXP x = PROTECT(amatrix_opencl_get_entry_materialized(CHAR(asChar(x_key))));
+    SEXP out = PROTECT(amatrix_opencl_matmul_impl(x, y, 1, 0));
+    UNPROTECT(2);
+    return out;
   }
 }
 

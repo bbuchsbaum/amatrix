@@ -278,6 +278,12 @@ setOldClass(c("amQR", "amDenseQR"))
       return("native_backend")
     }
   }
+  if (identical(.amatrix_qr_kind(qr), "explicit_qr") &&
+      identical(backend_ops, "opencl") &&
+      requireNamespace("amatrix.opencl", quietly = TRUE) &&
+      !is.null(.amatrix_qr_q_key(qr))) {
+    return("native_resident_backend")
+  }
   "compact_factor"
 }
 
@@ -375,6 +381,10 @@ qr_info <- function(qr) {
 
 .amatrix_explicit_qr_native_mlx <- function(fun, ...) {
   get(fun, envir = asNamespace("amatrix.mlx"), inherits = FALSE)(...)
+}
+
+.amatrix_explicit_qr_native_opencl <- function(fun, ...) {
+  get(fun, envir = asNamespace("amatrix.opencl"), inherits = FALSE)(...)
 }
 
 .amatrix_explicit_qr_resident_materialize <- function(qr, key) {
@@ -543,6 +553,12 @@ qr_info <- function(qr) {
     }
     return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_qr_qty", .amatrix_explicit_qr_q(qr), y))
   }
+  if (helper_path %in% c("native_backend", "native_resident_backend") && identical(.amatrix_qr_backend_ops(qr), "opencl")) {
+    q_key <- .amatrix_qr_q_key(qr)
+    if (!is.null(q_key)) {
+      return(.amatrix_explicit_qr_native_opencl("amatrix_opencl_qr_qty_key", q_key, y))
+    }
+  }
   crossprod(.amatrix_explicit_qr_q(qr), y)
 }
 
@@ -554,6 +570,12 @@ qr_info <- function(qr) {
       return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_qr_qy_key", q_key, y))
     }
     return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_qr_qy", .amatrix_explicit_qr_q(qr), y))
+  }
+  if (helper_path %in% c("native_backend", "native_resident_backend") && identical(.amatrix_qr_backend_ops(qr), "opencl")) {
+    q_key <- .amatrix_qr_q_key(qr)
+    if (!is.null(q_key)) {
+      return(.amatrix_explicit_qr_native_opencl("amatrix_opencl_qr_qy_key", q_key, y))
+    }
   }
   .amatrix_explicit_qr_q(qr) %*% y
 }
@@ -628,6 +650,14 @@ qr_info <- function(qr) {
       y,
       rank = if (is.null(k)) .amatrix_qr_rank(qr) else k
     ))
+  }
+  if (helper_path %in% c("native_backend", "native_resident_backend") && identical(.amatrix_qr_backend_ops(qr), "opencl")) {
+    q_key <- .amatrix_qr_q_key(qr)
+    r_mat <- .amatrix_explicit_qr_r(qr)
+    if (!is.null(q_key) && !is.null(k) && identical(k, ncol(r_mat))) {
+      qty <- .amatrix_explicit_qr_native_opencl("amatrix_opencl_qr_qty_key", q_key, y)
+      return(.amatrix_explicit_qr_native_opencl("amatrix_opencl_qr_qy_key", q_key, qty))
+    }
   }
 
   q_mat <- .amatrix_explicit_qr_q(qr)

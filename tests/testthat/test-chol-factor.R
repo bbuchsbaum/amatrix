@@ -81,7 +81,7 @@ test_that("chol_factor reuses cache on second call", {
   fac1 <- chol_factor(X)
   fac2 <- chol_factor(X)
 
-  expect_identical(fac1@factor, fac2@factor)
+  expect_equal(as.matrix(fac1), as.matrix(fac2), tolerance = 1e-10)
   expect_identical(fac1, fac2)
 })
 
@@ -116,7 +116,7 @@ test_that("fast MLX Cholesky path matches CPU on ridge-like SPD many-RHS solves"
       function(j) as.numeric(chol_solve(fac, B[, j])),
       numeric(nrow(B))
     )
-    recon_rel <- .frob_norm(crossprod(fac@factor) - A) / .frob_norm(A)
+    recon_rel <- .frob_norm(crossprod(as.matrix(fac)) - A) / .frob_norm(A)
     solve_ref_rel <- .frob_norm(sol - ref_sol) / .frob_norm(ref_sol)
     solve_resid_rel <- .frob_norm(A %*% sol - B) / .frob_norm(B)
     batched_rel <- .frob_norm(sol - by_col) / .frob_norm(by_col)
@@ -150,12 +150,12 @@ test_that("fast MLX Cholesky path stays aligned on kernel-like SPD systems", {
     fac <- chol_factor(X_mlx)
     sol <- chol_solve(fac, B)
     ref_sol <- solve(A, B)
-    recon_rel <- .frob_norm(crossprod(fac@factor) - A) / .frob_norm(A)
+    recon_rel <- .frob_norm(crossprod(as.matrix(fac)) - A) / .frob_norm(A)
     solve_ref_rel <- .frob_norm(sol - ref_sol) / .frob_norm(ref_sol)
     solve_resid_rel <- .frob_norm(A %*% sol - B) / .frob_norm(B)
 
     expect_s4_class(fac, "amChol")
-    expect_true(all(is.finite(fac@factor)))
+    expect_true(all(is.finite(as.matrix(fac))))
     expect_true(all(is.finite(sol)))
     expect_equal(dim(sol), dim(B))
     expect_lt(recon_rel, 5e-6)
@@ -184,13 +184,13 @@ test_that("fast OpenCL Cholesky path matches CPU on dense SPD solves", {
     fac <- chol_factor(X_opencl)
     sol <- chol_solve(fac, B)
     ref_sol <- solve(A, B)
-    recon_rel <- .frob_norm(crossprod(fac@factor) - A) / .frob_norm(A)
+    recon_rel <- .frob_norm(crossprod(as.matrix(fac)) - A) / .frob_norm(A)
     solve_ref_rel <- .frob_norm(sol - ref_sol) / .frob_norm(ref_sol)
     solve_resid_rel <- .frob_norm(A %*% sol - B) / .frob_norm(B)
 
     expect_s4_class(fac, "amChol")
     expect_identical(fac@backend, "opencl")
-    expect_true(all(is.finite(fac@factor)))
+    expect_true(all(is.finite(as.matrix(fac))))
     expect_true(all(is.finite(sol)))
     expect_lt(recon_rel, 5e-6)
     expect_lt(solve_ref_rel, 5e-6)
