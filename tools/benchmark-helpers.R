@@ -68,7 +68,7 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
       precision = "fast",
       register_fun = "amatrix_opencl_register",
       available_fun = "amatrix_opencl_native_available",
-      options = c(amatrix.enable_opencl = TRUE),
+      options = c(amatrix.enable_opencl = TRUE, amatrix.opencl.factor_gpu = TRUE),
       env = c(AMATRIX_OPENCL_PROBE_GPU = "1"),
       available_args = list(force = TRUE)
     ),
@@ -157,4 +157,36 @@ available_benchmark_backends <- function(
 benchmark_backend_names <- function(...) {
   backends <- available_benchmark_backends(...)
   vapply(backends, `[[`, character(1), "name")
+}
+
+r_string_literal <- function(x) {
+  encodeString(x, quote = "\"")
+}
+
+benchmark_rscript_source_args <- function(script_path, args = character(), working_dir = getwd()) {
+  script_path <- normalizePath(script_path, winslash = "/", mustWork = TRUE)
+  working_dir <- normalizePath(working_dir, winslash = "/", mustWork = TRUE)
+  expr <- sprintf(
+    "setwd(%s); source(%s, local = globalenv())",
+    r_string_literal(working_dir),
+    r_string_literal(script_path)
+  )
+  c("-e", expr, "--args", args)
+}
+
+benchmark_system2_capture <- function(command, args) {
+  warned_status <- NULL
+  quoted_args <- vapply(args, shQuote, character(1), USE.NAMES = FALSE)
+  output <- withCallingHandlers(
+    system2(command, quoted_args, stdout = TRUE, stderr = TRUE),
+    warning = function(w) {
+      warned_status <<- attr(w, "status") %||% warned_status
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  list(
+    output = output,
+    status = attr(output, "status") %||% warned_status %||% 0L
+  )
 }

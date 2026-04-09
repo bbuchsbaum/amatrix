@@ -366,6 +366,37 @@ test_that("resident dense crossprod chaining can reuse backend state", {
   })
 })
 
+test_that("resident ewise failures fall back cleanly and drop leaked output keys", {
+  counter <- new.env(parent = emptyenv())
+  backend <- make_recording_backend(counter, supported_ops = c("ewise"))
+  resident <- get("resident", envir = environment(backend$resident_has), inherits = FALSE)
+
+  backend$ewise_resident <- function(lhs_key, rhs, op, out_key, defer = FALSE) {
+    if (is.null(counter$ewise_resident)) {
+      counter$ewise_resident <- 0L
+    }
+    counter$ewise_resident <- counter$ewise_resident + 1L
+    counter$last_out_key <- out_key
+    lhs <- resident[[lhs_key]]
+    rhs_value <- if (is.character(rhs)) resident[[rhs]] else rhs
+    assign(out_key, do.call(op, list(lhs, rhs_value)), envir = resident)
+    stop("resident ewise failure", call. = FALSE)
+  }
+
+  with_registered_backend("resident_ewise_failure", backend, {
+    x_host <- matrix(1:4, nrow = 2)
+    x <- adgeMatrix(x_host, preferred_backend = "resident_ewise_failure")
+
+    result <- x + 1
+
+    expect_s4_class(result, "adgeMatrix")
+    expect_equal(as.matrix(result), x_host + 1)
+    expect_true(counter$ewise_resident >= 1L)
+    expect_false(exists(counter$last_out_key, envir = resident, inherits = FALSE))
+    expect_true(counter$resident_drop >= 1L)
+  })
+})
+
 test_that("backend plan distinguishes cold support from resident reuse", {
   counter <- new.env(parent = emptyenv())
 
@@ -790,6 +821,51 @@ test_that("ridge_fit leaves only the explicit intercept column unpenalized", {
   expect_equal(as.matrix(coef(fit)), coef_host, tolerance = 1e-8)
 })
 
+test_that("ridge_fit detects an explicit intercept column without adding one", {
+  set.seed(1403)
+  X_host <- cbind(1, matrix(rnorm(48), nrow = 12, ncol = 4))
+  beta_host <- matrix(rnorm(15), nrow = 5, ncol = 3)
+  Y_host <- X_host %*% beta_host + matrix(rnorm(36, sd = 1e-6), nrow = 12, ncol = 3)
+  lambda <- 0.5
+
+  fit <- ridge_fit(
+    adgeMatrix(X_host),
+    Y_host,
+    lambda = lambda,
+    intercept = FALSE,
+    penalize_intercept = FALSE
+  )
+  penalty <- diag(c(0, rep(lambda, ncol(X_host) - 1L)))
+  coef_host <- solve(crossprod(X_host) + penalty, crossprod(X_host, Y_host))
+
+  expect_equal(as.matrix(coef(fit)), coef_host, tolerance = 1e-8)
+})
+
+test_that("explicit intercept detection avoids full host materialization for resident deferred matrices", {
+  counter <- new.env(parent = emptyenv())
+
+  with_registered_backend(
+    "ridge_intercept_backend",
+    make_recording_backend(counter, supported_ops = c("matmul")),
+    {
+      X_host <- cbind(1, matrix(rnorm(24), nrow = 6, ncol = 4))
+      key <- amatrix:::.amatrix_next_resident_key("ridge_intercept_backend")
+      backend <- amatrix:::.amatrix_get_backend("ridge_intercept_backend")
+      X <- amatrix:::new_adgeMatrix_deferred(
+        dim = dim(X_host),
+        preferred_backend = "ridge_intercept_backend"
+      )
+
+      backend$resident_store(key, X_host)
+      X <- amatrix:::.amatrix_bind_resident(X, "ridge_intercept_backend", key)
+
+      expect_true(amatrix:::.amatrix_has_explicit_intercept_column(X))
+      expect_identical(counter$resident_materialize %||% 0L, 0L)
+      expect_identical(counter$matmul_resident %||% 0L, 1L)
+    }
+  )
+})
+
 test_that("ridge_fit reuses cached shared-X work across repeated fits", {
   counter <- new.env(parent = emptyenv())
   counter$crossprod <- 0L
@@ -1004,6 +1080,35 @@ test_that("qr.solve on rectangular amQR matches base QR solve", {
 
   expect_equal(as.matrix(qr.solve(fac, y_host)), base::qr.solve(fac_base, y_host), tolerance = 1e-10)
   expect_error(qr.solve(fac), "only square matrices can be inverted")
+})
+
+test_that("explicit QR helpers honor pivot order and rank-deficient qr.coef semantics", {
+  y_host <- matrix(c(1, 2), nrow = 2, ncol = 1)
+  pivot_payload <- list(
+    representation = "explicit_qr",
+    q = diag(2),
+    r = diag(2),
+    rank = 2L,
+    pivot = c(2L, 1L),
+    factor = NULL,
+    factor_source = "native"
+  )
+  expect_equal(amatrix:::.amatrix_explicit_qr_coef(pivot_payload, y_host), matrix(c(2, 1), ncol = 1), tolerance = 1e-10)
+  expect_equal(amatrix:::.amatrix_explicit_qr_solve(pivot_payload, b = y_host), matrix(c(2, 1), ncol = 1), tolerance = 1e-10)
+
+  rank_def_payload <- list(
+    representation = "explicit_qr",
+    q = diag(2),
+    r = matrix(c(1, 0, 0, 0), nrow = 2, byrow = TRUE),
+    rank = 1L,
+    pivot = c(1L, 2L),
+    factor = NULL,
+    factor_source = "native"
+  )
+  coef_fit <- amatrix:::.amatrix_explicit_qr_coef(rank_def_payload, y_host)
+  expect_equal(coef_fit[1, 1], 1, tolerance = 1e-10)
+  expect_true(is.na(coef_fit[2, 1]))
+  expect_error(amatrix:::.amatrix_explicit_qr_solve(rank_def_payload, b = y_host), "singular matrix 'a' in solve")
 })
 
 test_that("qr_info reports explicit backend QR metadata", {

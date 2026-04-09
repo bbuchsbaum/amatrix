@@ -2539,7 +2539,7 @@ SEXP amatrix_opencl_matmul_resident_host_bridge(SEXP x_key, SEXP y) {
   if (amatrix_opencl_try_init()) {
     amatrix_opencl_entry *x_entry = amatrix_opencl_lookup_entry(CHAR(asChar(x_key)));
 
-    if (x_entry->on_device && x_entry->buffer != NULL) {
+    if (x_entry != NULL && x_entry->on_device && x_entry->buffer != NULL) {
       cl_mem b_buffer = amatrix_opencl_buffer_from_r(y);
       cl_mem out_buffer = NULL;
       int out_nrow = 0;
@@ -2574,13 +2574,53 @@ SEXP amatrix_opencl_matmul_resident_host_bridge(SEXP x_key, SEXP y) {
   }
 }
 
+SEXP amatrix_opencl_matmul_resident_host_into_bridge(SEXP x_key, SEXP y, SEXP out_key) {
+  amatrix_opencl_require_matrix(y, "y");
+#ifdef HAVE_CLBLAST
+  if (amatrix_opencl_try_init()) {
+    amatrix_opencl_entry *x_entry = amatrix_opencl_lookup_entry(CHAR(asChar(x_key)));
+
+    if (x_entry != NULL && x_entry->on_device && x_entry->buffer != NULL) {
+      cl_mem b_buffer = amatrix_opencl_buffer_from_r(y);
+      cl_mem out_buffer = NULL;
+      int out_nrow = 0;
+      int out_ncol = 0;
+      int ok = 0;
+
+      if (b_buffer != NULL) {
+        ok = amatrix_opencl_run_gemm(
+          x_entry->buffer, x_entry->nrow, x_entry->ncol, 0,
+          b_buffer, amatrix_opencl_nrow(y), amatrix_opencl_ncol(y), 0,
+          &out_buffer, &out_nrow, &out_ncol
+        );
+      }
+
+      if (b_buffer != NULL) clReleaseMemObject(b_buffer);
+
+      if (ok > 0) {
+        amatrix_opencl_store_device_buffer(CHAR(asChar(out_key)), out_buffer, out_nrow, out_ncol);
+        return R_NilValue;
+      }
+      if (out_buffer != NULL) clReleaseMemObject(out_buffer);
+    }
+  }
+#endif
+  {
+    SEXP x = PROTECT(amatrix_opencl_get_entry_materialized(CHAR(asChar(x_key))));
+    SEXP out = PROTECT(amatrix_opencl_matmul_impl(x, y, 0, 0));
+    amatrix_opencl_store_host_entry(CHAR(asChar(out_key)), out);
+    UNPROTECT(2);
+    return R_NilValue;
+  }
+}
+
 SEXP amatrix_opencl_crossprod_resident_host_bridge(SEXP x_key, SEXP y) {
   amatrix_opencl_require_matrix(y, "y");
 #ifdef HAVE_CLBLAST
   if (amatrix_opencl_try_init()) {
     amatrix_opencl_entry *x_entry = amatrix_opencl_lookup_entry(CHAR(asChar(x_key)));
 
-    if (x_entry->on_device && x_entry->buffer != NULL) {
+    if (x_entry != NULL && x_entry->on_device && x_entry->buffer != NULL) {
       cl_mem b_buffer = amatrix_opencl_buffer_from_r(y);
       cl_mem out_buffer = NULL;
       int out_nrow = 0;
@@ -2612,6 +2652,46 @@ SEXP amatrix_opencl_crossprod_resident_host_bridge(SEXP x_key, SEXP y) {
     SEXP out = PROTECT(amatrix_opencl_matmul_impl(x, y, 1, 0));
     UNPROTECT(2);
     return out;
+  }
+}
+
+SEXP amatrix_opencl_crossprod_resident_host_into_bridge(SEXP x_key, SEXP y, SEXP out_key) {
+  amatrix_opencl_require_matrix(y, "y");
+#ifdef HAVE_CLBLAST
+  if (amatrix_opencl_try_init()) {
+    amatrix_opencl_entry *x_entry = amatrix_opencl_lookup_entry(CHAR(asChar(x_key)));
+
+    if (x_entry != NULL && x_entry->on_device && x_entry->buffer != NULL) {
+      cl_mem b_buffer = amatrix_opencl_buffer_from_r(y);
+      cl_mem out_buffer = NULL;
+      int out_nrow = 0;
+      int out_ncol = 0;
+      int ok = 0;
+
+      if (b_buffer != NULL) {
+        ok = amatrix_opencl_run_gemm(
+          x_entry->buffer, x_entry->nrow, x_entry->ncol, 1,
+          b_buffer, amatrix_opencl_nrow(y), amatrix_opencl_ncol(y), 0,
+          &out_buffer, &out_nrow, &out_ncol
+        );
+      }
+
+      if (b_buffer != NULL) clReleaseMemObject(b_buffer);
+
+      if (ok > 0) {
+        amatrix_opencl_store_device_buffer(CHAR(asChar(out_key)), out_buffer, out_nrow, out_ncol);
+        return R_NilValue;
+      }
+      if (out_buffer != NULL) clReleaseMemObject(out_buffer);
+    }
+  }
+#endif
+  {
+    SEXP x = PROTECT(amatrix_opencl_get_entry_materialized(CHAR(asChar(x_key))));
+    SEXP out = PROTECT(amatrix_opencl_matmul_impl(x, y, 1, 0));
+    amatrix_opencl_store_host_entry(CHAR(asChar(out_key)), out);
+    UNPROTECT(2);
+    return R_NilValue;
   }
 }
 

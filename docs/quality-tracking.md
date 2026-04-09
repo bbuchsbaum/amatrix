@@ -95,7 +95,7 @@ available backend. GPU backends are auto-skipped when not installed.
 
 - `dense`: `matmul`, `crossprod`, `covariance`, `dist`, `chol`, `solve_rhs`,
   `eigen_sym`, `many_lm`, `rsvd`, `sinkhorn`
-- `sparse`: `spmv`, `spmm`
+- `sparse`: `spmv`, `spmm`, `block_lanczos`, `svd_factor_subspace`
 
 Backends are probed systematically from the checkout:
 - `cpu`
@@ -175,8 +175,11 @@ Do not update the baseline to mask a regression. Fix the code first.
 
 Cold-path numbers include wrap/materialization cost by constructing fresh
 `adgeMatrix`/`adgCMatrix` inputs inside the timed closure. Warm dense rows reuse
-resident dense inputs; warm sparse rows use the resident sparse product path and
-are recorded as `resident` variants.
+resident dense inputs; warm sparse product rows use the resident sparse product
+path and are recorded as `resident` variants. Sparse iterative rows
+(`block_lanczos`, `svd_factor_subspace`) use `warm` to mean the sparse lhs is
+pre-bound before the timed loop so the compiled product-plan path can reuse the
+resident operand across repeated products inside the algorithm.
 
 ### 3.5 Interpreting Speedup
 
@@ -214,8 +217,8 @@ Legend: **tested** = in cross-backend harness or dedicated suite | **partial** =
 | `am_sinkhorn` | plain Sinkhorn loop | own suite | tested |
 | `am_irlba` | `am_rsvd` | own suite | — |
 | `am_chol_solve` / `am_chol_factor` | `solve(chol(...))` | own suite | — |
-| `am_svd_factor` + project/reconstruct | reconstruction | own suite | — |
-| `am_qr` + qr.* methods | `base::qr.*` | own suite | — |
+| `am_svd_factor` + project/reconstruct | reconstruction | own suite | partial |
+| `am_qr` + qr.* methods | `base::qr.*` | own suite | tested |
 | `am_ridge_fit` | `lm.fit` + penalty | partial | — |
 | `am_wls_fit` | weighted `lm.fit` | partial | — |
 | `am_pca_coef` | `prcomp` loadings | partial | — |
@@ -258,6 +261,7 @@ Rscript tools/smoke-install-load.R
 ### Run a specific subsystem benchmark (deep-dive)
 ```bash
 Rscript tools/benchmark-dense-products.R
+Rscript tools/benchmark-opencl-qr.R
 Rscript tools/benchmark-sinkhorn.R
 Rscript tools/benchmark-flagship-many-y.R
 # ... see tools/ for the full list

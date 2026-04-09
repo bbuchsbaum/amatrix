@@ -394,11 +394,30 @@ qr_info <- function(qr) {
   }
 
   backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
-  if (is.null(backend) || !is.function(backend$resident_materialize)) {
+  if (!is.null(backend) && is.function(backend$resident_materialize)) {
+    value <- tryCatch(backend$resident_materialize(key), error = function(e) NULL)
+    if (!is.null(value)) {
+      return(value)
+    }
+  }
+
+  fallback <- switch(
+    backend_name,
+    mlx = c("amatrix.mlx", "amatrix_mlx_resident_materialize"),
+    opencl = c("amatrix.opencl", "amatrix_opencl_resident_materialize"),
+    arrayfire = c("amatrix.arrayfire", "amatrix_arrayfire_resident_materialize"),
+    NULL
+  )
+  if (is.null(fallback) || !requireNamespace(fallback[[1L]], quietly = TRUE)) {
     return(NULL)
   }
 
-  backend$resident_materialize(key)
+  fun <- get0(fallback[[2L]], envir = asNamespace(fallback[[1L]]), inherits = FALSE)
+  if (!is.function(fun)) {
+    return(NULL)
+  }
+
+  tryCatch(fun(key), error = function(e) NULL)
 }
 
 .amatrix_explicit_qr_rank <- function(qr_obj) {
@@ -420,6 +439,30 @@ qr_info <- function(qr) {
   scale <- if (length(diag_abs) == 0L) 0 else max(diag_abs)
   tol_eff <- if (is.null(tol)) max(dim(r_mat)) * .Machine$double.eps * scale else as.double(tol)
   as.integer(sum(diag_abs > tol_eff))
+}
+
+.amatrix_explicit_qr_pivot <- function(qr_obj) {
+  pivot <- qr_obj[["pivot", exact = TRUE]]
+  if (is.null(pivot)) {
+    return(NULL)
+  }
+  as.integer(pivot)
+}
+
+.amatrix_explicit_qr_unpivot <- function(coef, qr_obj, fill = NA_real_) {
+  pivot <- .amatrix_explicit_qr_pivot(qr_obj)
+  if (is.null(pivot) || identical(pivot, seq_len(length(pivot)))) {
+    return(coef)
+  }
+
+  out <- matrix(
+    fill,
+    nrow = length(pivot),
+    ncol = ncol(coef),
+    dimnames = dimnames(coef)
+  )
+  out[pivot, ] <- coef
+  out
 }
 
 .amatrix_explicit_qr_q <- function(qr) {
@@ -610,7 +653,7 @@ qr_info <- function(qr) {
     coef[seq_len(rank), ] <- backsolve(r_top, qty_top)
   }
 
-  coef
+  .amatrix_explicit_qr_unpivot(coef, .amatrix_unwrap_qr(qr))
 }
 
 .amatrix_explicit_qr_solve <- function(qr, b = NULL, tol = 1e-07) {
@@ -655,8 +698,7 @@ qr_info <- function(qr) {
     q_key <- .amatrix_qr_q_key(qr)
     r_mat <- .amatrix_explicit_qr_r(qr)
     if (!is.null(q_key) && !is.null(k) && identical(k, ncol(r_mat))) {
-      qty <- .amatrix_explicit_qr_native_opencl("amatrix_opencl_qr_qty_key", q_key, y)
-      return(.amatrix_explicit_qr_native_opencl("amatrix_opencl_qr_qy_key", q_key, qty))
+      return(.amatrix_explicit_qr_native_opencl("amatrix_opencl_qr_fitted_key", q_key, y))
     }
   }
 
@@ -706,7 +748,7 @@ qr_info <- function(qr) {
     if (identical(.amatrix_qr_helper_path(qr), "compact_factor") && .amatrix_qr_compact_available(qr)) {
       return(qr.coef(.amatrix_qr_factor(qr), y))
     }
-    return(.amatrix_explicit_qr_solve(qr, b = y))
+    return(.amatrix_explicit_qr_coef(qr, y))
   }
 
   qr.coef(.amatrix_qr_factor(qr), y)

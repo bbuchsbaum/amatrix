@@ -1,5 +1,6 @@
 .amatrix_opencl_probe_var <- "AMATRIX_OPENCL_PROBE_GPU"
 .amatrix_opencl_state <- new.env(parent = emptyenv())
+.amatrix_opencl_sparse_host_resident <- new.env(parent = emptyenv())
 
 .amatrix_opencl_probe_enabled <- function() {
   identical(Sys.getenv(.amatrix_opencl_probe_var, unset = ""), "1")
@@ -27,6 +28,23 @@
     storage.mode(x_mat) <- "double"
   }
   x_mat
+}
+
+.amatrix_opencl_sparse_host <- function(x) {
+  methods::as(x, "dgCMatrix")
+}
+
+.amatrix_opencl_rhs_width <- function(y) {
+  if (is.null(y)) {
+    return(NA_integer_)
+  }
+
+  dims <- dim(y)
+  if (is.null(dims) || length(dims) <= 1L) {
+    return(1L)
+  }
+
+  as.integer(dims[[2L]])
 }
 
 .amatrix_opencl_rhs_arg <- function(rhs) {
@@ -87,6 +105,13 @@
     .amatrix_opencl_is_symmetric_matrix(a)
 }
 
+.amatrix_opencl_can_try_device_qr_solve <- function(a, b = NULL) {
+  !is.null(b) &&
+    .amatrix_opencl_device_linalg_available() &&
+    .amatrix_opencl_is_square_matrix(a) &&
+    max(dim(a)) >= getOption("amatrix.opencl.solve_qr_min_dim", 512L)
+}
+
 .amatrix_opencl_dense_product_supported <- function(op, x, y = NULL) {
   threshold <- as.integer(getOption("amatrix.opencl.matmul_min_dim", 128L))
   dims <- dim(x)
@@ -98,6 +123,33 @@
   min(as.integer(dims)) >= threshold
 }
 
+.amatrix_opencl_sparse_product_supported <- function(op, x, y = NULL) {
+  if (!inherits(x, "adgCMatrix")) {
+    return(FALSE)
+  }
+
+  if (!(op %in% c("matmul", "crossprod", "tcrossprod"))) {
+    return(FALSE)
+  }
+
+  if (op %in% c("crossprod", "tcrossprod") && is.null(y)) {
+    return(FALSE)
+  }
+
+  rhs_width <- .amatrix_opencl_rhs_width(y)
+  min_nnz <- if (!is.na(rhs_width) && rhs_width <= 1L) {
+    getOption("amatrix.opencl.spmv_min_nnz", Inf)
+  } else {
+    getOption("amatrix.opencl.spmm_min_nnz", Inf)
+  }
+
+  if (!is.finite(min_nnz)) {
+    return(FALSE)
+  }
+
+  length(x@x) >= as.integer(min_nnz)
+}
+
 .amatrix_opencl_qr_use_cholqr <- function(x_mat) {
   if (!isTRUE(.amatrix_opencl_device_linalg_available())) {
     return(FALSE)
@@ -106,7 +158,7 @@
   n <- nrow(x_mat)
   p <- ncol(x_mat)
   n >= getOption("amatrix.opencl.qr_min_n", 512L) &&
-    p >= 8L &&
+    p >= getOption("amatrix.opencl.qr_min_p", 16L) &&
     p <= getOption("amatrix.opencl.qr_max_p", 256L) &&
     n >= (4L * p)
 }
@@ -161,7 +213,7 @@ amatrix_opencl_capabilities <- function() {
 }
 
 amatrix_opencl_features <- function() {
-  c("dense_f32", "resident_dense", "custom_ops", "solve", "chol", "qr", "svd", "eigen_sym", "covariance")
+  c("dense_f32", "resident_dense", "custom_ops", "solve", "chol", "qr", "svd", "eigen_sym", "covariance", "sparse_spmm")
 }
 
 amatrix_opencl_precision_modes <- function() {
@@ -215,6 +267,9 @@ amatrix_opencl_diagnostics <- function() {
 }
 
 amatrix_opencl_matmul <- function(x, y) {
+  if (inherits(x, "dgCMatrix")) {
+    return(as.matrix(.amatrix_opencl_sparse_host(x) %*% .amatrix_opencl_dense_host(y)))
+  }
   .Call(
     "amatrix_opencl_matmul_bridge",
     .amatrix_opencl_dense_host(x),
@@ -224,6 +279,12 @@ amatrix_opencl_matmul <- function(x, y) {
 }
 
 amatrix_opencl_crossprod <- function(x, y = NULL) {
+  if (inherits(x, "dgCMatrix")) {
+    if (is.null(y)) {
+      return(as.matrix(Matrix::crossprod(.amatrix_opencl_sparse_host(x))))
+    }
+    return(as.matrix(Matrix::crossprod(.amatrix_opencl_sparse_host(x), .amatrix_opencl_dense_host(y))))
+  }
   rhs <- if (is.null(y)) NULL else .amatrix_opencl_dense_host(y)
   .Call(
     "amatrix_opencl_crossprod_bridge",
@@ -234,6 +295,12 @@ amatrix_opencl_crossprod <- function(x, y = NULL) {
 }
 
 amatrix_opencl_tcrossprod <- function(x, y = NULL) {
+  if (inherits(x, "dgCMatrix")) {
+    if (is.null(y)) {
+      return(as.matrix(Matrix::tcrossprod(.amatrix_opencl_sparse_host(x))))
+    }
+    return(as.matrix(Matrix::tcrossprod(.amatrix_opencl_sparse_host(x), .amatrix_opencl_dense_host(y))))
+  }
   rhs <- if (is.null(y)) NULL else .amatrix_opencl_dense_host(y)
   .Call(
     "amatrix_opencl_tcrossprod_bridge",
@@ -356,6 +423,15 @@ amatrix_opencl_solve <- function(a, b = NULL) {
       return(result)
     }
   }
+  if (.amatrix_opencl_can_try_device_qr_solve(a, b = b)) {
+    result <- tryCatch(
+      .amatrix_opencl_qr_solve_rhs(a, b),
+      error = function(e) NULL
+    )
+    if (!is.null(result)) {
+      return(result)
+    }
+  }
   .amatrix_opencl_solve_host(a, b = b)
 }
 
@@ -417,6 +493,12 @@ amatrix_opencl_qr_cholqr <- function(x) {
 
   amatrix_opencl_resident_store(x_key, x_mat)
   amatrix_opencl_crossprod_resident(x_key, out_key = gram1_key, defer = TRUE)
+  gram1 <- amatrix_opencl_resident_materialize(gram1_key)
+  gram1_sv <- tryCatch(base::svd(gram1, nu = 0L, nv = 0L)$d, error = function(e) numeric())
+  gram_tol <- getOption("amatrix.opencl.qr_gram_rank_tol", 1e-8)
+  if (length(gram1_sv) != p || any(!is.finite(gram1_sv)) || min(gram1_sv) <= gram_tol * max(1, max(gram1_sv))) {
+    stop("OpenCL CholeskyQR2 rejected rank-deficient input", call. = FALSE)
+  }
   amatrix_opencl_chol_resident(gram1_key, out_key = r1_key, defer = TRUE)
   r1 <- amatrix_opencl_resident_materialize(r1_key)
   inv_r1 <- backsolve(r1, diag(p))
@@ -432,8 +514,13 @@ amatrix_opencl_qr_cholqr <- function(x) {
 
   r <- r2 %*% r1
   diag_r <- abs(diag(r))
+  sv_tol <- getOption("amatrix.opencl.qr_rank_tol", 1e-5)
   if (length(diag_r) != p || any(!is.finite(diag_r)) || any(diag_r <= diag_tol * max(1, max(diag_r)))) {
     stop("OpenCL CholeskyQR2 failed numerical rank check", call. = FALSE)
+  }
+  sv <- tryCatch(base::svd(r, nu = 0L, nv = 0L)$d, error = function(e) numeric())
+  if (length(sv) != p || any(!is.finite(sv)) || min(sv) <= sv_tol * max(1, max(sv))) {
+    stop("OpenCL CholeskyQR2 failed full-rank verification", call. = FALSE)
   }
 
   success <- TRUE
@@ -465,6 +552,55 @@ amatrix_opencl_qr_qy_key <- function(q_key, y) {
     .amatrix_opencl_dense_host(y),
     PACKAGE = "amatrix.opencl"
   )
+}
+
+amatrix_opencl_matmul_resident_host_into <- function(x_key, y, out_key) {
+  invisible(.Call(
+    "amatrix_opencl_matmul_resident_host_into_bridge",
+    as.character(x_key),
+    .amatrix_opencl_dense_host(y),
+    as.character(out_key),
+    PACKAGE = "amatrix.opencl"
+  ))
+}
+
+amatrix_opencl_crossprod_resident_host_into <- function(x_key, y, out_key) {
+  invisible(.Call(
+    "amatrix_opencl_crossprod_resident_host_into_bridge",
+    as.character(x_key),
+    .amatrix_opencl_dense_host(y),
+    as.character(out_key),
+    PACKAGE = "amatrix.opencl"
+  ))
+}
+
+amatrix_opencl_qr_fitted_key <- function(q_key, y) {
+  qty_key <- .amatrix_opencl_temp_key("qr-qty")
+  fitted_key <- .amatrix_opencl_temp_key("qr-fitted")
+
+  on.exit(.amatrix_opencl_drop_if_present(qty_key), add = TRUE)
+  on.exit(.amatrix_opencl_drop_if_present(fitted_key), add = TRUE)
+
+  amatrix_opencl_crossprod_resident_host_into(q_key, y, qty_key)
+  amatrix_opencl_matmul_resident(q_key, qty_key, fitted_key, defer = TRUE)
+  amatrix_opencl_resident_materialize(fitted_key)
+}
+
+.amatrix_opencl_wrap_qr <- function(qr_value, x_host) {
+  amatrix_ns <- asNamespace("amatrix")
+  wrap_qr <- get(".amatrix_wrap_qr", envir = amatrix_ns, inherits = FALSE)
+  wrap_qr(
+    qr_value,
+    amatrix::adgeMatrix(x_host, preferred_backend = "opencl", precision = "fast"),
+    method = "fast"
+  )
+}
+
+.amatrix_opencl_qr_solve_rhs <- function(a, b, tol = 1e-07) {
+  amatrix_ns <- asNamespace("amatrix")
+  qr_solve_value <- get(".amatrix_qr_solve_value", envir = amatrix_ns, inherits = FALSE)
+  qr_fit <- .amatrix_opencl_wrap_qr(amatrix_opencl_qr(a), a)
+  qr_solve_value(qr_fit, b = .amatrix_opencl_dense_host(b), tol = tol)
 }
 
 amatrix_opencl_svd <- function(x, nu, nv, LINPACK = FALSE, ...) {
@@ -597,6 +733,46 @@ amatrix_opencl_resident_materialize <- function(key) {
     as.character(key),
     PACKAGE = "amatrix.opencl"
   )
+}
+
+amatrix_opencl_sparse_resident_store <- function(key, x_sp) {
+  assign(as.character(key), .amatrix_opencl_sparse_host(x_sp), envir = .amatrix_opencl_sparse_host_resident)
+  invisible(TRUE)
+}
+
+amatrix_opencl_sparse_resident_has <- function(key) {
+  exists(as.character(key), envir = .amatrix_opencl_sparse_host_resident, inherits = FALSE)
+}
+
+amatrix_opencl_sparse_resident_drop <- function(key) {
+  key <- as.character(key)
+  if (exists(key, envir = .amatrix_opencl_sparse_host_resident, inherits = FALSE)) {
+    rm(list = key, envir = .amatrix_opencl_sparse_host_resident)
+  }
+  invisible(TRUE)
+}
+
+amatrix_opencl_spmm_resident <- function(sp_key, B, trans_lhs = FALSE) {
+  sp_key <- as.character(sp_key)
+  if (!exists(sp_key, envir = .amatrix_opencl_sparse_host_resident, inherits = FALSE)) {
+    stop(sprintf("unknown opencl sparse resident key '%s'", sp_key), call. = FALSE)
+  }
+
+  sparse_x <- get(sp_key, envir = .amatrix_opencl_sparse_host_resident, inherits = FALSE)
+  rhs <- .amatrix_opencl_dense_host(B)
+  if (isTRUE(trans_lhs)) {
+    return(as.matrix(Matrix::crossprod(sparse_x, rhs)))
+  }
+  as.matrix(sparse_x %*% rhs)
+}
+
+amatrix_opencl_spmm_resident_key <- function(sp_key, y_key, out_key, trans_lhs = FALSE, defer = FALSE) {
+  host_result <- amatrix_opencl_spmm_resident(sp_key, amatrix_opencl_resident_materialize(y_key), trans_lhs = trans_lhs)
+  amatrix_opencl_resident_store(out_key, host_result)
+  if (isTRUE(defer)) {
+    return(NULL)
+  }
+  host_result
 }
 
 amatrix_opencl_solve_resident <- function(a_key, b_key = NULL, out_key, defer = FALSE) {
@@ -810,6 +986,9 @@ amatrix_opencl_backend <- function() {
       if (!op %in% caps) {
         return(FALSE)
       }
+      if (inherits(x, "adgCMatrix")) {
+        return(.amatrix_opencl_sparse_product_supported(op, x, y = y))
+      }
       if (op %in% c("solve", "chol")) {
         return(
           .amatrix_opencl_factor_gpu_enabled() &&
@@ -824,13 +1003,19 @@ amatrix_opencl_backend <- function() {
       if (!isTRUE(amatrix_opencl_is_available())) {
         return(FALSE)
       }
+      if (!op %in% caps) {
+        return(FALSE)
+      }
+      if (inherits(x, "adgCMatrix")) {
+        if (!(x@precision %in% amatrix_opencl_precision_modes())) {
+          return(FALSE)
+        }
+        return(.amatrix_opencl_sparse_product_supported(op, x, y = y))
+      }
       if (!inherits(x, "adgeMatrix")) {
         return(FALSE)
       }
       if (!(x@precision %in% amatrix_opencl_precision_modes())) {
-        return(FALSE)
-      }
-      if (!op %in% caps) {
         return(FALSE)
       }
 
@@ -908,6 +1093,21 @@ amatrix_opencl_backend <- function() {
     },
     resident_materialize = function(key) {
       amatrix_opencl_resident_materialize(key)
+    },
+    sparse_resident_store = function(key, x_sp) {
+      amatrix_opencl_sparse_resident_store(key, x_sp)
+    },
+    sparse_resident_has = function(key) {
+      isTRUE(amatrix_opencl_sparse_resident_has(key))
+    },
+    sparse_resident_drop = function(key) {
+      amatrix_opencl_sparse_resident_drop(key)
+    },
+    spmm_resident = function(sp_key, B, trans_lhs = FALSE) {
+      amatrix_opencl_spmm_resident(sp_key, B, trans_lhs = trans_lhs)
+    },
+    spmm_resident_key = function(sp_key, y_key, out_key, trans_lhs = FALSE, defer = FALSE) {
+      amatrix_opencl_spmm_resident_key(sp_key, y_key, out_key, trans_lhs = trans_lhs, defer = defer)
     },
     matmul_resident = function(x_key, y_key, out_key, defer = FALSE) {
       amatrix_opencl_matmul_resident(x_key, y_key, out_key, defer = defer)
