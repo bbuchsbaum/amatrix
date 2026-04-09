@@ -1,8 +1,16 @@
 #!/usr/bin/env Rscript
 
-suppressPackageStartupMessages({
-  library(amatrix)
-})
+source(file.path("tools", "benchmark-helpers.R"), local = TRUE)
+load_benchmark_amatrix()
+
+available_model_backends <- function() {
+  benchmark_backend_names(include_cpu = TRUE, include_mlx = FALSE, include_opencl = TRUE)
+}
+
+make_bench_matrix <- function(x, backend) {
+  precision <- if (identical(backend, "cpu")) "strict" else "fast"
+  adgeMatrix(x, preferred_backend = backend, precision = precision)
+}
 
 bench_expr <- function(fn, reps = 3L) {
   stopifnot(is.function(fn))
@@ -25,128 +33,147 @@ shared_response_list <- function(n, p, k, responses, seed = 1L) {
   list(X = X, Ys = Ys)
 }
 
-bench_shared_lm <- function(n = 2000L, p = 32L, k = 8L, responses = 8L, reps = 3L) {
+bench_shared_lm <- function(n = 2000L, p = 32L, k = 8L, responses = 8L, reps = 3L, backends = available_model_backends()) {
   case <- shared_response_list(n = n, p = p, k = k, responses = responses, seed = 11L)
-  x_am <- adgeMatrix(case$X)
   w <- seq_len(n) / n
 
-  data.frame(
-    workload = "shared_x_lm",
-    mode = c(
-      "normal_cache_off",
-      "normal_cache_on",
-      "qr_cache_off",
-      "qr_cache_on",
-      "weighted_qr_cache_on"
-    ),
-    n = n,
-    p = p,
-    k = k,
-    responses = responses,
-    lambda = NA_real_,
-    elapsed = c(
-      bench_expr(function() {
-        for (y in case$Ys) {
-          many_lm(x_am, y, include_residuals = FALSE, cache = FALSE, method = "normal")
-        }
-      }, reps = reps),
-      bench_expr(function() {
-        for (y in case$Ys) {
-          many_lm(x_am, y, include_residuals = FALSE, cache = TRUE, method = "normal")
-        }
-      }, reps = reps),
-      bench_expr(function() {
-        for (y in case$Ys) {
-          many_lm(x_am, y, include_residuals = FALSE, cache = FALSE, method = "qr")
-        }
-      }, reps = reps),
-      bench_expr(function() {
-        for (y in case$Ys) {
-          many_lm(x_am, y, include_residuals = FALSE, cache = TRUE, method = "qr")
-        }
-      }, reps = reps),
-      bench_expr(function() {
-        for (y in case$Ys) {
-          many_lm(x_am, y, weights = w, include_residuals = FALSE, cache = TRUE, method = "qr")
-        }
-      }, reps = reps)
+  do.call(rbind, lapply(backends, function(backend) {
+    x_am <- make_bench_matrix(case$X, backend)
+
+    data.frame(
+      backend = backend,
+      precision = x_am@precision,
+      workload = "shared_x_lm",
+      mode = c(
+        "normal_cache_off",
+        "normal_cache_on",
+        "qr_cache_off",
+        "qr_cache_on",
+        "weighted_qr_cache_on"
+      ),
+      n = n,
+      p = p,
+      k = k,
+      responses = responses,
+      lambda = NA_real_,
+      elapsed = c(
+        bench_expr(function() {
+          for (y in case$Ys) {
+            many_lm(x_am, y, include_residuals = FALSE, cache = FALSE, method = "normal")
+          }
+        }, reps = reps),
+        bench_expr(function() {
+          for (y in case$Ys) {
+            many_lm(x_am, y, include_residuals = FALSE, cache = TRUE, method = "normal")
+          }
+        }, reps = reps),
+        bench_expr(function() {
+          for (y in case$Ys) {
+            many_lm(x_am, y, include_residuals = FALSE, cache = FALSE, method = "qr")
+          }
+        }, reps = reps),
+        bench_expr(function() {
+          for (y in case$Ys) {
+            many_lm(x_am, y, include_residuals = FALSE, cache = TRUE, method = "qr")
+          }
+        }, reps = reps),
+        bench_expr(function() {
+          for (y in case$Ys) {
+            many_lm(x_am, y, weights = w, include_residuals = FALSE, cache = TRUE, method = "qr")
+          }
+        }, reps = reps)
+      )
     )
-  )
+  }))
 }
 
-bench_shared_ridge <- function(n = 2000L, p = 32L, k = 8L, responses = 8L, reps = 3L, lambda = 0.5) {
+bench_shared_ridge <- function(n = 2000L, p = 32L, k = 8L, responses = 8L, reps = 3L, lambda = 0.5, backends = available_model_backends()) {
   case <- shared_response_list(n = n, p = p, k = k, responses = responses, seed = 17L)
-  x_am <- adgeMatrix(case$X)
 
-  data.frame(
-    workload = "shared_x_ridge",
-    mode = c("cache_off", "cache_on"),
-    n = n,
-    p = p,
-    k = k,
-    responses = responses,
-    lambda = lambda,
-    elapsed = c(
-      bench_expr(function() {
-        for (y in case$Ys) {
-          ridge_fit(
-            x_am,
-            y,
-            lambda = lambda,
-            include_fitted = FALSE,
-            include_residuals = FALSE,
-            cache = FALSE
-          )
-        }
-      }, reps = reps),
-      bench_expr(function() {
-        for (y in case$Ys) {
-          ridge_fit(
-            x_am,
-            y,
-            lambda = lambda,
-            include_fitted = FALSE,
-            include_residuals = FALSE,
-            cache = TRUE
-          )
-        }
-      }, reps = reps)
+  do.call(rbind, lapply(backends, function(backend) {
+    x_am <- make_bench_matrix(case$X, backend)
+
+    data.frame(
+      backend = backend,
+      precision = x_am@precision,
+      workload = "shared_x_ridge",
+      mode = c("cache_off", "cache_on"),
+      n = n,
+      p = p,
+      k = k,
+      responses = responses,
+      lambda = lambda,
+      elapsed = c(
+        bench_expr(function() {
+          for (y in case$Ys) {
+            ridge_fit(
+              x_am,
+              y,
+              lambda = lambda,
+              include_fitted = FALSE,
+              include_residuals = FALSE,
+              cache = FALSE
+            )
+          }
+        }, reps = reps),
+        bench_expr(function() {
+          for (y in case$Ys) {
+            ridge_fit(
+              x_am,
+              y,
+              lambda = lambda,
+              include_fitted = FALSE,
+              include_residuals = FALSE,
+              cache = TRUE
+            )
+          }
+        }, reps = reps)
+      )
     )
-  )
+  }))
 }
 
-bench_similarity <- function(n = 4000L, p = 64L, reps = 3L) {
+bench_similarity <- function(n = 4000L, p = 64L, reps = 3L, backends = available_model_backends()) {
   set.seed(29)
   X <- matrix(rnorm(n * p), nrow = n, ncol = p)
-  x_am <- adgeMatrix(X)
   w <- seq_len(n) / n
 
-  data.frame(
-    workload = "similarity",
-    mode = c("covariance", "weighted_covariance", "correlation"),
-    n = n,
-    p = p,
-    k = NA_integer_,
-    responses = NA_integer_,
-    lambda = NA_real_,
-    elapsed = c(
-      bench_expr(function() {
-        covariance(x_am)
-      }, reps = reps),
-      bench_expr(function() {
-        covariance(x_am, weights = w)
-      }, reps = reps),
-      bench_expr(function() {
-        correlation(x_am)
-      }, reps = reps)
+  do.call(rbind, lapply(backends, function(backend) {
+    x_am <- make_bench_matrix(X, backend)
+
+    data.frame(
+      backend = backend,
+      precision = x_am@precision,
+      workload = "similarity",
+      mode = c("covariance", "weighted_covariance", "correlation"),
+      n = n,
+      p = p,
+      k = NA_integer_,
+      responses = NA_integer_,
+      lambda = NA_real_,
+      elapsed = c(
+        bench_expr(function() {
+          covariance(x_am)
+        }, reps = reps),
+        bench_expr(function() {
+          covariance(x_am, weights = w)
+        }, reps = reps),
+        bench_expr(function() {
+          correlation(x_am)
+        }, reps = reps)
+      )
     )
+  }))
+}
+
+benchmark_model_core <- function() {
+  rbind(
+    bench_shared_lm(),
+    bench_shared_ridge(),
+    bench_similarity()
   )
 }
 
-results <- rbind(
-  bench_shared_lm(),
-  bench_shared_ridge(),
-  bench_similarity()
-)
-
-print(results)
+if (sys.nframe() == 0L) {
+  print(benchmark_model_core())
+}

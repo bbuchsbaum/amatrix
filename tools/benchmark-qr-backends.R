@@ -1,7 +1,11 @@
 #!/usr/bin/env Rscript
 
 suppressPackageStartupMessages({
-  library(amatrix)
+  if (requireNamespace("pkgload", quietly = TRUE) && file.exists("DESCRIPTION")) {
+    pkgload::load_all(".", quiet = TRUE)
+  } else {
+    library(amatrix)
+  }
   library(amatrix.mlx)
   library(amatrix.arrayfire)
 })

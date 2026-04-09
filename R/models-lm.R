@@ -132,6 +132,46 @@
   )
 }
 
+.amatrix_dense_first_column <- function(X_arg) {
+  stopifnot(inherits(X_arg, "adgeMatrix"))
+
+  nr <- nrow(X_arg)
+  if (nr < 1L) {
+    return(numeric())
+  }
+
+  fenv <- X_arg@finalizer_env
+  if (isTRUE(fenv$host_deferred)) {
+    if (!is.null(fenv$host_x)) {
+      return(as.matrix(fenv$host_x)[, 1L, drop = TRUE])
+    }
+  } else {
+    return(X_arg@x[seq_len(nr)])
+  }
+
+  backend_name <- .amatrix_live_resident_backend(X_arg)
+  if (!is.null(backend_name)) {
+    selector <- matrix(0, nrow = ncol(X_arg), ncol = 1L)
+    selector[1L, 1L] <- 1
+    resident <- .amatrix_try_resident_matmul(X_arg, selector, backend_name)
+    if (!is.null(resident)) {
+      backend <- .amatrix_get_backend(backend_name)
+      on.exit({
+        if (!is.null(resident$resident_key) && isTRUE(backend$resident_has(resident$resident_key))) {
+          backend$resident_drop(resident$resident_key)
+        }
+      }, add = TRUE)
+      value <- resident$value
+      if (is.null(value)) {
+        value <- backend$resident_materialize(resident$resident_key)
+      }
+      return(drop(as.matrix(value)))
+    }
+  }
+
+  as.matrix(amatrix_materialize_host(X_arg))[, 1L, drop = TRUE]
+}
+
 .amatrix_has_explicit_intercept_column <- function(X_arg) {
   stopifnot(inherits(X_arg, "adgeMatrix"))
 
@@ -139,7 +179,7 @@
     return(FALSE)
   }
 
-  first_col <- as.matrix(amatrix_materialize_host(X_arg))[, 1L, drop = TRUE]
+  first_col <- .amatrix_dense_first_column(X_arg)
   isTRUE(all(first_col == 1))
 }
 
@@ -176,6 +216,35 @@
 
 .amatrix_lm_cache_set <- function(cache_key, value) {
   .amatrix_cache_set(cache_key, value)
+}
+
+.amatrix_plan_prefers_cpu_solve <- function(lhs, rhs = NULL) {
+  identical(amatrix_backend_plan(lhs, "solve", y = rhs)$chosen, "cpu")
+}
+
+.amatrix_host_solve_rewrap <- function(lhs, rhs = NULL, template = lhs) {
+  lhs_host <- as.matrix(amatrix_materialize_host(lhs))
+  if (is.null(rhs)) {
+    return(.amatrix_rewrap_like(template, base::solve(lhs_host)))
+  }
+
+  rhs_host <- as.matrix(amatrix_materialize_host(rhs))
+  .amatrix_rewrap_like(template, base::solve(lhs_host, rhs_host))
+}
+
+.amatrix_ridge_penalized_xtx <- function(XtX, lambda, penalize_intercept = FALSE, has_intercept = FALSE) {
+  stopifnot(inherits(XtX, "adgeMatrix"))
+
+  xtx_host <- as.matrix(amatrix_materialize_host(XtX))
+  diag_len <- min(nrow(xtx_host), ncol(xtx_host))
+  diag_index <- cbind(seq_len(diag_len), seq_len(diag_len))
+  xtx_host[diag_index] <- xtx_host[diag_index] + as.double(lambda)
+
+  if (isTRUE(has_intercept) && !isTRUE(penalize_intercept) && diag_len >= 1L) {
+    xtx_host[1L, 1L] <- xtx_host[1L, 1L] - as.double(lambda)
+  }
+
+  .amatrix_rewrap_like(XtX, xtx_host)
 }
 
 .amatrix_lm_cache_value <- function(X_arg, cache = TRUE, need_xtx = TRUE, need_qr = FALSE, cache_key = NULL) {
@@ -382,7 +451,11 @@
     cache_value <- .amatrix_lm_cache_value(X_arg, cache = cache, need_xtx = TRUE, need_qr = FALSE)
     XtX <- cache_value$xtx
     XtY <- am_crossprod(X_arg, Y_arg)
-    coefficients <- am_solve(XtX, XtY)
+    coefficients <- if (.amatrix_plan_prefers_cpu_solve(XtX, XtY)) {
+      .amatrix_host_solve_rewrap(XtX, XtY, template = X_arg)
+    } else {
+      am_solve(XtX, XtY)
+    }
     outputs <- .amatrix_model_outputs(
       X_arg,
       Y_arg,
@@ -758,14 +831,25 @@ ridge_fit <- function(
   cache_value <- .amatrix_lm_cache_value(X_arg, cache = cache)
   XtX <- cache_value$xtx
   XtY <- am_crossprod(X_arg, Y_arg)
-  penalty <- .amatrix_penalty_matrix(
-    X_arg,
-    lambda,
-    penalize_intercept = penalize_intercept,
-    has_intercept = isTRUE(intercept) || .amatrix_has_explicit_intercept_column(X_arg)
-  )
-  penalized_xtx <- ewise("+", XtX, penalty)
-  coefficients <- am_solve(penalized_xtx, XtY)
+  has_intercept_col <- isTRUE(intercept) || .amatrix_has_explicit_intercept_column(X_arg)
+  if (.amatrix_plan_prefers_cpu_solve(XtX, XtY)) {
+    penalized_xtx <- .amatrix_ridge_penalized_xtx(
+      XtX,
+      lambda,
+      penalize_intercept = penalize_intercept,
+      has_intercept = has_intercept_col
+    )
+    coefficients <- .amatrix_host_solve_rewrap(penalized_xtx, XtY, template = X_arg)
+  } else {
+    penalty <- .amatrix_penalty_matrix(
+      X_arg,
+      lambda,
+      penalize_intercept = penalize_intercept,
+      has_intercept = has_intercept_col
+    )
+    penalized_xtx <- ewise("+", XtX, penalty)
+    coefficients <- am_solve(penalized_xtx, XtY)
+  }
   outputs <- .amatrix_model_outputs(
     X_arg,
     Y_arg,
@@ -837,7 +921,11 @@ wls_fit <- function(
     )
     xtx <- crossprod_weighted(X_arg, weights)
     xty <- xty_weighted(X_arg, weights, Y_arg)
-    coefficients <- am_solve(xtx, xty)
+    coefficients <- if (.amatrix_plan_prefers_cpu_solve(xtx, xty)) {
+      .amatrix_host_solve_rewrap(xtx, xty, template = X_arg)
+    } else {
+      am_solve(xtx, xty)
+    }
     cache_value <- list(rank = ncol(X_arg), cache_key = cache_key,
                         cache_reused = FALSE)
     qr_meta <- .amatrix_qr_fit_metadata(NULL)
