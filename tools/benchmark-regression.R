@@ -206,7 +206,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
     dispatch <- compute_dispatch_info(probe_x, "matmul")
     release_residency(probe_x)
   } else {
-    probe_x <- make_dense_operand(if (op %in% c("chol", "solve_rhs")) SPD else X, requested_backend)
+    probe_x <- make_dense_operand(if (op %in% c("chol", "solve_rhs", "eigen_sym")) SPD else X, requested_backend)
     probe_y <- switch(
       op,
       matmul = make_dense_operand(B_host, requested_backend),
@@ -221,6 +221,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
       dist = "crossprod",
       chol = "chol",
       solve_rhs = "solve",
+      eigen_sym = "eigen",
       many_lm = "matmul",
       rsvd = "svd",
       sinkhorn = "matmul"
@@ -243,15 +244,16 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
       dist = function() { aXs <- make_dense_operand(Xs, requested_backend); on.exit(release_residency(aXs), add = TRUE); invisible(dist_matrix(aXs)) },
       chol = function() { aS <- make_dense_operand(SPD, requested_backend); on.exit(release_residency(aS), add = TRUE); invisible(chol(aS)) },
       solve_rhs = function() { aS <- make_dense_operand(SPD, requested_backend); aR <- make_dense_operand(SPD_rhs, requested_backend); on.exit({ release_residency(aS); release_residency(aR) }, add = TRUE); invisible(solve(aS, aR)) },
+      eigen_sym = function() { aS <- make_dense_operand(SPD, requested_backend); on.exit(release_residency(aS), add = TRUE); invisible(eigh(aS)) },
       many_lm = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(many_lm(aX, Y, method = "qr", cache = FALSE)) },
       rsvd = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(rsvd(aX, k = 10L)) },
       sinkhorn = function() { aSink <- make_dense_operand(sink_host, requested_backend); on.exit(release_residency(aSink), add = TRUE); invisible(sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE)) }
     ),
     warm = {
-      aX <- if (op %in% c("chol", "solve_rhs")) NULL else make_dense_operand(X, requested_backend)
+      aX <- if (op %in% c("chol", "solve_rhs", "eigen_sym")) NULL else make_dense_operand(X, requested_backend)
       aB <- if (identical(op, "matmul")) make_dense_operand(B_host, requested_backend) else NULL
       aXs <- if (identical(op, "dist")) make_dense_operand(Xs, requested_backend) else NULL
-      aS <- if (op %in% c("chol", "solve_rhs")) make_dense_operand(SPD, requested_backend) else NULL
+      aS <- if (op %in% c("chol", "solve_rhs", "eigen_sym")) make_dense_operand(SPD, requested_backend) else NULL
       aR <- if (identical(op, "solve_rhs")) make_dense_operand(SPD_rhs, requested_backend) else NULL
       aSink <- if (identical(op, "sinkhorn")) make_dense_operand(sink_host, requested_backend) else NULL
       on.exit({
@@ -267,6 +269,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
         if (identical(op, "dist")) invisible(dist_matrix(aXs))
         if (identical(op, "chol")) invisible(chol(aS))
         if (identical(op, "solve_rhs")) invisible(solve(aS, aR))
+        if (identical(op, "eigen_sym")) invisible(eigh(aS))
         if (identical(op, "many_lm")) invisible(many_lm(aX, Y, method = "qr", cache = TRUE))
         if (identical(op, "rsvd")) invisible(rsvd(aX, k = 10L))
         if (identical(op, "sinkhorn")) invisible(sinkhorn(aSink, max_iter = 5L, tol = 0, return_info = FALSE))
@@ -280,6 +283,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
         dist = function() invisible(dist_matrix(aXs)),
         chol = function() invisible(chol(aS)),
         solve_rhs = function() invisible(solve(aS, aR)),
+        eigen_sym = function() invisible(eigh(aS)),
         many_lm = function() invisible(many_lm(aX, Y, method = "qr", cache = TRUE)),
         rsvd = function() invisible(rsvd(aX, k = 10L)),
         sinkhorn = function() invisible(sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE))
@@ -298,7 +302,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
     requested_backend = requested_backend,
     dispatch_backend = dispatch$dispatch_backend,
     dispatch_path = dispatch$dispatch_path,
-    nrow = if (identical(op, "sinkhorn")) size$sink_n else size$n,
+    nrow = if (identical(op, "sinkhorn")) size$sink_n else if (identical(op, "eigen_sym")) size$p else size$n,
     ncol = if (identical(op, "sinkhorn")) size$sink_n else size$p,
     rhs_width = switch(op, matmul = ncol(B_host), solve_rhs = ncol(SPD_rhs), many_lm = ncol(Y), sinkhorn = size$sink_n, 0L),
     nnz = 0L,
@@ -410,7 +414,7 @@ group_plan <- function(backends, suites = c("dense", "sparse")) {
   out <- list()
 
   if ("dense" %in% suites) {
-    dense_ops <- c("matmul", "crossprod", "covariance", "dist", "chol", "solve_rhs", "many_lm", "rsvd", "sinkhorn")
+    dense_ops <- c("matmul", "crossprod", "covariance", "dist", "chol", "solve_rhs", "eigen_sym", "many_lm", "rsvd", "sinkhorn")
     for (backend in backends) {
       for (op in dense_ops) {
         out[[length(out) + 1L]] <- list(group_id = sprintf("dense-%s-%s", backend, op), suite = "dense", requested_backend = backend, op = op)
@@ -675,6 +679,7 @@ run_worker <- function(args) {
 
   groups <- readRDS(args$plan)
   group <- Filter(function(x) identical(x$group_id, args$group_id), groups)[[1L]]
+  canonical_backend_specs(include_arrayfire = args$include_arrayfire)
   result <- run_group(group)
   saveRDS(result, args$out)
   invisible(NULL)
@@ -702,16 +707,15 @@ run_master <- function(args) {
   for (group in groups) {
     out_path <- tempfile(sprintf("%s-", group$group_id), fileext = ".rds")
     message(sprintf("  %s", group$group_id))
-    log <- tryCatch(
-      system2(
-        file.path(R.home("bin"), "Rscript"),
-        c(script_path, "--worker", paste0("--plan=", plan_path), paste0("--group-id=", group$group_id), paste0("--out=", out_path)),
-        stdout = TRUE,
-        stderr = TRUE
-      ),
-      warning = function(w) attr(w, "output") %||% conditionMessage(w)
+    launch <- benchmark_system2_capture(
+      file.path(R.home("bin"), "Rscript"),
+      benchmark_rscript_source_args(
+        script_path,
+        args = c("--worker", paste0("--plan=", plan_path), paste0("--group-id=", group$group_id), paste0("--out=", out_path))
+      )
     )
-    status <- attr(log, "status") %||% 0L
+    log <- launch$output
+    status <- launch$status
 
     if (status == 0L && file.exists(out_path)) {
       rows[[length(rows) + 1L]] <- readRDS(out_path)

@@ -28,6 +28,15 @@ frob_norm <- function(x) {
   sqrt(sum(x * x))
 }
 
+make_rhs_batches <- function(n, rhs_cols, batches = 8L, seed) {
+  set.seed(seed)
+  replicate(
+    batches,
+    matrix(rnorm(n * rhs_cols), nrow = n, ncol = rhs_cols),
+    simplify = FALSE
+  )
+}
+
 make_ridge_spd_case <- function(n_obs = 4096L, p = 768L, rhs_cols = 64L, lambda = 0.75, seed = 20260406L) {
   set.seed(seed)
   X <- matrix(rnorm(n_obs * p), nrow = n_obs, ncol = p)
@@ -37,7 +46,8 @@ make_ridge_spd_case <- function(n_obs = 4096L, p = 768L, rhs_cols = 64L, lambda 
     case = sprintf("%dx%d", p, p),
     rhs_cols = rhs_cols,
     A = crossprod(X) + diag(lambda, p),
-    B = B
+    B = B,
+    rhs_batches = make_rhs_batches(p, rhs_cols, seed = seed + 1L)
   )
 }
 
@@ -50,7 +60,8 @@ make_kernel_spd_case <- function(n = 640L, p = 12L, rhs_cols = 32L, sigma = 1.1,
     case = sprintf("%dx%d", n, n),
     rhs_cols = rhs_cols,
     A = kernel_matrix(X, kernel = "rbf", sigma = sigma) + diag(jitter, n),
-    B = B
+    B = B,
+    rhs_batches = make_rhs_batches(n, rhs_cols, seed = seed + 1L)
   )
 }
 
@@ -90,6 +101,7 @@ benchmark_case <- function(case) {
   })
   names(solutions) <- backend_names
   ref_sol <- solve(case$A, case$B)
+  ref_batch_solutions <- lapply(case$rhs_batches, function(rhs) solve(case$A, rhs))
 
   factor_rows <- lapply(backend_names, function(backend_name) {
     fac <- factors[[backend_name]]
@@ -146,6 +158,42 @@ benchmark_case <- function(case) {
     )
   })
 
+  reuse_rows <- lapply(backend_names, function(backend_name) {
+    fac <- factors[[backend_name]]
+    batch_solutions <- lapply(case$rhs_batches, function(rhs) chol_solve(fac, rhs))
+    rel_error <- max(vapply(
+      seq_along(batch_solutions),
+      function(idx) {
+        frob_norm(batch_solutions[[idx]] - ref_batch_solutions[[idx]]) / frob_norm(ref_batch_solutions[[idx]])
+      },
+      numeric(1)
+    ))
+
+    elapsed <- benchmark_elapsed(
+      function() {
+        out <- lapply(case$rhs_batches, function(rhs) chol_solve(fac, rhs))
+        invisible(out)
+      },
+      iterations = max(2L, iterations),
+      warmup = if (!identical(backend_name, "cpu")) {
+        function() invisible(lapply(case$rhs_batches, function(rhs) chol_solve(fac, rhs)))
+      } else {
+        NULL
+      }
+    )
+
+    data.frame(
+      workload = case$workload,
+      case = case$case,
+      rhs_cols = case$rhs_cols,
+      phase = "factor_reuse_batches",
+      runtime = backend_name,
+      elapsed = elapsed,
+      rel_error = rel_error,
+      stringsAsFactors = FALSE
+    )
+  })
+
   total_rows <- lapply(backend_names, function(backend_name) {
     elapsed <- benchmark_elapsed(
       function() {
@@ -176,7 +224,7 @@ benchmark_case <- function(case) {
     )
   })
 
-  do.call(rbind, c(factor_rows, solve_rows, total_rows))
+  do.call(rbind, c(factor_rows, solve_rows, reuse_rows, total_rows))
 }
 
 cases <- list(
@@ -196,7 +244,8 @@ results$rel_error <- ifelse(
 cat("Notes:\n")
 cat("- factor benchmarks are cold builds on fresh adgeMatrix objects, so chol_factor() cache reuse is not counted.\n")
 cat("- batched_solve benchmarks reuse a precomputed factor and isolate the many-RHS triangular-solve path.\n")
+cat("- factor_reuse_batches benchmarks factor once, then solve a sequence of RHS batches to expose reusable-factor throughput.\n")
 cat("- ridge_spd uses crossprod(X) + lambda*I; kernel_spd uses an RBF kernel matrix plus diagonal jitter.\n")
-cat("- rel_error is the Cholesky reconstruction residual for factor rows and the relative solution error versus CPU solve for solve rows.\n\n")
+cat("- rel_error is the Cholesky reconstruction residual for factor rows and the relative solution error versus CPU solve for solve/reuse rows.\n\n")
 cat(sprintf("- backends on this run: %s\n\n", paste(backend_names, collapse = ", ")))
 print(results)

@@ -232,6 +232,16 @@
   .amatrix_rewrap_like(template, base::solve(lhs_host, rhs_host))
 }
 
+.amatrix_spd_solve_rewrap <- function(lhs, rhs, template = lhs) {
+  stopifnot(inherits(lhs, "adgeMatrix"))
+
+  if (.amatrix_plan_prefers_cpu_solve(lhs, rhs)) {
+    return(.amatrix_host_solve_rewrap(lhs, rhs, template = template))
+  }
+
+  .amatrix_rewrap_like(template, chol_solve(chol_factor(lhs), rhs))
+}
+
 .amatrix_ridge_penalized_xtx <- function(XtX, lambda, penalize_intercept = FALSE, has_intercept = FALSE) {
   stopifnot(inherits(XtX, "adgeMatrix"))
 
@@ -451,11 +461,7 @@
     cache_value <- .amatrix_lm_cache_value(X_arg, cache = cache, need_xtx = TRUE, need_qr = FALSE)
     XtX <- cache_value$xtx
     XtY <- am_crossprod(X_arg, Y_arg)
-    coefficients <- if (.amatrix_plan_prefers_cpu_solve(XtX, XtY)) {
-      .amatrix_host_solve_rewrap(XtX, XtY, template = X_arg)
-    } else {
-      am_solve(XtX, XtY)
-    }
+    coefficients <- .amatrix_spd_solve_rewrap(XtX, XtY, template = X_arg)
     outputs <- .amatrix_model_outputs(
       X_arg,
       Y_arg,
@@ -848,7 +854,7 @@ ridge_fit <- function(
       has_intercept = has_intercept_col
     )
     penalized_xtx <- ewise("+", XtX, penalty)
-    coefficients <- am_solve(penalized_xtx, XtY)
+    coefficients <- .amatrix_spd_solve_rewrap(penalized_xtx, XtY, template = X_arg)
   }
   outputs <- .amatrix_model_outputs(
     X_arg,
@@ -921,11 +927,7 @@ wls_fit <- function(
     )
     xtx <- crossprod_weighted(X_arg, weights)
     xty <- xty_weighted(X_arg, weights, Y_arg)
-    coefficients <- if (.amatrix_plan_prefers_cpu_solve(xtx, xty)) {
-      .amatrix_host_solve_rewrap(xtx, xty, template = X_arg)
-    } else {
-      am_solve(xtx, xty)
-    }
+    coefficients <- .amatrix_spd_solve_rewrap(xtx, xty, template = X_arg)
     cache_value <- list(rank = ncol(X_arg), cache_key = cache_key,
                         cache_reused = FALSE)
     qr_meta <- .amatrix_qr_fit_metadata(NULL)

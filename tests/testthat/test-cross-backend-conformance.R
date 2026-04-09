@@ -300,3 +300,24 @@ test_that("arrayfire backend: rsvd reconstruction and orthonormality", {
   )
   .run_rsvd_conformance("arrayfire", tol = .CPU_TOL, precision = "strict")
 })
+
+# -- OpenCL backend conformance -----------------------------------------------
+test_that("opencl backend: all core ops match base R", {
+  skip_if_not(requireNamespace("amatrix.opencl", quietly = TRUE),
+              "amatrix.opencl backend package not installed")
+
+  old_env <- Sys.getenv("AMATRIX_OPENCL_PROBE_GPU", unset = NA_character_)
+  on.exit({
+    if (is.na(old_env)) Sys.unsetenv("AMATRIX_OPENCL_PROBE_GPU") else Sys.setenv(AMATRIX_OPENCL_PROBE_GPU = old_env)
+  }, add = TRUE)
+
+  Sys.setenv(AMATRIX_OPENCL_PROBE_GPU = "1")
+  amatrix.opencl::amatrix_opencl_register(overwrite = TRUE)
+
+  skip_if_not(
+    isTRUE(try(amatrix.opencl::amatrix_opencl_native_available(force = TRUE), silent = TRUE)),
+    "opencl backend not available"
+  )
+
+  .run_backend_conformance("opencl", tol = .GPU_TOL)
+})

@@ -77,6 +77,16 @@
   !is.null(dims) && length(dims) == 2L && identical(dims[[1L]], dims[[2L]])
 }
 
+.amatrix_opencl_is_symmetric_matrix <- function(x, tol = sqrt(.Machine$double.eps)) {
+  .amatrix_opencl_is_square_matrix(x) &&
+    isTRUE(isSymmetric(.amatrix_opencl_dense_host(x), tol = tol))
+}
+
+.amatrix_opencl_can_try_device_spd_solve <- function(a) {
+  .amatrix_opencl_device_linalg_available() &&
+    .amatrix_opencl_is_symmetric_matrix(a)
+}
+
 .amatrix_opencl_dense_product_supported <- function(op, x, y = NULL) {
   threshold <- as.integer(getOption("amatrix.opencl.matmul_min_dim", 128L))
   dims <- dim(x)
@@ -134,11 +144,11 @@
 
 amatrix_opencl_capabilities <- function() {
   c("matmul", "crossprod", "tcrossprod", "ewise",
-    "broadcast_ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "covariance")
+    "broadcast_ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "covariance")
 }
 
 amatrix_opencl_features <- function() {
-  c("dense_f32", "resident_dense", "custom_ops", "solve", "chol", "qr", "svd", "covariance")
+  c("dense_f32", "resident_dense", "custom_ops", "solve", "chol", "qr", "svd", "eigen_sym", "covariance")
 }
 
 amatrix_opencl_precision_modes <- function() {
@@ -317,7 +327,7 @@ amatrix_opencl_chol <- function(x) {
 }
 
 amatrix_opencl_solve <- function(a, b = NULL) {
-  if (.amatrix_opencl_device_linalg_available()) {
+  if (.amatrix_opencl_can_try_device_spd_solve(a)) {
     result <- tryCatch(
       .amatrix_opencl_temp_solve_result(
         a,
@@ -337,7 +347,20 @@ amatrix_opencl_solve <- function(a, b = NULL) {
 }
 
 amatrix_opencl_qr <- function(x, ...) {
-  base::qr(.amatrix_opencl_dense_host(x), ...)
+  x_host <- .amatrix_opencl_dense_host(x)
+  qr_host <- base::qr(x_host, ...)
+  q_key <- .amatrix_opencl_temp_key("qr-q")
+  amatrix_opencl_resident_store(q_key, qr.Q(qr_host, complete = FALSE))
+  list(
+    representation = "explicit_qr",
+    q_key = q_key,
+    r = qr.R(qr_host, complete = FALSE),
+    rank = qr_host$rank,
+    pivot = qr_host$pivot,
+    factor = qr_host,
+    factor_source = "native",
+    backend_ops = "opencl"
+  )
 }
 
 amatrix_opencl_svd <- function(x, nu, nv, LINPACK = FALSE, ...) {
@@ -346,6 +369,19 @@ amatrix_opencl_svd <- function(x, nu, nv, LINPACK = FALSE, ...) {
   }
 
   base::svd(.amatrix_opencl_dense_host(x), nu = nu, nv = nv, ...)
+}
+
+amatrix_opencl_eigen <- function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
+  x_host <- .amatrix_opencl_dense_host(x)
+  if (nrow(x_host) != ncol(x_host)) {
+    stop("x must be a square matrix", call. = FALSE)
+  }
+
+  if (!isTRUE(symmetric)) {
+    return(base::eigen(x_host, symmetric = FALSE, only.values = only.values, EISPACK = EISPACK))
+  }
+
+  base::eigen(x_host, symmetric = TRUE, only.values = only.values, EISPACK = EISPACK)
 }
 
 amatrix_opencl_solve_triangular_resident <- function(factor_key, rhs_key, out_key, lower = FALSE, transpose = FALSE, defer = FALSE) {
@@ -656,7 +692,8 @@ amatrix_opencl_backend <- function() {
         return(
           .amatrix_opencl_factor_gpu_enabled() &&
             .amatrix_opencl_is_square_matrix(x) &&
-            max(dim(x)) >= getOption("amatrix.opencl.factor_min_dim", 1024L)
+            max(dim(x)) >= getOption("amatrix.opencl.factor_min_dim", 1024L) &&
+            (identical(op, "chol") || .amatrix_opencl_is_symmetric_matrix(x))
         )
       }
       TRUE
@@ -680,6 +717,10 @@ amatrix_opencl_backend <- function() {
       }
 
       if (op %in% c("solve", "chol")) {
+        return(.amatrix_opencl_is_square_matrix(x))
+      }
+
+      if (identical(op, "eigen")) {
         return(.amatrix_opencl_is_square_matrix(x))
       }
 
@@ -727,6 +768,9 @@ amatrix_opencl_backend <- function() {
     },
     svd = function(x, nu, nv, LINPACK = FALSE, ...) {
       amatrix_opencl_svd(x, nu = nu, nv = nv, LINPACK = LINPACK, ...)
+    },
+    eigen = function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
+      amatrix_opencl_eigen(x, symmetric = symmetric, only.values = only.values, EISPACK = EISPACK)
     },
     covariance = function(x, center = TRUE, denom = NULL, ...) {
       amatrix_opencl_covariance(x, center = center, denom = denom)

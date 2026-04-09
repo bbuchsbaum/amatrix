@@ -21,6 +21,8 @@ test_that("opencl backend advertises dense-first scaffold capabilities", {
   expect_true(backend$supports("chol", amatrix::adgeMatrix(diag(2), precision = "fast")))
   expect_true(backend$supports("qr", amatrix::adgeMatrix(matrix(1:4, nrow = 2), precision = "fast")))
   expect_true(backend$supports("svd", small_fast))
+  expect_true(backend$supports("eigen", amatrix::adgeMatrix(diag(2), precision = "fast")))
+  expect_false(backend$supports("eigen", amatrix::adgeMatrix(matrix(1:6, nrow = 2), precision = "fast")))
   expect_true(backend$supports("covariance", amatrix::adgeMatrix(matrix(1:4, nrow = 2), precision = "fast")))
   expect_false(backend$supports("matmul", amatrix::adgeMatrix(matrix(1, nrow = 128, ncol = 128), precision = "strict")))
   expect_false(backend$supports("svd", amatrix::adgeMatrix(matrix(1:4, nrow = 2), precision = "strict")))
@@ -30,6 +32,7 @@ test_that("opencl backend advertises dense-first scaffold capabilities", {
 test_that("opencl factor GPU support is opt-in and size-gated", {
   backend <- amatrix_opencl_backend()
   x <- amatrix::adgeMatrix(diag(2), precision = "fast")
+  nonsym <- amatrix::adgeMatrix(matrix(c(4, 1, 0, 3), nrow = 2), precision = "fast")
   old <- options(
     amatrix.opencl.available = TRUE,
     amatrix.opencl.factor_gpu = TRUE,
@@ -39,6 +42,7 @@ test_that("opencl factor GPU support is opt-in and size-gated", {
 
   expect_true(is.function(backend$supports_resident))
   expect_true(backend$supports_resident("solve", x))
+  expect_false(backend$supports_resident("solve", nonsym))
   expect_true(backend$supports_resident("chol", x))
 })
 
@@ -46,7 +50,7 @@ test_that("opencl capability list is stable and explicit", {
   expect_identical(
     amatrix_opencl_capabilities(),
     c("matmul", "crossprod", "tcrossprod", "ewise",
-      "broadcast_ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "covariance")
+      "broadcast_ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "covariance")
   )
 })
 
@@ -105,12 +109,20 @@ test_that("opencl bridge boundary is callable in scaffold mode", {
   expect_equal(backend$rowSums(x), rowSums(x), tolerance = 1e-12)
   expect_equal(backend$colSums(x), colSums(x), tolerance = 1e-12)
   expect_equal(backend$chol(spd), chol(spd), tolerance = 1e-12)
-  qr_fit <- backend$qr(x)
+  qr_template <- amatrix::adgeMatrix(x, preferred_backend = "opencl", precision = "fast")
+  qr_fit <- amatrix:::.amatrix_wrap_qr(backend$qr(x), qr_template, method = "fast")
   qr_ref <- qr(x)
   svd_fit <- backend$svd(x, nu = 2L, nv = 2L)
   svd_ref <- base::svd(x, nu = 2L, nv = 2L)
   expect_equal(backend$solve(spd), solve(spd), tolerance = 1e-12)
   expect_equal(backend$solve(spd, rhs), solve(spd, rhs), tolerance = 1e-12)
+  expect_equal(backend$solve(matrix(c(4, 1, 0, 3), nrow = 2), rhs), solve(matrix(c(4, 1, 0, 3), nrow = 2), rhs), tolerance = 1e-12)
+  expect_equal(backend$eigen(spd, symmetric = TRUE)$values, eigen(spd, symmetric = TRUE)$values, tolerance = 1e-12)
+  expect_equal(
+    sort(Re(backend$eigen(matrix(c(2, 1, 0, 3), nrow = 2), symmetric = FALSE)$values)),
+    sort(Re(eigen(matrix(c(2, 1, 0, 3), nrow = 2), symmetric = FALSE)$values)),
+    tolerance = 1e-12
+  )
   expect_equal(backend$chol_solve_factor(chol(spd), rhs), solve(spd, rhs), tolerance = 1e-12)
   expect_equal(
     backend$solve_triangular_factor(chol(spd), rhs, lower = FALSE, transpose = FALSE),
@@ -118,8 +130,9 @@ test_that("opencl bridge boundary is callable in scaffold mode", {
     tolerance = 1e-12
   )
   expect_equal(backend$covariance(x), stats::cov(x), tolerance = 1e-12)
-  expect_equal(unname(qr.Q(qr_fit)), unname(qr.Q(qr_ref)), tolerance = 1e-12)
-  expect_equal(unname(qr.R(qr_fit)), unname(qr.R(qr_ref)), tolerance = 1e-12)
+  expect_true(nzchar(amatrix:::.amatrix_qr_q_key(qr_fit)))
+  expect_equal(unname(amatrix:::.amatrix_qr_q(qr_fit)), unname(qr.Q(qr_ref)), tolerance = 1e-12)
+  expect_equal(unname(amatrix:::.amatrix_qr_r(qr_fit)), unname(qr.R(qr_ref)), tolerance = 1e-12)
   expect_equal(svd_fit$d, svd_ref$d, tolerance = 1e-12)
   expect_equal(
     svd_fit$u %*% diag(svd_fit$d, nrow = length(svd_fit$d)) %*% t(svd_fit$v),
@@ -335,7 +348,7 @@ test_that("opencl resident_handle sinkhorn chain converges for 50 iterations", {
 
   set.seed(42)
   a <- matrix(rexp(36), nrow = 6) + 1e-3
-  h <- amatrix::resident_handle(amatrix::adgeMatrix(a, preferred_backend = "opencl", precision = "fast"))
+  h <- amatrix:::resident_handle(amatrix::adgeMatrix(a, preferred_backend = "opencl", precision = "fast"))
   on.exit({
     if (isTRUE(h$active) && !is.null(h$resident_key)) {
       try(amatrix_opencl_backend()$resident_drop(h$resident_key), silent = TRUE)
@@ -343,9 +356,9 @@ test_that("opencl resident_handle sinkhorn chain converges for 50 iterations", {
   }, add = TRUE)
 
   for (iter in seq_len(50L)) {
-    rs <- amatrix::rh_rowSums(h)
+    rs <- amatrix:::rh_rowSums(h)
     amatrix::am_sweep_inplace(h, 1L, pmax(rs, 1e-15), "/")
-    cs <- amatrix::rh_colSums(h)
+    cs <- amatrix:::rh_colSums(h)
     amatrix::am_sweep_inplace(h, 2L, pmax(cs, 1e-15), "/")
   }
 

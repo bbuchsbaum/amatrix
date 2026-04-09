@@ -153,6 +153,13 @@ chol_factor <- function(X) {
   x
 }
 
+.amatrix_triangular_rhs_arg <- function(B) {
+  if (is.vector(B)) {
+    return(matrix(B, ncol = 1L))
+  }
+  B
+}
+
 chol_solve <- function(factor, B) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
@@ -160,7 +167,8 @@ chol_solve <- function(factor, B) {
 
   R <- factor@factor
   B_in <- B
-  B_mat <- if (is.vector(B)) matrix(B, ncol = 1L) else as.matrix(B)
+  B_arg <- .amatrix_triangular_rhs_arg(B)
+  B_mat <- NULL
 
   # GPU path: dispatch through the backend's chol_solve_factor when the factor
   # was computed in fast mode on a GPU-capable backend.
@@ -168,10 +176,11 @@ chol_solve <- function(factor, B) {
            nzchar(factor@backend) && factor@backend != "cpu") {
     backend <- .amatrix_amchol_backend(factor)
     if (!is.null(backend) && is.function(backend$chol_solve_factor)) {
-      resident_value <- .amatrix_amchol_resident_solve(factor, B_mat)
+      resident_value <- .amatrix_amchol_resident_solve(factor, B_arg)
       if (!is.null(resident_value)) {
         resident_value
       } else {
+        B_mat <- as.matrix(.amatrix_host_arg(B_arg))
         tryCatch(
           backend$chol_solve_factor(R, B_mat),
           error = function(e) {
@@ -186,11 +195,13 @@ chol_solve <- function(factor, B) {
         )
       }
     } else {
+      B_mat <- as.matrix(.amatrix_host_arg(B_arg))
       z <- forwardsolve(t(R), B_mat)
       backsolve(R, z)
     }
   } else {
     # CPU path: standard triangular solve
+    B_mat <- as.matrix(.amatrix_host_arg(B_arg))
     z <- forwardsolve(t(R), B_mat)
     backsolve(R, z)
   }
@@ -215,14 +226,16 @@ chol_logdet <- function(factor) {
 
 solve_triangular <- function(R, B, lower = FALSE) {
   scalar_out <- is.vector(B) || (is.matrix(B) && ncol(B) == 1L)
-  B_mat <- if (is.vector(B)) matrix(B, ncol = 1L) else as.matrix(B)
+  B_arg <- .amatrix_triangular_rhs_arg(B)
+  B_mat <- NULL
   x <- NULL
 
   if (inherits(R, "amChol")) {
-    x <- .amatrix_amchol_resident_triangular_solve(R, B_mat, lower = lower, transpose = FALSE)
+    x <- .amatrix_amchol_resident_triangular_solve(R, B_arg, lower = lower, transpose = FALSE)
     if (is.null(x)) {
       backend <- .amatrix_amchol_backend(R)
       if (!is.null(backend) && is.function(backend$solve_triangular_factor)) {
+        B_mat <- as.matrix(.amatrix_host_arg(B_arg))
         x <- tryCatch(
           backend$solve_triangular_factor(R@factor, B_mat, lower = lower, transpose = FALSE),
           error = function(e) NULL
@@ -235,11 +248,12 @@ solve_triangular <- function(R, B, lower = FALSE) {
     if (inherits(R, "adgeMatrix")) {
       backend_name <- .amatrix_live_resident_backend(R)
       if (!is.null(backend_name)) {
-        x <- .amatrix_resident_triangular_solve(R, B_mat, backend_name, lower = lower, transpose = FALSE)
+        x <- .amatrix_resident_triangular_solve(R, B_arg, backend_name, lower = lower, transpose = FALSE)
       }
       if (is.null(x) && isTRUE(R@precision == "fast") && nzchar(R@preferred_backend) && R@preferred_backend != "cpu") {
         backend <- tryCatch(.amatrix_get_backend(R@preferred_backend), error = function(e) NULL)
         if (!is.null(backend) && is.function(backend$solve_triangular_factor)) {
+          B_mat <- as.matrix(.amatrix_host_arg(B_arg))
           x <- tryCatch(
             backend$solve_triangular_factor(R_mat, B_mat, lower = lower, transpose = FALSE),
             error = function(e) NULL
@@ -250,6 +264,9 @@ solve_triangular <- function(R, B, lower = FALSE) {
   }
 
   if (is.null(x)) {
+    if (is.null(B_mat)) {
+      B_mat <- as.matrix(.amatrix_host_arg(B_arg))
+    }
     x <- if (isTRUE(lower)) {
       forwardsolve(R_mat, B_mat)
     } else {

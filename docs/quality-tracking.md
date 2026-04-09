@@ -94,7 +94,7 @@ available backend. GPU backends are auto-skipped when not installed.
 **Standard suites:**
 
 - `dense`: `matmul`, `crossprod`, `covariance`, `dist`, `chol`, `solve_rhs`,
-  `many_lm`, `rsvd`, `sinkhorn`
+  `eigen_sym`, `many_lm`, `rsvd`, `sinkhorn`
 - `sparse`: `spmv`, `spmm`
 
 Backends are probed systematically from the checkout:
@@ -107,6 +107,10 @@ Backends are probed systematically from the checkout:
 Each backend/op family runs in its own `Rscript` worker. That isolates hard
 backend failures: a segfault or native abort is recorded as a `crash` incident
 in the output instead of taking down the entire benchmark session.
+
+For MLX spectral benchmarks, prefer fresh one-shot `Rscript -e` cells per
+operation rather than combined file-entry workers. See
+`docs/mlx-spectral-benchmark-instability.md`.
 
 **Standard sizes:**
 
@@ -203,7 +207,7 @@ Legend: **tested** = in cross-backend harness or dedicated suite | **partial** =
 | `am_dist` | `as.matrix(dist())` | tested | tested |
 | `am_kernel` linear/rbf/poly | manual formula | tested | — |
 | `am_covariance` | `cov()` | tested | tested |
-| `am_eigen` | `eigen()` | tested (values + residual) | tested |
+| `am_eigen` | `eigen()` / `eigh()` | tested (values + residual) | tested |
 | `svd()` dispatch | `base::svd` | tested (values only) | tested |
 | `am_many_lm` | `lm.fit()` loop | tested | tested |
 | `am_block_lanczos` / `am_block_svd` | `La.svd` | own suite | tested |
@@ -218,6 +222,10 @@ Legend: **tested** = in cross-backend harness or dedicated suite | **partial** =
 | `am_diag` | `base::diag` | partial | — |
 | `t()` / `am_transpose` | `base::t` | tested (dispatch) | — |
 | `am_ewise` | `+`, `-`, `*`, `/` | tested | — |
+| `amatrix_bind_resident` | resident key present + backend reuse | tested | — |
+| `amatrix_resident_backend_for` | backend choice for resident hot path | tested | — |
+| `amatrix_prepare_operands` | auto-bind repeated product operands | tested | — |
+| `amatrix_compile_product` | reusable sparse/dense product plan | tested | — |
 
 ---
 

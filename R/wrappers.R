@@ -179,6 +179,13 @@
 
 .amatrix_lower_sparse_rhs_matmul <- function(x, y) {
   lhs <- .amatrix_retarget_for_sparse_rhs(x, y, vector_as = "row")
+  if (inherits(y, "adgCMatrix")) {
+    choice <- .amatrix_backend_for(y, "matmul", y = lhs)
+    resident <- .amatrix_try_dense_sparse_resident_matmul(lhs, y, choice$name)
+    if (!is.null(resident)) {
+      return(.amatrix_resident_wrap(lhs, resident, out_dim = c(nrow(lhs), ncol(y))))
+    }
+  }
   lowered <- am_crossprod(y, t(lhs))
   .amatrix_transpose_dense_result(lowered, lhs)
 }
@@ -304,12 +311,11 @@
 # triggers a transparent download via amatrix_materialize_dense().
 
 # Returns TRUE when the caller should skip host materialization.
-# Currently always FALSE for the public adgeMatrix path — deferred
-# materialization is used internally by resident_handle and future
-# fused pipelines.  A discrete-GPU backend could flip this via a
-# backend-level flag rather than a global option.
+# Default remains FALSE for the public adgeMatrix path. Backends can opt into
+# the deferred resident result path by setting the global option during
+# benchmarks or fused pipelines.
 .amatrix_defer_host_active <- function() {
-  FALSE
+  isTRUE(getOption("amatrix.defer_host", FALSE))
 }
 
 # Wrap a resident op result as either a deferred or eager adgeMatrix.
@@ -350,15 +356,19 @@
       if (!is.null(rhs) && !isTRUE(rhs$sparse)) {
         defer <- .amatrix_defer_host_active()
         out_key <- .amatrix_next_resident_key(backend_name)
+        ok <- FALSE
         value <- tryCatch(
-          backend$spmm_resident_key(lhs$key, rhs$key, out_key, trans_lhs = FALSE, defer = defer),
+          {
+            ok <- TRUE
+            backend$spmm_resident_key(lhs$key, rhs$key, out_key, trans_lhs = FALSE, defer = defer)
+          },
           error = function(e) {
             try(backend$resident_drop(out_key), silent = TRUE)
             NULL
           }
         )
         .amatrix_cleanup_temp_resident(list(rhs), backend_name)
-        if (!is.null(value)) {
+        if (isTRUE(ok)) {
           return(list(value = value, backend = backend_name, resident_key = out_key))
         }
       } else {
@@ -397,6 +407,41 @@
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
+.amatrix_try_dense_sparse_resident_matmul <- function(x, y, backend_name) {
+  backend <- .amatrix_get_backend(backend_name)
+  if (!inherits(x, "adgeMatrix") || !inherits(y, "adgCMatrix") ||
+      !is.function(backend$dense_sparse_matmul_resident_key)) {
+    return(NULL)
+  }
+
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
+  rhs <- .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = TRUE)
+  if (is.null(lhs) || is.null(rhs) || isTRUE(rhs$sparse) != TRUE) {
+    .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
+    return(NULL)
+  }
+
+  defer <- .amatrix_defer_host_active()
+  out_key <- .amatrix_next_resident_key(backend_name)
+  ok <- FALSE
+  value <- tryCatch(
+    {
+      ok <- TRUE
+      backend$dense_sparse_matmul_resident_key(lhs$key, rhs$key, out_key, defer = defer)
+    },
+    error = function(e) {
+      try(backend$resident_drop(out_key), silent = TRUE)
+      NULL
+    }
+  )
+  .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
+  if (!isTRUE(ok)) {
+    return(NULL)
+  }
+
+  list(value = value, backend = backend_name, resident_key = out_key)
+}
+
 .amatrix_try_resident_crossprod <- function(x, y, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
 
@@ -410,15 +455,19 @@
       if (!is.null(rhs) && !isTRUE(rhs$sparse)) {
         defer <- .amatrix_defer_host_active()
         out_key <- .amatrix_next_resident_key(backend_name)
+        ok <- FALSE
         value <- tryCatch(
-          backend$spmm_resident_key(lhs$key, rhs$key, out_key, trans_lhs = TRUE, defer = defer),
+          {
+            ok <- TRUE
+            backend$spmm_resident_key(lhs$key, rhs$key, out_key, trans_lhs = TRUE, defer = defer)
+          },
           error = function(e) {
             try(backend$resident_drop(out_key), silent = TRUE)
             NULL
           }
         )
         .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
-        if (!is.null(value)) {
+        if (isTRUE(ok)) {
           return(list(value = value, backend = backend_name, resident_key = out_key))
         }
       } else {
@@ -474,15 +523,19 @@
       if (!is.null(rhs_t) && !isTRUE(rhs_t$sparse)) {
         defer <- .amatrix_defer_host_active()
         out_key <- .amatrix_next_resident_key(backend_name)
+        ok <- FALSE
         value <- tryCatch(
-          backend$spmm_resident_key(lhs$key, rhs_t$key, out_key, trans_lhs = FALSE, defer = defer),
+          {
+            ok <- TRUE
+            backend$spmm_resident_key(lhs$key, rhs_t$key, out_key, trans_lhs = FALSE, defer = defer)
+          },
           error = function(e) {
             try(backend$resident_drop(out_key), silent = TRUE)
             NULL
           }
         )
         .amatrix_cleanup_temp_resident(list(lhs, rhs_t), backend_name)
-        if (!is.null(value)) {
+        if (isTRUE(ok)) {
           return(list(value = value, backend = backend_name, resident_key = out_key))
         }
       } else {
@@ -1023,6 +1076,18 @@ am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) 
     x_host <- as.matrix(amatrix_materialize_host(x))
     symmetric <- isSymmetric(x_host)
   }
+
+  # Some GPU backends currently only expose a dense symmetric eigen surface.
+  # Keep the nonsymmetric path honest and fall back to the host implementation
+  # rather than pretending there is native support for the full general problem.
+  if (!isTRUE(symmetric) && inherits(x, "aMatrix")) {
+    choice <- .amatrix_backend_for(x, "eigen")
+    backend_features <- tryCatch(choice$backend$features(), error = function(e) character())
+    if (!identical(choice$name, "cpu") && "eigen_sym" %in% backend_features) {
+      return(base::eigen(as.matrix(amatrix_materialize_host(x)), symmetric = FALSE, only.values = only.values, EISPACK = EISPACK))
+    }
+  }
+
   amatrix_dispatch_op(
     x = x,
     op = "eigen",

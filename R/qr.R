@@ -15,14 +15,18 @@ setOldClass(c("amQR", "amDenseQR"))
   state$q <- q
   state$q_key <- q_key
   state$backend_ops <- backend_ops
-  if (identical(backend_ops, "mlx")) {
+  if (!is.null(backend_ops)) {
     reg.finalizer(
       state,
       function(e) {
-        if (!requireNamespace("amatrix.mlx", quietly = TRUE)) {
+        backend_name <- get0("backend_ops", envir = e, inherits = FALSE)
+        if (is.null(backend_name) || !nzchar(backend_name)) {
           return(invisible(NULL))
         }
-        drop_fun <- get("amatrix_mlx_resident_drop", envir = asNamespace("amatrix.mlx"), inherits = FALSE)
+        backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(err) NULL)
+        if (is.null(backend) || !is.function(backend$resident_drop)) {
+          return(invisible(NULL))
+        }
         keys <- character()
         key <- get0("q_key", envir = e, inherits = FALSE)
         if (!is.null(key)) {
@@ -43,7 +47,10 @@ setOldClass(c("amQR", "amDenseQR"))
         }
         keys <- unique(keys[nzchar(keys)])
         for (key in keys) {
-          try(drop_fun(key), silent = TRUE)
+          if (is.function(backend$resident_has) && !isTRUE(backend$resident_has(key))) {
+            next
+          }
+          try(backend$resident_drop(key), silent = TRUE)
         }
         invisible(NULL)
       },
@@ -59,66 +66,73 @@ setOldClass(c("amQR", "amDenseQR"))
   qr_factor <- qr_obj[["factor", exact = TRUE]]
   qr_factor_builder <- qr_obj[["factor_builder", exact = TRUE]]
   qr_factor_source <- qr_obj[["factor_source", exact = TRUE]]
+  qr_payload <- qr_obj[["qr", exact = TRUE]]
+  qr_representation <- qr_obj[["representation", exact = TRUE]]
+  qr_rank <- qr_obj[["rank", exact = TRUE]]
+  qr_pivot <- qr_obj[["pivot", exact = TRUE]]
+  qr_r <- qr_obj[["r", exact = TRUE]]
+  qr_q <- qr_obj[["q", exact = TRUE]]
+  qr_q_key <- qr_obj[["q_key", exact = TRUE]]
 
-  if (!is.null(qr_obj$qr)) {
+  if (!is.null(qr_payload)) {
     representation <- "base_qr"
-    rank <- as.integer(.amatrix_qr_or(qr_obj$rank, qr_obj$qr$rank))
+    rank <- as.integer(.amatrix_qr_or(qr_rank, qr_payload$rank))
     q_materialized <- FALSE
     r_materialized <- FALSE
     thin <- TRUE
-    pivot <- qr_obj$pivot
+    pivot <- qr_pivot
     pivoted <- !is.null(pivot) && !identical(as.integer(pivot), seq_along(pivot))
     state <- .amatrix_qr_state(factor = qr_obj, factor_source = "native")
-  } else if (identical(qr_obj$representation, "mlx_compact_qr")) {
+  } else if (identical(qr_representation, "mlx_compact_qr")) {
     representation <- "mlx_compact_qr"
-    rank <- as.integer(.amatrix_qr_or(qr_obj$rank, .amatrix_qr_or(qr_factor$rank, if (!is.null(source_dim)) min(source_dim) else NA_integer_)))
+    rank <- as.integer(.amatrix_qr_or(qr_rank, .amatrix_qr_or(qr_factor$rank, if (!is.null(source_dim)) min(source_dim) else NA_integer_)))
     q_materialized <- FALSE
-    r_materialized <- !is.null(qr_obj$r)
-    r_dim <- if (!is.null(qr_obj$r)) dim(as.matrix(qr_obj$r)) else if (!is.null(source_dim)) c(min(source_dim), source_dim[[2]]) else NULL
+    r_materialized <- !is.null(qr_r)
+    r_dim <- if (!is.null(qr_r)) dim(as.matrix(qr_r)) else if (!is.null(source_dim)) c(min(source_dim), source_dim[[2]]) else NULL
     thin <- !is.null(source_dim) && !is.null(r_dim) && identical(r_dim[[1]], min(source_dim))
-    pivot <- if (!is.null(qr_obj$pivot)) as.integer(qr_obj$pivot) else NULL
+    pivot <- if (!is.null(qr_pivot)) as.integer(qr_pivot) else NULL
     pivoted <- !is.null(pivot) && !identical(as.integer(pivot), seq_along(pivot))
     state <- .amatrix_qr_state(
       factor = qr_factor,
       factor_source = qr_factor_source,
       factor_builder = qr_factor_builder,
       q = NULL,
-      q_key = qr_obj$q_key,
-      backend_ops = qr_obj$backend_ops
+      q_key = qr_q_key,
+      backend_ops = qr_obj[["backend_ops", exact = TRUE]]
     )
-  } else if (!is.null(qr_obj$q) && !is.null(qr_obj$r)) {
-    representation <- .amatrix_qr_or(qr_obj$representation, "explicit_qr")
+  } else if (!is.null(qr_q) && !is.null(qr_r)) {
+    representation <- .amatrix_qr_or(qr_representation, "explicit_qr")
     rank <- .amatrix_explicit_qr_rank(qr_obj)
     q_materialized <- TRUE
     r_materialized <- TRUE
-    q_dim <- dim(as.matrix(qr_obj$q))
+    q_dim <- dim(as.matrix(qr_q))
     thin <- !is.null(source_dim) && !is.null(q_dim) && identical(q_dim[[2]], min(source_dim))
-    pivot <- if (!is.null(qr_obj$pivot)) as.integer(qr_obj$pivot) else NULL
+    pivot <- if (!is.null(qr_pivot)) as.integer(qr_pivot) else NULL
     pivoted <- !is.null(pivot) && !identical(as.integer(pivot), seq_along(pivot))
     state <- .amatrix_qr_state(
       factor = qr_factor,
       factor_source = qr_factor_source,
       factor_builder = qr_factor_builder,
-      q = qr_obj$q,
-      q_key = qr_obj$q_key,
-      backend_ops = qr_obj$backend_ops
+      q = qr_q,
+      q_key = qr_q_key,
+      backend_ops = qr_obj[["backend_ops", exact = TRUE]]
     )
-  } else if (!is.null(qr_obj$q_key) && !is.null(qr_obj$r)) {
-    representation <- .amatrix_qr_or(qr_obj$representation, "explicit_qr")
+  } else if (!is.null(qr_q_key) && !is.null(qr_r)) {
+    representation <- .amatrix_qr_or(qr_representation, "explicit_qr")
     rank <- .amatrix_explicit_qr_rank(qr_obj)
     q_materialized <- FALSE
     r_materialized <- TRUE
-    r_dim <- dim(as.matrix(qr_obj$r))
+    r_dim <- dim(as.matrix(qr_r))
     thin <- !is.null(source_dim) && !is.null(r_dim) && identical(r_dim[[1]], min(source_dim))
-    pivot <- if (!is.null(qr_obj$pivot)) as.integer(qr_obj$pivot) else NULL
+    pivot <- if (!is.null(qr_pivot)) as.integer(qr_pivot) else NULL
     pivoted <- !is.null(pivot) && !identical(as.integer(pivot), seq_along(pivot))
     state <- .amatrix_qr_state(
       factor = qr_factor,
       factor_source = qr_factor_source,
       factor_builder = qr_factor_builder,
       q = NULL,
-      q_key = qr_obj$q_key,
-      backend_ops = qr_obj$backend_ops
+      q_key = qr_q_key,
+      backend_ops = qr_obj[["backend_ops", exact = TRUE]]
     )
   } else {
     stop("unsupported QR payload", call. = FALSE)
@@ -146,7 +160,7 @@ setOldClass(c("amQR", "amDenseQR"))
 }
 
 .amatrix_unwrap_qr <- function(qr) {
-  if (inherits(qr, "amDenseQR")) {
+  if (inherits(qr, "amQR") && !is.null(qr$qr)) {
     return(qr$qr)
   }
   qr
@@ -156,13 +170,13 @@ setOldClass(c("amQR", "amDenseQR"))
   if (inherits(qr, "amQR")) {
     return(.amatrix_qr_or(qr$representation, "base_qr"))
   }
-  if (is.list(qr) && !is.null(qr$representation)) {
-    return(as.character(qr$representation))
+  if (is.list(qr) && !is.null(qr[["representation", exact = TRUE]])) {
+    return(as.character(qr[["representation", exact = TRUE]]))
   }
-  if (is.list(qr) && !is.null(qr$qr)) {
+  if (is.list(qr) && !is.null(qr[["qr", exact = TRUE]])) {
     return("base_qr")
   }
-  if (is.list(qr) && (!is.null(qr$q) || !is.null(qr$q_key)) && !is.null(qr$r)) {
+  if (is.list(qr) && (!is.null(qr[["q", exact = TRUE]]) || !is.null(qr[["q_key", exact = TRUE]])) && !is.null(qr[["r", exact = TRUE]])) {
     return("explicit_qr")
   }
   stop("unsupported QR payload", call. = FALSE)
@@ -179,7 +193,7 @@ setOldClass(c("amQR", "amDenseQR"))
 
   payload <- .amatrix_unwrap_qr(qr)
   if (.amatrix_qr_kind(payload) == "base_qr") {
-    return(as.integer(.amatrix_qr_or(payload$rank, payload$qr$rank)))
+    return(as.integer(.amatrix_qr_or(payload[["rank", exact = TRUE]], payload[["qr", exact = TRUE]]$rank)))
   }
 
   .amatrix_explicit_qr_rank(payload)
@@ -244,8 +258,8 @@ setOldClass(c("amQR", "amDenseQR"))
 
 .amatrix_qr_backend_ops <- function(qr) {
   payload <- .amatrix_unwrap_qr(qr)
-  if (is.list(payload) && !is.null(payload$backend_ops)) {
-    return(as.character(payload$backend_ops))
+  if (is.list(payload) && !is.null(payload[["backend_ops", exact = TRUE]])) {
+    return(as.character(payload[["backend_ops", exact = TRUE]]))
   }
   NULL
 }
@@ -295,7 +309,7 @@ setOldClass(c("amQR", "amDenseQR"))
   if (!inherits(qr, "amQR")) {
     return(NULL)
   }
-  .amatrix_qr_or(qr$state$q_key, .amatrix_unwrap_qr(qr)$q_key)
+  .amatrix_qr_or(qr$state$q_key, .amatrix_unwrap_qr(qr)[["q_key", exact = TRUE]])
 }
 
 .amatrix_qr_reconstruct_source <- function(qr) {
@@ -363,16 +377,30 @@ qr_info <- function(qr) {
   get(fun, envir = asNamespace("amatrix.mlx"), inherits = FALSE)(...)
 }
 
+.amatrix_explicit_qr_resident_materialize <- function(qr, key) {
+  backend_name <- .amatrix_qr_backend_ops(qr)
+  if (is.null(backend_name) || !nzchar(backend_name)) {
+    return(NULL)
+  }
+
+  backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
+  if (is.null(backend) || !is.function(backend$resident_materialize)) {
+    return(NULL)
+  }
+
+  backend$resident_materialize(key)
+}
+
 .amatrix_explicit_qr_rank <- function(qr_obj) {
   .amatrix_explicit_qr_rank_tol(qr_obj, tol = NULL)
 }
 
 .amatrix_explicit_qr_rank_tol <- function(qr_obj, tol = NULL) {
-  if (!is.null(qr_obj$rank)) {
-    return(as.integer(qr_obj$rank))
+  if (!is.null(qr_obj[["rank", exact = TRUE]])) {
+    return(as.integer(qr_obj[["rank", exact = TRUE]]))
   }
 
-  r_mat <- as.matrix(qr_obj$r)
+  r_mat <- as.matrix(qr_obj[["r", exact = TRUE]])
   diag_len <- min(dim(r_mat))
   if (diag_len == 0L) {
     return(0L)
@@ -386,15 +414,23 @@ qr_info <- function(qr) {
 
 .amatrix_explicit_qr_q <- function(qr) {
   payload <- .amatrix_unwrap_qr(qr)
-  if (!is.null(payload$q)) {
-    return(as.matrix(payload$q))
+  q_payload <- payload[["q", exact = TRUE]]
+  if (!is.null(q_payload)) {
+    return(as.matrix(q_payload))
   }
   if (inherits(qr, "amQR") && !is.null(qr$state$q)) {
     return(as.matrix(qr$state$q))
   }
   q_key <- .amatrix_qr_q_key(qr)
-  if (!is.null(q_key) && identical(.amatrix_qr_backend_ops(qr), "mlx")) {
-    q_mat <- .amatrix_explicit_qr_native_mlx("amatrix_mlx_resident_materialize", q_key)
+  if (!is.null(q_key)) {
+    q_mat <- if (identical(.amatrix_qr_backend_ops(qr), "mlx")) {
+      .amatrix_explicit_qr_native_mlx("amatrix_mlx_resident_materialize", q_key)
+    } else {
+      .amatrix_explicit_qr_resident_materialize(qr, q_key)
+    }
+    if (is.null(q_mat)) {
+      stop("explicit QR resident q could not be materialized", call. = FALSE)
+    }
     if (inherits(qr, "amQR")) {
       qr$state$q <- q_mat
     }
@@ -405,7 +441,7 @@ qr_info <- function(qr) {
 
 .amatrix_explicit_qr_r <- function(qr) {
   payload <- .amatrix_unwrap_qr(qr)
-  as.matrix(payload$r)
+  as.matrix(payload[["r", exact = TRUE]])
 }
 
 .amatrix_base_qr_q <- function(qr, complete = FALSE) {
@@ -439,11 +475,11 @@ qr_info <- function(qr) {
 .amatrix_qr_r <- function(qr, complete = FALSE) {
   if (identical(.amatrix_qr_kind(qr), "mlx_compact_qr")) {
     payload <- .amatrix_unwrap_qr(qr)
-    if (!is.null(payload$r)) {
-      return(as.matrix(payload$r))
+    if (!is.null(payload[["r", exact = TRUE]])) {
+      return(as.matrix(payload[["r", exact = TRUE]]))
     }
-    if (!is.null(payload$r_key) && identical(.amatrix_qr_backend_ops(qr), "mlx")) {
-      return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_resident_materialize", payload$r_key))
+    if (!is.null(payload[["r_key", exact = TRUE]]) && identical(.amatrix_qr_backend_ops(qr), "mlx")) {
+      return(.amatrix_explicit_qr_native_mlx("amatrix_mlx_resident_materialize", payload[["r_key", exact = TRUE]]))
     }
     return(qr.R(.amatrix_qr_factor(qr), complete = complete))
   }

@@ -50,6 +50,32 @@ test_that("OpenCL normal-equation lm_fit matches lm.fit", {
   })
 })
 
+test_that("OpenCL normal-equation lm_fit seeds reusable Cholesky cache on XtX", {
+  spec <- .opencl_model_spec()
+  skip_if_backend_package_missing(spec)
+
+  register_backend <- .opencl_register_backend(spec)
+
+  with_optional_backend_available(spec, {
+    register_backend(overwrite = TRUE)
+
+    set.seed(20260413L)
+    X_host <- matrix(rnorm(240 * 20), nrow = 240, ncol = 20)
+    Y_host <- matrix(rnorm(240 * 2), nrow = 240, ncol = 2)
+
+    fit <- lm_fit(
+      adgeMatrix(X_host, preferred_backend = "opencl", precision = "fast"),
+      Y_host,
+      method = "normal",
+      cache = TRUE,
+      include_fitted = FALSE,
+      include_residuals = FALSE
+    )
+
+    expect_true(inherits(.amatrix_cache_get(paste0("chol:", fit$xtx@object_id)), "amChol"))
+  })
+})
+
 test_that("OpenCL ridge_fit matches penalized normal equations", {
   spec <- .opencl_model_spec()
   skip_if_backend_package_missing(spec)

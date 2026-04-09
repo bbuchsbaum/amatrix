@@ -46,16 +46,17 @@ for (spec in optional_backend_specs()) {
       fac <- qr(dense_fast)
       fac_base <- base::qr(x_host)
       backend_impl <- amatrix:::.amatrix_get_backend(spec$backend)
+      matmul_expected <- if (isTRUE(backend_impl$supports("matmul", dense_fast, y = diag(2)))) spec$backend else "cpu"
       qr_expected <- if (isTRUE(backend_impl$supports("qr", dense_fast))) spec$backend else "cpu"
 
       expect_identical(dense_plan$chosen, "cpu")
-      expect_identical(dense_fast_plan$chosen, spec$backend)
+      expect_identical(dense_fast_plan$chosen, matmul_expected)
       expect_identical(qr_fast_plan$chosen, qr_expected)
       expect_identical(unsupported_plan$chosen, "cpu")
       expect_identical(sparse_plan$chosen, "cpu")
       solve_expected <- if (isTRUE(backend_impl$supports("solve", dense_fast))) spec$backend else "cpu"
-      expect_identical(summary$chosen, c(spec$backend, qr_expected, solve_expected))
-      expect_identical(summary$cpu_fallback, c(FALSE, identical(qr_expected, "cpu"), identical(solve_expected, "cpu")))
+      expect_identical(summary$chosen, c(matmul_expected, qr_expected, solve_expected))
+      expect_identical(summary$cpu_fallback, c(identical(matmul_expected, "cpu"), identical(qr_expected, "cpu"), identical(solve_expected, "cpu")))
 
       expect_s4_class(dense_fast %*% diag(2), "adgeMatrix")
       expect_s3_class(fac, "amQR")
