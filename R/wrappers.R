@@ -89,6 +89,112 @@
   inherits(value, "adgeMatrix") || inherits(value, "dgeMatrix") || is.matrix(value)
 }
 
+.amatrix_sparse_rhs_lowerable <- function(x, y) {
+  inherits(y, "adgCMatrix") && (
+    inherits(x, "adgeMatrix") ||
+      inherits(x, "aTransposeView") ||
+      inherits(x, "denseMatrix") ||
+      is.matrix(x) ||
+      (is.numeric(x) && is.null(dim(x)))
+  )
+}
+
+.amatrix_retarget_for_sparse_rhs <- function(x, y, vector_as = c("row", "col")) {
+  stopifnot(inherits(y, "adgCMatrix"))
+  vector_as <- match.arg(vector_as)
+
+  if (is.numeric(x) && is.null(dim(x))) {
+    x <- if (identical(vector_as, "row")) {
+      matrix(x, nrow = 1L)
+    } else {
+      matrix(x, ncol = 1L)
+    }
+  }
+
+  if (inherits(x, "dgCMatrix")) {
+    return(new_adgCMatrix(
+      x,
+      preferred_backend = y@preferred_backend,
+      policy = y@policy,
+      precision = y@precision
+    ))
+  }
+
+  if (inherits(x, "aMatrix") || inherits(x, "denseMatrix")) {
+    x <- as.matrix(amatrix_materialize_host(x))
+  }
+
+  new_adgeMatrix(
+    as.matrix(x),
+    preferred_backend = y@preferred_backend,
+    policy = y@policy,
+    precision = y@precision
+  )
+}
+
+.amatrix_transpose_dimnames <- function(dn) {
+  if (is.null(dn) || length(dn) != 2L) {
+    return(list(NULL, NULL))
+  }
+  rev(dn)
+}
+
+.amatrix_transpose_dense_result <- function(value, template) {
+  if (inherits(value, "adgeMatrix")) {
+    backend_name <- .amatrix_live_resident_backend(value)
+    if (!is.null(backend_name)) {
+      backend <- .amatrix_get_backend(backend_name)
+      if (is.function(backend$transpose_resident) &&
+          .amatrix_backend_supports_resident_op(backend, "transpose", x = value)) {
+        source <- .amatrix_prepare_resident_arg(value, backend_name, promote_amatrix = FALSE)
+        if (!is.null(source)) {
+          out_key <- .amatrix_next_resident_key(backend_name)
+          ok <- tryCatch(
+            {
+              backend$transpose_resident(source$key, out_key)
+              TRUE
+            },
+            error = function(e) {
+              try(backend$resident_drop(out_key), silent = TRUE)
+              FALSE
+            }
+          )
+          if (ok) {
+            obj <- new_adgeMatrix_deferred(
+              dim = rev(dim(value)),
+              dimnames = .amatrix_transpose_dimnames(value@Dimnames),
+              preferred_backend = template@preferred_backend,
+              policy = template@policy,
+              precision = template@precision
+            )
+            return(.amatrix_bind_resident(obj, backend_name, out_key))
+          }
+        }
+      }
+    }
+  }
+
+  .amatrix_rewrap_like(template, t(as.matrix(.amatrix_host_arg(value))))
+}
+
+.amatrix_lower_sparse_rhs_matmul <- function(x, y) {
+  lhs <- .amatrix_retarget_for_sparse_rhs(x, y, vector_as = "row")
+  lowered <- am_crossprod(y, t(lhs))
+  .amatrix_transpose_dense_result(lowered, lhs)
+}
+
+.amatrix_lower_sparse_rhs_crossprod <- function(x, y, ...) {
+  lhs <- .amatrix_retarget_for_sparse_rhs(x, y, vector_as = "col")
+  lowered <- am_crossprod(y, lhs, ...)
+  .amatrix_transpose_dense_result(lowered, lhs)
+}
+
+.amatrix_lower_sparse_rhs_tcrossprod <- function(x, y, ...) {
+  lhs <- .amatrix_retarget_for_sparse_rhs(x, y, vector_as = "row")
+  lowered <- am_tcrossprod(y, lhs, ...)
+  .amatrix_transpose_dense_result(lowered, lhs)
+}
+
 .amatrix_prepare_resident_arg <- function(value, backend_name, promote_amatrix = TRUE) {
   backend <- .amatrix_get_backend(backend_name)
   if (!.amatrix_backend_residency_capable(backend)) {
@@ -108,6 +214,40 @@
     backend$sparse_resident_store(resident_key, host)
     .amatrix_bind_resident(value, backend_name, resident_key, sparse = TRUE)
     return(list(key = resident_key, temporary = FALSE, tracked = TRUE, sparse = TRUE))
+  }
+
+  if (inherits(value, "aTransposeView")) {
+    if (is.function(backend$transpose_resident)) {
+      source <- .amatrix_prepare_resident_arg(value@source, backend_name, promote_amatrix = promote_amatrix)
+      if (is.null(source) || isTRUE(source$sparse)) {
+        .amatrix_cleanup_temp_resident(list(source), backend_name)
+        return(NULL)
+      }
+
+      resident_key <- .amatrix_next_resident_key(backend_name)
+      ok <- tryCatch(
+        {
+          backend$transpose_resident(source$key, resident_key)
+          TRUE
+        },
+        error = function(e) {
+          try(backend$resident_drop(resident_key), silent = TRUE)
+          FALSE
+        }
+      )
+      .amatrix_cleanup_temp_resident(list(source), backend_name)
+      if (ok) {
+        return(list(key = resident_key, temporary = TRUE, tracked = FALSE))
+      }
+    }
+
+    if (!isTRUE(promote_amatrix)) {
+      return(NULL)
+    }
+
+    resident_key <- .amatrix_next_resident_key(backend_name)
+    backend$resident_store(resident_key, t(as.matrix(amatrix_materialize_dense(value@source))))
+    return(list(key = resident_key, temporary = TRUE, tracked = FALSE))
   }
 
   if (inherits(value, "adgeMatrix")) {
@@ -202,11 +342,11 @@
 
   # Sparse resident path: LHS is adgCMatrix with spmm_resident support
   if (inherits(x, "adgCMatrix")) {
-    lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
+    lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
     if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
 
     if (is.function(backend$spmm_resident_key)) {
-      rhs <- .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = FALSE)
+      rhs <- .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = TRUE)
       if (!is.null(rhs) && !isTRUE(rhs$sparse)) {
         defer <- .amatrix_defer_host_active()
         out_key <- .amatrix_next_resident_key(backend_name)
@@ -238,8 +378,8 @@
     return(NULL)
   }
 
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
-  rhs <- .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = FALSE)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
+  rhs <- .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = TRUE)
   if (is.null(lhs) || is.null(rhs)) {
     .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
     return(NULL)
@@ -261,21 +401,47 @@
   backend <- .amatrix_get_backend(backend_name)
 
   # Sparse resident path: crossprod(X, Y) = t(X) %*% Y → spmm_resident with trans_lhs=TRUE
-  if (inherits(x, "adgCMatrix") && !is.null(y) && is.function(backend$spmm_resident)) {
-    lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
+  if (inherits(x, "adgCMatrix") && !is.null(y)) {
+    lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
     if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
-    rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
-    if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
-    value <- backend$spmm_resident(lhs$key, rhs_mat, trans_lhs = TRUE)
-    return(list(value = value, backend = NULL, resident_key = NULL, host_only = TRUE))
+
+    if (is.function(backend$spmm_resident_key)) {
+      rhs <- .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = TRUE)
+      if (!is.null(rhs) && !isTRUE(rhs$sparse)) {
+        defer <- .amatrix_defer_host_active()
+        out_key <- .amatrix_next_resident_key(backend_name)
+        value <- tryCatch(
+          backend$spmm_resident_key(lhs$key, rhs$key, out_key, trans_lhs = TRUE, defer = defer),
+          error = function(e) {
+            try(backend$resident_drop(out_key), silent = TRUE)
+            NULL
+          }
+        )
+        .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
+        if (!is.null(value)) {
+          return(list(value = value, backend = backend_name, resident_key = out_key))
+        }
+      } else {
+        .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
+      }
+    }
+
+    if (is.function(backend$spmm_resident)) {
+      rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
+      if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
+      value <- backend$spmm_resident(lhs$key, rhs_mat, trans_lhs = TRUE)
+      return(list(value = value, backend = NULL, resident_key = NULL, host_only = TRUE))
+    }
+
+    .amatrix_cleanup_temp_resident(list(lhs), backend_name)
   }
 
   if (!.amatrix_backend_supports_resident_op(backend, "crossprod", x = x, y = y)) {
     return(NULL)
   }
 
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
-  rhs <- if (is.null(y)) NULL else .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = FALSE)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
+  rhs <- if (is.null(y)) NULL else .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = TRUE)
   if (is.null(lhs) || (!is.null(y) && is.null(rhs))) {
     .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
     return(NULL)
@@ -299,21 +465,47 @@
 
   # Sparse resident path: tcrossprod(X, Y) = X %*% t(Y) → spmm_resident with
   # the dense RHS transposed on the host side.
-  if (inherits(x, "adgCMatrix") && !is.null(y) && is.function(backend$spmm_resident)) {
-    lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
+  if (inherits(x, "adgCMatrix") && !is.null(y)) {
+    lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
     if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
-    rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
-    if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
-    value <- backend$spmm_resident(lhs$key, t(rhs_mat), trans_lhs = FALSE)
-    return(list(value = value, backend = NULL, resident_key = NULL, host_only = TRUE))
+
+    if (is.function(backend$spmm_resident_key)) {
+      rhs_t <- .amatrix_prepare_resident_arg(am_transpose(y), backend_name, promote_amatrix = TRUE)
+      if (!is.null(rhs_t) && !isTRUE(rhs_t$sparse)) {
+        defer <- .amatrix_defer_host_active()
+        out_key <- .amatrix_next_resident_key(backend_name)
+        value <- tryCatch(
+          backend$spmm_resident_key(lhs$key, rhs_t$key, out_key, trans_lhs = FALSE, defer = defer),
+          error = function(e) {
+            try(backend$resident_drop(out_key), silent = TRUE)
+            NULL
+          }
+        )
+        .amatrix_cleanup_temp_resident(list(lhs, rhs_t), backend_name)
+        if (!is.null(value)) {
+          return(list(value = value, backend = backend_name, resident_key = out_key))
+        }
+      } else {
+        .amatrix_cleanup_temp_resident(list(lhs, rhs_t), backend_name)
+      }
+    }
+
+    if (is.function(backend$spmm_resident)) {
+      rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
+      if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
+      value <- backend$spmm_resident(lhs$key, t(rhs_mat), trans_lhs = FALSE)
+      return(list(value = value, backend = NULL, resident_key = NULL, host_only = TRUE))
+    }
+
+    .amatrix_cleanup_temp_resident(list(lhs), backend_name)
   }
 
   if (!.amatrix_backend_supports_resident_op(backend, "tcrossprod", x = x, y = y)) {
     return(NULL)
   }
 
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
-  rhs <- if (is.null(y)) NULL else .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = FALSE)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
+  rhs <- if (is.null(y)) NULL else .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = TRUE)
   if (is.null(lhs) || (!is.null(y) && is.null(rhs))) {
     .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
     return(NULL)
@@ -408,7 +600,7 @@
 .amatrix_try_resident_solve <- function(a, b, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
   if (!.amatrix_backend_supports_resident_op(backend, "solve", x = a, y = b)) return(NULL)
-  lhs <- .amatrix_prepare_resident_arg(a, backend_name, promote_amatrix = FALSE)
+  lhs <- .amatrix_prepare_resident_arg(a, backend_name, promote_amatrix = TRUE)
   if (is.null(lhs)) return(NULL)
   out_key <- .amatrix_next_resident_key(backend_name)
   if (is.null(b)) {
@@ -419,7 +611,7 @@
     .amatrix_cleanup_temp_resident(list(lhs), backend_name)
   } else {
     b_arg <- if (is.vector(b)) matrix(b, ncol = 1L) else b
-    rhs <- .amatrix_prepare_resident_arg(b_arg, backend_name, promote_amatrix = FALSE)
+    rhs <- .amatrix_prepare_resident_arg(b_arg, backend_name, promote_amatrix = TRUE)
     if (is.null(rhs)) {
       .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       return(NULL)
@@ -438,7 +630,7 @@
 .amatrix_try_resident_chol <- function(x, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
   if (!.amatrix_backend_supports_resident_op(backend, "chol", x = x)) return(NULL)
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
   if (is.null(lhs)) return(NULL)
   out_key <- .amatrix_next_resident_key(backend_name)
   value <- tryCatch(
@@ -451,6 +643,10 @@
 }
 
 matmul <- function(x, y) {
+  if (.amatrix_sparse_rhs_lowerable(x, y)) {
+    return(.amatrix_lower_sparse_rhs_matmul(x, y))
+  }
+
   # irlba's hot path passes a plain numeric vector for v (A %*% v).
   # _prepare_resident_arg only accepts matrices, so without promotion the
   # resident path silently fails: _try_resident_matmul returns NULL,
@@ -505,6 +701,10 @@ matmul <- function(x, y) {
 }
 
 am_crossprod <- function(x, y = NULL, ...) {
+  if (.amatrix_sparse_rhs_lowerable(x, y)) {
+    return(.amatrix_lower_sparse_rhs_crossprod(x, y, ...))
+  }
+
   if (!inherits(x, "aMatrix")) {
     if (is.null(y)) return(base::crossprod(x, ...))
     return(base::crossprod(x, y = y, ...))
@@ -542,6 +742,10 @@ am_crossprod <- function(x, y = NULL, ...) {
 }
 
 am_tcrossprod <- function(x, y = NULL, ...) {
+  if (.amatrix_sparse_rhs_lowerable(x, y)) {
+    return(.amatrix_lower_sparse_rhs_tcrossprod(x, y, ...))
+  }
+
   if (!inherits(x, "aMatrix")) {
     if (is.null(y)) return(base::tcrossprod(x, ...))
     return(base::tcrossprod(x, y = y, ...))

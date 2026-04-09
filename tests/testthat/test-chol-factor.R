@@ -21,6 +21,11 @@ make_kernel_spd <- function(n_obs, p, sigma = 1.0, jitter = 0.1, seed = 1L) {
   specs[[match("mlx", vapply(specs, `[[`, character(1), "backend"))]]
 }
 
+.opencl_test_spec <- function() {
+  specs <- optional_backend_specs()
+  specs[[match("opencl", vapply(specs, `[[`, character(1), "backend"))]]
+}
+
 .frob_norm <- function(x) {
   sqrt(sum(x * x))
 }
@@ -156,5 +161,75 @@ test_that("fast MLX Cholesky path stays aligned on kernel-like SPD systems", {
     expect_lt(recon_rel, 5e-6)
     expect_lt(solve_ref_rel, 5e-6)
     expect_lt(solve_resid_rel, 5e-6)
+  })
+})
+
+test_that("fast OpenCL Cholesky path matches CPU on dense SPD solves", {
+  spec <- .opencl_test_spec()
+  skip_if_backend_package_missing(spec)
+
+  ns <- optional_backend_namespace(spec$package)
+  register_backend <- get(spec$register_fun, envir = ns, inherits = FALSE)
+
+  with_optional_backend_available(spec, {
+    register_backend(overwrite = TRUE)
+
+    A <- make_ridge_spd(n_obs = 256L, p = 64L, lambda = 0.5, seed = 20260408L)
+    B <- matrix(rnorm(64L * 12L), nrow = 64L, ncol = 12L)
+    X_opencl <- adgeMatrix(A, preferred_backend = "opencl", precision = "fast")
+
+    expect_identical(amatrix_backend_plan(X_opencl, "chol")$chosen, "opencl")
+    expect_identical(amatrix_backend_plan(X_opencl, "solve", y = adgeMatrix(B, preferred_backend = "opencl", precision = "fast"))$chosen, "opencl")
+
+    fac <- chol_factor(X_opencl)
+    sol <- chol_solve(fac, B)
+    ref_sol <- solve(A, B)
+    recon_rel <- .frob_norm(crossprod(fac@factor) - A) / .frob_norm(A)
+    solve_ref_rel <- .frob_norm(sol - ref_sol) / .frob_norm(ref_sol)
+    solve_resid_rel <- .frob_norm(A %*% sol - B) / .frob_norm(B)
+
+    expect_s4_class(fac, "amChol")
+    expect_identical(fac@backend, "opencl")
+    expect_true(all(is.finite(fac@factor)))
+    expect_true(all(is.finite(sol)))
+    expect_lt(recon_rel, 5e-6)
+    expect_lt(solve_ref_rel, 5e-6)
+    expect_lt(solve_resid_rel, 5e-6)
+  })
+})
+
+test_that("fast OpenCL chol_factor retains resident factor for repeated solves", {
+  spec <- .opencl_test_spec()
+  skip_if_backend_package_missing(spec)
+
+  ns <- optional_backend_namespace(spec$package)
+  register_backend <- get(spec$register_fun, envir = ns, inherits = FALSE)
+  native_available <- get("amatrix_opencl_native_available", envir = ns, inherits = FALSE)
+  bridge_info <- get("amatrix_opencl_bridge_info", envir = ns, inherits = FALSE)
+
+  with_optional_backend_available(spec, {
+    register_backend(overwrite = TRUE)
+
+    skip_if_not(isTRUE(native_available(force = TRUE)))
+    skip_if_not(isTRUE(bridge_info()$clblast))
+
+    old <- options(
+      amatrix.opencl.factor_gpu = TRUE,
+      amatrix.opencl.factor_min_dim = 1L
+    )
+    on.exit(options(old), add = TRUE)
+
+    A <- make_ridge_spd(n_obs = 192L, p = 48L, lambda = 0.75, seed = 20260409L)
+    B <- matrix(rnorm(48L * 8L), nrow = 48L, ncol = 8L)
+    X_opencl <- adgeMatrix(A, preferred_backend = "opencl", precision = "fast")
+
+    fac <- chol_factor(X_opencl)
+    tri <- solve_triangular(fac, B)
+    sol <- chol_solve(fac, B)
+
+    expect_true(inherits(fac@factor_obj, "aMatrix"))
+    expect_identical(amatrix:::.amatrix_live_resident_backend(fac@factor_obj), "opencl")
+    expect_equal(tri, backsolve(chol(A), B), tolerance = 5e-6)
+    expect_equal(sol, solve(A, B), tolerance = 5e-6)
   })
 })

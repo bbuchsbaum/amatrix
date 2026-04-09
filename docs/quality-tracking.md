@@ -91,6 +91,23 @@ available backend. GPU backends are auto-skipped when not installed.
 | Comparison | `speedup_vs_cpu = cpu_ms / backend_ms` |
 | Tool | `bench::mark(iterations=10, check=FALSE, memory=FALSE)` |
 
+**Standard suites:**
+
+- `dense`: `matmul`, `crossprod`, `covariance`, `dist`, `chol`, `solve_rhs`,
+  `many_lm`, `rsvd`, `sinkhorn`
+- `sparse`: `spmv`, `spmm`
+
+Backends are probed systematically from the checkout:
+- `cpu`
+- `mlx`
+- `opencl`
+- `arrayfire` when explicitly enabled for benchmark runs
+- `metal` for sparse products only
+
+Each backend/op family runs in its own `Rscript` worker. That isolates hard
+backend failures: a segfault or native abort is recorded as a `crash` incident
+in the output instead of taking down the entire benchmark session.
+
 **Standard sizes:**
 
 | Label | n | p | Notes |
@@ -99,17 +116,31 @@ available backend. GPU backends are auto-skipped when not installed.
 | medium | 1024 | 128 | Main workload |
 | large | 4096 | 128 | Memory-pressure regime |
 
-Op-specific caps: `am_dist` input is capped at 512 rows to prevent OOM even at
-`large` size.
+Op-specific caps:
+- `am_dist` input is capped at 512 rows to prevent OOM even at `large` size.
+- `am_sinkhorn` uses square positive inputs at `128x128`, `512x512`, and
+  `1024x1024` with a fixed 25-iteration loop so the resident iterative path is
+  represented without dominating total runtime.
+
+`tools/benchmark-regression.R` also auto-discovers repo-local optional backend
+builds from `.tmp/opencl-lib`, `.tmp/lib`, `.tmp/backends-lib`, and
+`.tmp/metal-lib`, so MLX, OpenCL, and Metal can be benchmarked directly from
+this checkout when those backend packages are present.
 
 ### 3.2 Baseline File
 
 ```
-tools/baseline.csv     ← machine-local, NOT committed to git
+tools/baseline.csv                     <- machine-local baseline snapshot
+tools/benchmark-results/<timestamp>/   <- per-run artifacts
 ```
 
-- Contains columns: `op, size, backend, median_ms, speedup_vs_cpu`
-- Header lines starting with `#` record the R version, hostname, and timestamp.
+- The baseline stores canonical key columns plus `median_ms` for successful
+  rows only.
+- Each run writes:
+  - `raw-results.csv` with one row per benchmark cell
+  - `summary.csv` with CPU-relative speedups and baseline ratios
+  - `incidents.csv` with `error`, `crash`, and `unavailable` rows
+  - `metadata.rds` with host and runtime metadata
 - **Baseline is machine-specific.** Numbers from a MacBook M3 are not comparable
   to numbers from an AWS g4dn instance. Regenerate after hardware changes.
 
@@ -121,10 +152,14 @@ Rscript tools/benchmark-regression.R --update
 
 # Subsequent runs — compare to saved baseline:
 Rscript tools/benchmark-regression.R
+
+# Focus a run while debugging:
+Rscript tools/benchmark-regression.R --backends=cpu,mlx --suites=sparse
 ```
 
-The script prints "OK — no regressions vs baseline." when all ops are within 20%
-of baseline. Regressions are printed with `ratio = current_ms / baseline_ms`.
+The script prints a regression summary, an incident summary, and the artifact
+paths for the run. Regressions are reported with
+`ratio_vs_baseline = current_ms / baseline_ms`.
 
 ### 3.4 Regression Threshold
 
@@ -133,6 +168,11 @@ loose to absorb OS scheduling noise. A genuine regression (algorithm change,
 extra allocation, routing regression) typically appears as >50%.
 
 Do not update the baseline to mask a regression. Fix the code first.
+
+Cold-path numbers include wrap/materialization cost by constructing fresh
+`adgeMatrix`/`adgCMatrix` inputs inside the timed closure. Warm dense rows reuse
+resident dense inputs; warm sparse rows use the resident sparse product path and
+are recorded as `resident` variants.
 
 ### 3.5 Interpreting Speedup
 
@@ -151,13 +191,14 @@ Legend: **tested** = in cross-backend harness or dedicated suite | **partial** =
 | Op | Base-R Reference | Accuracy | Benchmark |
 |----|-----------------|----------|-----------|
 | `%*%` / `am_matmul` | `base::%*%` | tested | tested |
+| sparse `%*%` (`SpMV` / `SpMM` via `adgCMatrix`) | `Matrix::%*%` | tested (dispatch + calibration + sparse suites) | tested |
 | `crossprod` / `am_crossprod` | `base::crossprod` | tested | tested |
 | `tcrossprod` / `am_tcrossprod` | `base::tcrossprod` | tested | tested |
 | `+`, `*`, scalar ewise | `+`, `*` | tested | tested |
 | `rowSums` / `am_row_sums` | `base::rowSums` | tested | tested |
 | `colSums` / `am_col_sums` | `base::colSums` | tested | tested |
-| `chol` / `am_chol` | `base::chol` | tested | tested |
-| `solve` / `am_solve` | `base::solve` | tested | tested |
+| `chol` / `am_chol` | `base::chol` | tested (conformance + factor suites) | tested |
+| `solve` / `am_solve` | `base::solve` | tested (conformance + backend-local smoke) | tested |
 | `am_rsvd` | truncated SVD | tested (recon + ortho) | tested |
 | `am_dist` | `as.matrix(dist())` | tested | tested |
 | `am_kernel` linear/rbf/poly | manual formula | tested | — |
@@ -166,6 +207,7 @@ Legend: **tested** = in cross-backend harness or dedicated suite | **partial** =
 | `svd()` dispatch | `base::svd` | tested (values only) | tested |
 | `am_many_lm` | `lm.fit()` loop | tested | tested |
 | `am_block_lanczos` / `am_block_svd` | `La.svd` | own suite | tested |
+| `am_sinkhorn` | plain Sinkhorn loop | own suite | tested |
 | `am_irlba` | `am_rsvd` | own suite | — |
 | `am_chol_solve` / `am_chol_factor` | `solve(chol(...))` | own suite | — |
 | `am_svd_factor` + project/reconstruct | reconstruction | own suite | — |
@@ -198,9 +240,17 @@ Rscript tools/benchmark-regression.R --update
 Rscript tools/benchmark-regression.R
 ```
 
+### Run the install/load smoke gate
+Use this after touching `NAMESPACE`, exports, S3/S4 registrations, or package
+startup/registration code.
+```bash
+Rscript tools/smoke-install-load.R
+```
+
 ### Run a specific subsystem benchmark (deep-dive)
 ```bash
 Rscript tools/benchmark-dense-products.R
+Rscript tools/benchmark-sinkhorn.R
 Rscript tools/benchmark-flagship-many-y.R
 # ... see tools/ for the full list
 ```

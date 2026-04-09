@@ -1,175 +1,760 @@
 #!/usr/bin/env Rscript
-# tools/benchmark-regression.R
-#
-# Canonical performance regression harness for amatrix.
-# Covers all major op families at three standard sizes.
-#
-# Two timing variants per (backend × size):
-#   cold  — adgeMatrix wraps host data; first op triggers lazy GPU upload.
-#            Represents real-world first-call latency.
-#   warm  — data is pre-resident on the GPU before timing starts.
-#            Shows pure compute throughput, removing PCIe/Metal transfer cost.
-#
-# Usage:
-#   Rscript tools/benchmark-regression.R             # compare to baseline
-#   Rscript tools/benchmark-regression.R --update    # write/overwrite baseline
-#   Rscript tools/benchmark-regression.R --warm-only # show warm results only
-#
-# Requires: bench, amatrix (amatrix.mlx optional but recommended on Apple Silicon)
-#
-# Baseline file: tools/baseline.csv (machine-local, not committed to git).
-# Regenerate after hardware changes or major refactors with --update.
 
 suppressPackageStartupMessages({
-  library(amatrix)
+  if (file.exists(file.path("tools", "benchmark-helpers.R"))) {
+    source(file.path("tools", "benchmark-helpers.R"), local = FALSE)
+  }
+  load_benchmark_amatrix()
+  if (!requireNamespace("Matrix", quietly = TRUE)) {
+    stop("Matrix package required for sparse benchmark suite", call. = FALSE)
+  }
 })
 
-if (!requireNamespace("bench", quietly = TRUE)) {
-  stop("bench package required: install.packages('bench')", call. = FALSE)
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
+timestamp_tag <- function(x = Sys.time()) {
+  format(as.POSIXct(x, tz = Sys.timezone()), "%Y%m%d-%H%M%S")
 }
-library(bench)
 
-args        <- commandArgs(trailingOnly = TRUE)
-update_mode <- "--update"    %in% args
-warm_only   <- "--warm-only" %in% args
+parse_args <- function(args) {
+  out <- list(
+    update = "--update" %in% args,
+    warm_only = "--warm-only" %in% args,
+    worker = "--worker" %in% args,
+    baseline = "tools/baseline.csv",
+    output_dir = file.path("tools", "benchmark-results", timestamp_tag()),
+    plan = NULL,
+    out = NULL,
+    group_id = NULL,
+    suites = c("dense", "sparse"),
+    backends = NULL,
+    include_arrayfire = .benchmark_arrayfire_requested()
+  )
 
-mlx_ok <- tryCatch(
-  requireNamespace("amatrix.mlx", quietly = TRUE) &&
-    amatrix.mlx::amatrix_mlx_is_available(),
-  error = function(e) FALSE
-)
-BACKENDS <- c("cpu", if (mlx_ok) "mlx")
+  for (arg in args) {
+    if (!startsWith(arg, "--")) {
+      next
+    }
+    key <- sub("^--", "", arg)
+    if (!grepl("=", key, fixed = TRUE)) {
+      next
+    }
+    pieces <- strsplit(key, "=", fixed = TRUE)[[1L]]
+    name <- pieces[[1L]]
+    value <- paste(pieces[-1L], collapse = "=")
+    if (identical(name, "baseline")) out$baseline <- value
+    if (identical(name, "output-dir")) out$output_dir <- value
+    if (identical(name, "plan")) out$plan <- value
+    if (identical(name, "out")) out$out <- value
+    if (identical(name, "group-id")) out$group_id <- value
+    if (identical(name, "suites")) out$suites <- strsplit(value, ",", fixed = TRUE)[[1L]]
+    if (identical(name, "backends")) out$backends <- strsplit(value, ",", fixed = TRUE)[[1L]]
+    if (identical(name, "include-arrayfire")) out$include_arrayfire <- identical(value, "1")
+  }
 
-# Standard sizes: small / medium / large.
-# p is kept at 32 for wide ops (dist, many_lm) to keep runtime manageable.
-SIZES <- list(
-  small  = list(n = 256L,  p = 32L),
-  medium = list(n = 1024L, p = 128L),
-  large  = list(n = 4096L, p = 128L)
-)
+  out$suites <- unique(out$suites[nzchar(out$suites)])
+  out
+}
 
-run_size <- function(sz, backend) {
+canonical_backend_specs <- function(include_arrayfire = .benchmark_arrayfire_requested()) {
+  available_benchmark_backends(
+    include_cpu = TRUE,
+    include_mlx = TRUE,
+    include_metal = TRUE,
+    include_opencl = TRUE,
+    include_arrayfire = include_arrayfire
+  )
+}
+
+filter_backend_specs <- function(specs, names = NULL) {
+  if (is.null(names)) {
+    return(specs)
+  }
+
+  keep <- names[names %in% vapply(specs, `[[`, character(1), "name")]
+  specs[vapply(specs, function(spec) spec$name %in% keep, logical(1))]
+}
+
+dense_sizes <- function() {
+  list(
+    small = list(n = 256L, p = 32L, sink_n = 128L),
+    medium = list(n = 1024L, p = 128L, sink_n = 512L),
+    large = list(n = 4096L, p = 128L, sink_n = 1024L)
+  )
+}
+
+sparse_sizes <- function() {
+  list(
+    medium = list(nrow = 4000L, ncol = 1000L),
+    large = list(nrow = 8000L, ncol = 2000L)
+  )
+}
+
+sparse_densities <- function() c(0.001, 0.005, 0.01, 0.05)
+
+spmm_rhs_widths <- function() c(8L, 32L)
+
+new_result_row <- function(...) {
+  defaults <- list(
+    suite = NA_character_,
+    op = NA_character_,
+    size_label = NA_character_,
+    variant = NA_character_,
+    requested_backend = NA_character_,
+    dispatch_backend = NA_character_,
+    dispatch_path = NA_character_,
+    status = "ok",
+    error_message = NA_character_,
+    nrow = NA_integer_,
+    ncol = NA_integer_,
+    rhs_width = NA_integer_,
+    nnz = NA_integer_,
+    density = NA_real_,
+    density_bucket = NA_character_,
+    reps = NA_integer_,
+    median_ms = NA_real_
+  )
+  values <- modifyList(defaults, list(...))
+  as.data.frame(values, stringsAsFactors = FALSE)
+}
+
+benchmark_time_ms <- function(fn, reps = 7L, warmup = 1L) {
+  reps <- as.integer(reps)
+  warmup <- as.integer(warmup)
+
+  if (warmup > 0L) {
+    for (idx in seq_len(warmup)) {
+      fn()
+    }
+  }
+
+  timings <- vapply(seq_len(reps), function(idx) {
+    gc()
+    start <- proc.time()[["elapsed"]]
+    fn()
+    (proc.time()[["elapsed"]] - start) * 1000
+  }, numeric(1))
+
+  median(timings)
+}
+
+make_dense_operand <- function(host, backend) {
+  precision <- if (identical(backend, "cpu")) "strict" else "fast"
+  adgeMatrix(host, preferred_backend = backend, precision = precision)
+}
+
+make_sparse_operand <- function(host, backend) {
+  precision <- if (identical(backend, "cpu")) "strict" else "fast"
+  as_adgCMatrix(host, preferred_backend = backend, precision = precision)
+}
+
+release_residency <- function(x) {
+  if (!inherits(x, "aMatrix")) {
+    return(invisible(FALSE))
+  }
+
+  entry <- amatrix:::.amatrix_resident_entry(x)
+  if (is.null(entry)) {
+    return(invisible(FALSE))
+  }
+
+  backend <- tryCatch(amatrix:::.amatrix_get_backend(entry$backend), error = function(e) NULL)
+  if (is.null(backend)) {
+    return(invisible(FALSE))
+  }
+
+  if (isTRUE(entry$sparse) && is.function(backend$sparse_resident_drop)) {
+    try(backend$sparse_resident_drop(entry$resident_key), silent = TRUE)
+  } else if (is.function(backend$resident_drop)) {
+    try(backend$resident_drop(entry$resident_key), silent = TRUE)
+  }
+  amatrix:::.amatrix_drop_resident_binding(x)
+  invisible(TRUE)
+}
+
+compute_dispatch_info <- function(x, op, y = NULL) {
+  plan <- tryCatch(amatrix_backend_plan(x, op, y = y), error = function(e) NULL)
+  if (is.null(plan)) {
+    return(list(dispatch_backend = NA_character_, dispatch_path = NA_character_))
+  }
+  list(dispatch_backend = plan$chosen %||% NA_character_, dispatch_path = plan$chosen_path %||% NA_character_)
+}
+
+run_dense_case <- function(requested_backend, op, size_label, variant) {
+  size <- dense_sizes()[[size_label]]
+  if (is.null(size)) {
+    stop(sprintf("unknown dense size '%s'", size_label), call. = FALSE)
+  }
+
   set.seed(1L)
-  X <- matrix(rnorm(sz$n * sz$p), sz$n, sz$p)
+  X <- matrix(rnorm(size$n * size$p), size$n, size$p)
   set.seed(2L)
-  Y <- matrix(rnorm(sz$n * 3L), sz$n, 3L)
-
-  # Cap dist input to 512 rows to stay under GPU OOM at large sizes.
-  n_dist <- min(sz$n, 512L)
-  Xs     <- X[seq_len(n_dist), , drop = FALSE]
-
-  # Pre-generate RHS so the same matrix is reused across iterations.
+  Y <- matrix(rnorm(size$n * 3L), size$n, 3L)
   set.seed(3L)
-  B_host <- matrix(rnorm(sz$p * sz$p), sz$p, sz$p)
+  B_host <- matrix(rnorm(size$p * size$p), size$p, size$p)
+  set.seed(4L)
+  Z <- matrix(rnorm(size$p * size$p), size$p, size$p)
+  SPD <- crossprod(Z) + diag(size$p) * 2
+  SPD_rhs <- matrix(rnorm(size$p * 3L), size$p, 3L)
+  set.seed(5L)
+  sink_host <- exp(matrix(rnorm(size$sink_n * size$sink_n), size$sink_n, size$sink_n))
+  n_dist <- min(size$n, 512L)
+  Xs <- X[seq_len(n_dist), , drop = FALSE]
 
-  # ── Cold-start timing ──────────────────────────────────────────────────────
-  # adgeMatrix is freshly constructed; first operation triggers lazy GPU upload.
-  aX_cold <- adgeMatrix(X, preferred_backend = backend)
-
-  cold <- bench::mark(
-    matmul     = { invisible(aX_cold %*% B_host) },
-    crossprod  = { invisible(crossprod(aX_cold)) },
-    covariance = { invisible(covariance(aX_cold)) },
-    dist       = { invisible(dist_matrix(Xs)) },
-    many_lm    = { invisible(many_lm(aX_cold, Y, method = "qr", cache = FALSE)) },
-    rsvd       = { invisible(rsvd(aX_cold, k = 10L)) },
-    iterations = 10L,
-    check      = FALSE,
-    memory     = FALSE
-  )
-  cold$variant <- "cold"
-
-  # ── Warm-start timing ──────────────────────────────────────────────────────
-  # Pre-upload aX and the RHS to GPU; dry-run each op to prime caches.
-  aX_warm <- adgeMatrix(X, preferred_backend = backend)
-  aB_warm <- adgeMatrix(B_host, preferred_backend = backend)
-  if (backend != "cpu") {
-    invisible(aX_warm %*% aB_warm)  # trigger X upload + warm metal kernel
-    invisible(crossprod(aX_warm))   # ensure X resident
+  if (identical(op, "sinkhorn")) {
+    probe_x <- make_dense_operand(sink_host, requested_backend)
+    dispatch <- compute_dispatch_info(probe_x, "matmul")
+    release_residency(probe_x)
+  } else {
+    probe_x <- make_dense_operand(if (op %in% c("chol", "solve_rhs")) SPD else X, requested_backend)
+    probe_y <- switch(
+      op,
+      matmul = make_dense_operand(B_host, requested_backend),
+      solve_rhs = make_dense_operand(SPD_rhs, requested_backend),
+      NULL
+    )
+    dispatch_op <- switch(
+      op,
+      matmul = "matmul",
+      crossprod = "crossprod",
+      covariance = "crossprod",
+      dist = "crossprod",
+      chol = "chol",
+      solve_rhs = "solve",
+      many_lm = "matmul",
+      rsvd = "svd",
+      sinkhorn = "matmul"
+    )
+    dispatch <- compute_dispatch_info(probe_x, dispatch_op, y = probe_y)
+    release_residency(probe_x)
+    if (inherits(probe_y, "aMatrix")) {
+      release_residency(probe_y)
+    }
   }
 
-  warm <- bench::mark(
-    matmul     = { invisible(aX_warm %*% aB_warm) },
-    crossprod  = { invisible(crossprod(aX_warm)) },
-    covariance = { invisible(covariance(aX_warm)) },
-    dist       = { invisible(dist_matrix(Xs)) },
-    many_lm    = { invisible(many_lm(aX_warm, Y, method = "qr", cache = TRUE)) },
-    rsvd       = { invisible(rsvd(aX_warm, k = 10L)) },
-    iterations = 10L,
-    check      = FALSE,
-    memory     = FALSE
-  )
-  warm$variant <- "warm"
+  reps <- 7L
+  runner <- switch(
+    variant,
+    cold = switch(
+      op,
+      matmul = function() { aX <- make_dense_operand(X, requested_backend); aB <- make_dense_operand(B_host, requested_backend); on.exit({ release_residency(aX); release_residency(aB) }, add = TRUE); invisible(aX %*% aB) },
+      crossprod = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(crossprod(aX)) },
+      covariance = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(covariance(aX)) },
+      dist = function() { aXs <- make_dense_operand(Xs, requested_backend); on.exit(release_residency(aXs), add = TRUE); invisible(dist_matrix(aXs)) },
+      chol = function() { aS <- make_dense_operand(SPD, requested_backend); on.exit(release_residency(aS), add = TRUE); invisible(chol(aS)) },
+      solve_rhs = function() { aS <- make_dense_operand(SPD, requested_backend); aR <- make_dense_operand(SPD_rhs, requested_backend); on.exit({ release_residency(aS); release_residency(aR) }, add = TRUE); invisible(solve(aS, aR)) },
+      many_lm = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(many_lm(aX, Y, method = "qr", cache = FALSE)) },
+      rsvd = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(rsvd(aX, k = 10L)) },
+      sinkhorn = function() { aSink <- make_dense_operand(sink_host, requested_backend); on.exit(release_residency(aSink), add = TRUE); invisible(sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE)) }
+    ),
+    warm = {
+      aX <- if (op %in% c("chol", "solve_rhs")) NULL else make_dense_operand(X, requested_backend)
+      aB <- if (identical(op, "matmul")) make_dense_operand(B_host, requested_backend) else NULL
+      aXs <- if (identical(op, "dist")) make_dense_operand(Xs, requested_backend) else NULL
+      aS <- if (op %in% c("chol", "solve_rhs")) make_dense_operand(SPD, requested_backend) else NULL
+      aR <- if (identical(op, "solve_rhs")) make_dense_operand(SPD_rhs, requested_backend) else NULL
+      aSink <- if (identical(op, "sinkhorn")) make_dense_operand(sink_host, requested_backend) else NULL
+      on.exit({
+        for (obj in list(aX, aB, aXs, aS, aR, aSink)) {
+          release_residency(obj)
+        }
+      }, add = TRUE)
 
-  res          <- rbind(cold, warm)
-  res$backend  <- backend
-  res$size     <- paste0(sz$n, "x", sz$p)
-  res
+      tryCatch({
+        if (!is.null(aB)) invisible(aX %*% aB)
+        if (identical(op, "crossprod")) invisible(crossprod(aX))
+        if (identical(op, "covariance")) invisible(covariance(aX))
+        if (identical(op, "dist")) invisible(dist_matrix(aXs))
+        if (identical(op, "chol")) invisible(chol(aS))
+        if (identical(op, "solve_rhs")) invisible(solve(aS, aR))
+        if (identical(op, "many_lm")) invisible(many_lm(aX, Y, method = "qr", cache = TRUE))
+        if (identical(op, "rsvd")) invisible(rsvd(aX, k = 10L))
+        if (identical(op, "sinkhorn")) invisible(sinkhorn(aSink, max_iter = 5L, tol = 0, return_info = FALSE))
+      }, error = function(e) NULL)
+
+      switch(
+        op,
+        matmul = function() invisible(aX %*% aB),
+        crossprod = function() invisible(crossprod(aX)),
+        covariance = function() invisible(covariance(aX)),
+        dist = function() invisible(dist_matrix(aXs)),
+        chol = function() invisible(chol(aS)),
+        solve_rhs = function() invisible(solve(aS, aR)),
+        many_lm = function() invisible(many_lm(aX, Y, method = "qr", cache = TRUE)),
+        rsvd = function() invisible(rsvd(aX, k = 10L)),
+        sinkhorn = function() invisible(sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE))
+      )
+    },
+    stop(sprintf("unknown dense variant '%s'", variant), call. = FALSE)
+  )
+
+  median_ms <- benchmark_time_ms(runner, reps = reps)
+
+  new_result_row(
+    suite = "dense",
+    op = op,
+    size_label = size_label,
+    variant = variant,
+    requested_backend = requested_backend,
+    dispatch_backend = dispatch$dispatch_backend,
+    dispatch_path = dispatch$dispatch_path,
+    nrow = if (identical(op, "sinkhorn")) size$sink_n else size$n,
+    ncol = if (identical(op, "sinkhorn")) size$sink_n else size$p,
+    rhs_width = switch(op, matmul = ncol(B_host), solve_rhs = ncol(SPD_rhs), many_lm = ncol(Y), sinkhorn = size$sink_n, 0L),
+    nnz = 0L,
+    density = 0,
+    density_bucket = "dense",
+    reps = reps,
+    median_ms = median_ms
+  )
 }
 
-message("Running benchmark suite (", paste(BACKENDS, collapse = ", "),
-        " \u00d7 ", length(SIZES), " sizes \u00d7 2 variants \u00d7 10 reps) ...")
+make_sparse_case <- function(nrow, ncol, density, rhs_width, seed) {
+  set.seed(seed)
+  list(
+    X_host = Matrix::rsparsematrix(nrow, ncol, density = density),
+    rhs_host = matrix(rnorm(ncol * rhs_width), nrow = ncol, ncol = rhs_width)
+  )
+}
 
-results <- do.call(rbind, lapply(SIZES, function(sz) {
-  do.call(rbind, lapply(BACKENDS, function(b) {
-    message("  ", b, " @ ", sz$n, "x", sz$p, " ...")
-    run_size(sz, b)
-  }))
-}))
-
-# Build tidy output frame.
-# as.numeric(bench_time) returns seconds; * 1e3 → milliseconds.
-out <- data.frame(
-  op        = as.character(results$expression),
-  size      = results$size,
-  backend   = results$backend,
-  variant   = results$variant,
-  median_ms = as.numeric(results$median) * 1e3,
-  stringsAsFactors = FALSE
-)
-
-# Compute speedup_vs_cpu within each (variant × size × op).
-cpu_med <- out[out$backend == "cpu", c("op", "size", "variant", "median_ms")]
-names(cpu_med)[4] <- "cpu_ms"
-out <- merge(out, cpu_med, by = c("op", "size", "variant"), all.x = TRUE)
-out$speedup_vs_cpu <- round(out$cpu_ms / out$median_ms, 2L)
-out$cpu_ms <- NULL
-
-out <- out[order(out$variant, out$size, out$op, out$backend), ]
-
-BASELINE <- "tools/baseline.csv"
-
-if (update_mode || !file.exists(BASELINE)) {
-  cols <- c("op", "size", "backend", "variant", "median_ms", "speedup_vs_cpu")
-  write.csv(out[, cols], BASELINE, row.names = FALSE)
-  message("Baseline written to ", BASELINE)
-  message("\nResults:")
-  print(out[, cols], row.names = FALSE)
-} else {
-  base_data <- read.csv(BASELINE)
-  names(base_data)[names(base_data) == "median_ms"] <- "base_ms"
-
-  merge_keys <- intersect(c("op", "size", "backend", "variant"),
-                          names(base_data))
-  comp <- merge(out, base_data[, c(merge_keys, "base_ms")],
-                by = merge_keys, all.x = TRUE)
-  comp$ratio <- round(comp$median_ms / comp$base_ms, 3L)
-
-  # Regression check on warm-path (representative of steady-state perf).
-  warm_comp <- comp[comp$variant == "warm", ]
-  regs <- warm_comp[!is.na(warm_comp$ratio) & warm_comp$ratio > 1.2, ]
-  if (nrow(regs) > 0L) {
-    message("\nREGRESSIONS DETECTED (warm path >20% slower than baseline):")
-    print(regs[, c("op", "size", "backend", "median_ms", "base_ms", "ratio")],
-          row.names = FALSE)
-  } else {
-    message("\nOK \u2014 no regressions vs baseline (warm path).")
+run_sparse_case <- function(requested_backend, op, size_label, density, rhs_width, variant) {
+  size <- sparse_sizes()[[size_label]]
+  if (is.null(size)) {
+    stop(sprintf("unknown sparse size '%s'", size_label), call. = FALSE)
   }
 
-  disp <- if (warm_only) comp[comp$variant == "warm", ] else comp
-  message("\n", if (warm_only) "Warm" else "Full", " comparison:")
-  print(disp[order(disp$variant, disp$size, disp$op, disp$backend),
-             c("op", "size", "backend", "variant", "median_ms",
-               "speedup_vs_cpu", "ratio", "base_ms")],
-        row.names = FALSE)
+  rhs_width <- as.integer(rhs_width)
+  case <- make_sparse_case(
+    nrow = size$nrow,
+    ncol = size$ncol,
+    density = density,
+    rhs_width = rhs_width,
+    seed = 1000L + rhs_width + as.integer(density * 1000)
+  )
+
+  probe_x <- make_sparse_operand(case$X_host, requested_backend)
+  probe_y <- make_dense_operand(case$rhs_host, requested_backend)
+  dispatch <- compute_dispatch_info(probe_x, "matmul", y = probe_y)
+  release_residency(probe_x)
+  release_residency(probe_y)
+
+  reps <- 5L
+  runner <- switch(
+    variant,
+    cold = function() {
+      x <- make_sparse_operand(case$X_host, requested_backend)
+      y <- make_dense_operand(case$rhs_host, requested_backend)
+      on.exit({
+        release_residency(x)
+        release_residency(y)
+      }, add = TRUE)
+      invisible(x %*% y)
+    },
+    resident = {
+      resident_x <- make_sparse_operand(case$X_host, requested_backend)
+      resident_y <- make_dense_operand(case$rhs_host, requested_backend)
+      on.exit({
+        release_residency(resident_x)
+        release_residency(resident_y)
+      }, add = TRUE)
+      invisible(resident_x %*% resident_y)
+      function() invisible(resident_x %*% resident_y)
+    },
+    stop(sprintf("unknown sparse variant '%s'", variant), call. = FALSE)
+  )
+
+  median_ms <- benchmark_time_ms(runner, reps = reps)
+  density_value <- amatrix:::.amatrix_sparse_density(case$X_host)
+
+  new_result_row(
+    suite = "sparse",
+    op = op,
+    size_label = size_label,
+    variant = variant,
+    requested_backend = requested_backend,
+    dispatch_backend = dispatch$dispatch_backend,
+    dispatch_path = dispatch$dispatch_path,
+    nrow = size$nrow,
+    ncol = size$ncol,
+    rhs_width = rhs_width,
+    nnz = length(case$X_host@x),
+    density = density_value,
+    density_bucket = amatrix:::.amatrix_sparse_density_bucket(density_value),
+    reps = reps,
+    median_ms = median_ms
+  )
+}
+
+safe_case <- function(fun, cell_info) {
+  tryCatch(
+    fun(),
+    error = function(e) {
+      new_result_row(
+        suite = cell_info$suite,
+        op = cell_info$op,
+        size_label = cell_info$size_label,
+        variant = cell_info$variant,
+        requested_backend = cell_info$requested_backend,
+        nrow = cell_info$nrow %||% NA_integer_,
+        ncol = cell_info$ncol %||% NA_integer_,
+        rhs_width = cell_info$rhs_width %||% NA_integer_,
+        density = cell_info$density %||% NA_real_,
+        status = "error",
+        error_message = conditionMessage(e)
+      )
+    }
+  )
+}
+
+group_plan <- function(backends, suites = c("dense", "sparse")) {
+  out <- list()
+
+  if ("dense" %in% suites) {
+    dense_ops <- c("matmul", "crossprod", "covariance", "dist", "chol", "solve_rhs", "many_lm", "rsvd", "sinkhorn")
+    for (backend in backends) {
+      for (op in dense_ops) {
+        out[[length(out) + 1L]] <- list(group_id = sprintf("dense-%s-%s", backend, op), suite = "dense", requested_backend = backend, op = op)
+      }
+    }
+  }
+
+  if ("sparse" %in% suites) {
+    sparse_ops <- c("spmv", "spmm")
+    for (backend in backends) {
+      for (op in sparse_ops) {
+        out[[length(out) + 1L]] <- list(group_id = sprintf("sparse-%s-%s", backend, op), suite = "sparse", requested_backend = backend, op = op)
+      }
+    }
+  }
+
+  out
+}
+
+expand_group_rows <- function(group) {
+  rows <- list()
+  if (identical(group$suite, "dense")) {
+    for (size_label in names(dense_sizes())) {
+      for (variant in c("cold", "warm")) {
+        rows[[length(rows) + 1L]] <- new_result_row(
+          suite = "dense",
+          op = group$op,
+          size_label = size_label,
+          variant = variant,
+          requested_backend = group$requested_backend,
+          nrow = dense_sizes()[[size_label]]$n,
+          ncol = dense_sizes()[[size_label]]$p
+        )
+      }
+    }
+  }
+
+  if (identical(group$suite, "sparse")) {
+    rhs_widths <- if (identical(group$op, "spmv")) 1L else spmm_rhs_widths()
+    for (size_label in names(sparse_sizes())) {
+      for (density in sparse_densities()) {
+        for (rhs_width in rhs_widths) {
+          for (variant in c("cold", "resident")) {
+            rows[[length(rows) + 1L]] <- new_result_row(
+              suite = "sparse",
+              op = group$op,
+              size_label = size_label,
+              variant = variant,
+              requested_backend = group$requested_backend,
+              nrow = sparse_sizes()[[size_label]]$nrow,
+              ncol = sparse_sizes()[[size_label]]$ncol,
+              rhs_width = rhs_width,
+              density = density
+            )
+          }
+        }
+      }
+    }
+  }
+
+  do.call(rbind, rows)
+}
+
+run_group <- function(group) {
+  backend_name <- group$requested_backend
+  backend <- tryCatch(amatrix:::.amatrix_get_backend(backend_name), error = function(e) NULL)
+  if (is.null(backend) || !isTRUE(backend$available())) {
+    rows <- expand_group_rows(group)
+    rows$status <- "unavailable"
+    rows$error_message <- sprintf("backend '%s' is not available", backend_name)
+    return(rows)
+  }
+
+  rows <- list()
+  if (identical(group$suite, "dense")) {
+    for (size_label in names(dense_sizes())) {
+      for (variant in c("cold", "warm")) {
+        cell <- list(suite = "dense", op = group$op, size_label = size_label, variant = variant, requested_backend = backend_name)
+        rows[[length(rows) + 1L]] <- safe_case(
+          function() run_dense_case(backend_name, group$op, size_label, variant),
+          cell
+        )
+      }
+    }
+  }
+
+  if (identical(group$suite, "sparse")) {
+    rhs_widths <- if (identical(group$op, "spmv")) 1L else spmm_rhs_widths()
+    for (size_label in names(sparse_sizes())) {
+      for (density in sparse_densities()) {
+        for (rhs_width in rhs_widths) {
+          for (variant in c("cold", "resident")) {
+            cell <- list(
+              suite = "sparse",
+              op = group$op,
+              size_label = size_label,
+              variant = variant,
+              requested_backend = backend_name,
+              rhs_width = rhs_width,
+              density = density,
+              nrow = sparse_sizes()[[size_label]]$nrow,
+              ncol = sparse_sizes()[[size_label]]$ncol
+            )
+            rows[[length(rows) + 1L]] <- safe_case(
+              function() run_sparse_case(backend_name, group$op, size_label, density, rhs_width, variant),
+              cell
+            )
+          }
+        }
+      }
+    }
+  }
+
+  do.call(rbind, rows)
+}
+
+key_columns <- c(
+  "suite", "op", "size_label", "variant", "requested_backend",
+  "dispatch_backend", "dispatch_path", "nrow", "ncol", "rhs_width",
+  "density", "nnz", "density_bucket"
+)
+
+add_cpu_reference <- function(results) {
+  cpu <- results[
+    results$status == "ok" &
+      results$requested_backend == "cpu",
+    c("suite", "op", "size_label", "variant", "nrow", "ncol", "rhs_width", "density", "nnz", "density_bucket", "median_ms")
+  ]
+  names(cpu)[names(cpu) == "median_ms"] <- "cpu_reference_ms"
+
+  merge(
+    results,
+    cpu,
+    by = c("suite", "op", "size_label", "variant", "nrow", "ncol", "rhs_width", "density", "nnz", "density_bucket"),
+    all.x = TRUE
+  )
+}
+
+add_baseline_compare <- function(results, baseline_path) {
+  results$baseline_ms <- NA_real_
+  results$ratio_vs_baseline <- NA_real_
+
+  if (!file.exists(baseline_path)) {
+    return(results)
+  }
+
+  baseline <- tryCatch(read.csv(baseline_path, stringsAsFactors = FALSE), error = function(e) NULL)
+  if (is.null(baseline) || !"median_ms" %in% names(baseline)) {
+    return(results)
+  }
+
+  needed <- c(key_columns, "status", "median_ms")
+  if (!all(needed %in% names(baseline))) {
+    return(results)
+  }
+
+  baseline <- baseline[baseline$status == "ok", c(key_columns, "median_ms")]
+  names(baseline)[names(baseline) == "median_ms"] <- "baseline_ms"
+
+  merged <- merge(results, baseline, by = key_columns, all.x = TRUE)
+  merged$ratio_vs_baseline <- ifelse(
+    is.na(merged$baseline_ms) | is.na(merged$median_ms),
+    NA_real_,
+    merged$median_ms / merged$baseline_ms
+  )
+  merged
+}
+
+summarize_results <- function(results) {
+  display <- results[order(results$suite, results$op, results$size_label, results$variant, results$requested_backend), ]
+  display$speedup_vs_cpu <- ifelse(
+    is.na(display$cpu_reference_ms) | is.na(display$median_ms),
+    NA_real_,
+    display$cpu_reference_ms / display$median_ms
+  )
+  display
+}
+
+write_outputs <- function(results, output_dir) {
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  raw_path <- file.path(output_dir, "raw-results.csv")
+  summary_path <- file.path(output_dir, "summary.csv")
+  incidents_path <- file.path(output_dir, "incidents.csv")
+  meta_path <- file.path(output_dir, "metadata.rds")
+
+  summary <- summarize_results(results)
+  incidents <- summary[summary$status != "ok", , drop = FALSE]
+
+  write.csv(results, raw_path, row.names = FALSE)
+  write.csv(summary, summary_path, row.names = FALSE)
+  write.csv(incidents, incidents_path, row.names = FALSE)
+  saveRDS(
+    list(
+      created_at = Sys.time(),
+      hostname = Sys.info()[["nodename"]],
+      r_version = paste(R.version$major, R.version$minor, sep = "."),
+      platform = R.version$platform,
+      timezone = Sys.timezone()
+    ),
+    meta_path
+  )
+
+  list(raw = raw_path, summary = summary_path, incidents = incidents_path, metadata = meta_path)
+}
+
+print_run_summary <- function(results, baseline_path, output_paths, warm_only = FALSE) {
+  summary <- summarize_results(results)
+  display <- if (warm_only) {
+    summary[summary$variant %in% c("warm", "resident"), , drop = FALSE]
+  } else {
+    summary
+  }
+
+  regressions <- display[
+    display$status == "ok" &
+      !is.na(display$ratio_vs_baseline) &
+      display$ratio_vs_baseline > 1.2,
+    c("suite", "op", "size_label", "variant", "requested_backend", "median_ms", "baseline_ms", "ratio_vs_baseline")
+  ]
+
+  incidents <- display[display$status != "ok", c("suite", "op", "size_label", "variant", "requested_backend", "status", "error_message")]
+
+  if (nrow(regressions) > 0L) {
+    message("\nRegressions (>20% slower than baseline):")
+    print(regressions, row.names = FALSE)
+  } else if (file.exists(baseline_path)) {
+    message("\nOK - no regressions vs baseline.")
+  } else {
+    message("\nNo baseline file found; skipped regression comparison.")
+  }
+
+  if (nrow(incidents) > 0L) {
+    message("\nIncidents:")
+    print(incidents, row.names = FALSE)
+  } else {
+    message("\nNo incidents recorded.")
+  }
+
+  ok_rows <- display[
+    display$status == "ok",
+    c(
+      "suite", "op", "size_label", "variant", "requested_backend",
+      "dispatch_backend", "rhs_width", "density_bucket", "median_ms",
+      "cpu_reference_ms", "speedup_vs_cpu", "ratio_vs_baseline"
+    )
+  ]
+  message("\nSummary:")
+  print(ok_rows, row.names = FALSE)
+
+  message("\nArtifacts:")
+  message("  raw: ", output_paths$raw)
+  message("  summary: ", output_paths$summary)
+  message("  incidents: ", output_paths$incidents)
+  message("  metadata: ", output_paths$metadata)
+}
+
+run_worker <- function(args) {
+  if (is.null(args$plan) || is.null(args$out) || is.null(args$group_id)) {
+    stop("worker mode requires --plan, --group-id, and --out", call. = FALSE)
+  }
+
+  groups <- readRDS(args$plan)
+  group <- Filter(function(x) identical(x$group_id, args$group_id), groups)[[1L]]
+  result <- run_group(group)
+  saveRDS(result, args$out)
+  invisible(NULL)
+}
+
+run_master <- function(args) {
+  specs <- canonical_backend_specs(include_arrayfire = args$include_arrayfire)
+  specs <- filter_backend_specs(specs, args$backends)
+  backend_names <- vapply(specs, `[[`, character(1), "name")
+
+  groups <- group_plan(backend_names, suites = args$suites)
+  plan_path <- tempfile("benchmark-plan-", fileext = ".rds")
+  saveRDS(groups, plan_path)
+  on.exit(unlink(plan_path), add = TRUE)
+
+  message(
+    "Running canonical benchmark harness for backends: ",
+    paste(backend_names, collapse = ", "),
+    " | suites: ", paste(args$suites, collapse = ", ")
+  )
+
+  rows <- list()
+  script_path <- normalizePath(sys.frame(1)$ofile %||% "tools/benchmark-regression.R", mustWork = FALSE)
+
+  for (group in groups) {
+    out_path <- tempfile(sprintf("%s-", group$group_id), fileext = ".rds")
+    message(sprintf("  %s", group$group_id))
+    log <- tryCatch(
+      system2(
+        file.path(R.home("bin"), "Rscript"),
+        c(script_path, "--worker", paste0("--plan=", plan_path), paste0("--group-id=", group$group_id), paste0("--out=", out_path)),
+        stdout = TRUE,
+        stderr = TRUE
+      ),
+      warning = function(w) attr(w, "output") %||% conditionMessage(w)
+    )
+    status <- attr(log, "status") %||% 0L
+
+    if (status == 0L && file.exists(out_path)) {
+      rows[[length(rows) + 1L]] <- readRDS(out_path)
+    } else {
+      failed <- expand_group_rows(group)
+      failed$status <- "crash"
+      failed$error_message <- sprintf(
+        "worker exited with status %s%s",
+        status,
+        if (length(log) > 0L) paste0(": ", tail(log, 1L)) else ""
+      )
+      rows[[length(rows) + 1L]] <- failed
+    }
+
+    unlink(out_path)
+  }
+
+  results <- do.call(rbind, rows)
+  results <- add_cpu_reference(results)
+  results$speedup_vs_cpu <- ifelse(
+    is.na(results$cpu_reference_ms) | is.na(results$median_ms),
+    NA_real_,
+    results$cpu_reference_ms / results$median_ms
+  )
+  results <- add_baseline_compare(results, args$baseline)
+  results <- results[order(results$suite, results$op, results$size_label, results$variant, results$requested_backend), ]
+
+  output_paths <- write_outputs(results, args$output_dir)
+
+  if (args$update || !file.exists(args$baseline)) {
+    baseline_rows <- results[results$status == "ok", c(key_columns, "status", "median_ms")]
+    write.csv(baseline_rows, args$baseline, row.names = FALSE)
+    message("\nBaseline written to ", args$baseline)
+  }
+
+  print_run_summary(results, args$baseline, output_paths, warm_only = args$warm_only)
+  invisible(results)
+}
+
+args <- parse_args(commandArgs(trailingOnly = TRUE))
+
+if (isTRUE(args$worker)) {
+  run_worker(args)
+} else {
+  run_master(args)
 }

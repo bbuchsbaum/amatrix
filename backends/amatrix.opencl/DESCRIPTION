@@ -1,0 +1,20 @@
+Package: amatrix.opencl
+Type: Package
+Title: OpenCL Backend Scaffold for amatrix
+Version: 0.0.0.9000
+Authors@R: person("Ben", "Buchsbaum", email = "bbuchsbaum@example.com", role = c("aut", "cre"))
+Description: OpenCL backend package for amatrix. Registers a backend
+    contract implementation and provides a safe mock bridge that can be built
+    with or without OpenCL and CLBlast present at compile time.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.3)
+Imports:
+    amatrix,
+    methods
+Suggests:
+    testthat (>= 3.0.0)
+SystemRequirements: OpenCL and CLBlast (optional; detected via pkg-config)
+NeedsCompilation: yes
+Config/testthat/edition: 3

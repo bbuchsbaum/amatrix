@@ -1,21 +1,11 @@
 #!/usr/bin/env Rscript
 
 suppressPackageStartupMessages({
-  if (requireNamespace("pkgload", quietly = TRUE) && file.exists("DESCRIPTION")) {
-    pkgload::load_all(".", quiet = TRUE)
-  } else {
-    library(amatrix)
+  if (file.exists("tools/benchmark-helpers.R")) {
+    source("tools/benchmark-helpers.R", local = FALSE)
   }
-  library(amatrix.mlx)
+  load_benchmark_amatrix()
 })
-
-if (!amatrix_mlx_native_available()) {
-  stop("benchmark-cholesky-runtime.R requires the native MLX backend", call. = FALSE)
-}
-
-old_available <- getOption("amatrix.mlx.available")
-options(amatrix.mlx.available = TRUE)
-on.exit(options(amatrix.mlx.available = old_available), add = TRUE)
 
 benchmark_elapsed <- function(fn, reps = 3L, iterations = 5L, warmup = NULL) {
   if (is.function(warmup)) {
@@ -59,37 +49,58 @@ make_kernel_spd_case <- function(n = 640L, p = 12L, rhs_cols = 32L, sigma = 1.1,
     workload = "kernel_spd",
     case = sprintf("%dx%d", n, n),
     rhs_cols = rhs_cols,
-    A = am_kernel(X, kernel = "rbf", sigma = sigma) + diag(jitter, n),
+    A = kernel_matrix(X, kernel = "rbf", sigma = sigma) + diag(jitter, n),
     B = B
   )
 }
 
-make_amatrix <- function(A, backend = c("cpu", "mlx")) {
-  backend <- match.arg(backend)
-  if (identical(backend, "mlx")) {
-    return(adgeMatrix(A, preferred_backend = "mlx", precision = "fast"))
+available_backends <- available_benchmark_backends(
+  include_cpu = TRUE,
+  include_mlx = TRUE,
+  include_opencl = TRUE
+)
+
+if (length(available_backends) == 0L) {
+  stop("No benchmark backends are available", call. = FALSE)
+}
+
+backend_names <- vapply(available_backends, `[[`, character(1), "name")
+backend_precision <- setNames(
+  vapply(available_backends, `[[`, character(1), "precision"),
+  backend_names
+)
+
+make_amatrix <- function(A, backend = backend_names[[1L]]) {
+  precision <- backend_precision[[backend]]
+  if (identical(backend, "cpu")) {
+    return(adgeMatrix(A, precision = precision))
   }
-  adgeMatrix(A, precision = "strict")
+
+  adgeMatrix(A, preferred_backend = backend, precision = precision)
 }
 
 benchmark_case <- function(case) {
   iterations <- if (nrow(case$A) >= 768L) 3L else 5L
-  fac_cpu <- am_chol_factor(make_amatrix(case$A, "cpu"))
-  fac_mlx <- am_chol_factor(make_amatrix(case$A, "mlx"))
+  factors <- lapply(backend_names, function(backend_name) {
+    chol_factor(make_amatrix(case$A, backend_name))
+  })
+  names(factors) <- backend_names
+  solutions <- lapply(backend_names, function(backend_name) {
+    chol_solve(factors[[backend_name]], case$B)
+  })
+  names(solutions) <- backend_names
   ref_sol <- solve(case$A, case$B)
-  sol_cpu <- am_chol_solve(fac_cpu, case$B)
-  sol_mlx <- am_chol_solve(fac_mlx, case$B)
 
-  factor_rows <- lapply(c("cpu", "mlx"), function(backend_name) {
-    fac <- if (identical(backend_name, "cpu")) fac_cpu else fac_mlx
+  factor_rows <- lapply(backend_names, function(backend_name) {
+    fac <- factors[[backend_name]]
     elapsed <- benchmark_elapsed(
       function() {
-        out <- am_chol_factor(make_amatrix(case$A, backend_name))
+        out <- chol_factor(make_amatrix(case$A, backend_name))
         invisible(out)
       },
       iterations = iterations,
-      warmup = if (identical(backend_name, "mlx")) {
-        function() invisible(am_chol_factor(make_amatrix(case$A, backend_name)))
+      warmup = if (!identical(backend_name, "cpu")) {
+        function() invisible(chol_factor(make_amatrix(case$A, backend_name)))
       } else {
         NULL
       }
@@ -107,17 +118,17 @@ benchmark_case <- function(case) {
     )
   })
 
-  solve_rows <- lapply(c("cpu", "mlx"), function(backend_name) {
-    fac <- if (identical(backend_name, "cpu")) fac_cpu else fac_mlx
-    sol <- if (identical(backend_name, "cpu")) sol_cpu else sol_mlx
+  solve_rows <- lapply(backend_names, function(backend_name) {
+    fac <- factors[[backend_name]]
+    sol <- solutions[[backend_name]]
     elapsed <- benchmark_elapsed(
       function() {
-        out <- am_chol_solve(fac, case$B)
+        out <- chol_solve(fac, case$B)
         invisible(out)
       },
       iterations = max(5L, iterations),
-      warmup = if (identical(backend_name, "mlx")) {
-        function() invisible(am_chol_solve(fac, case$B))
+      warmup = if (!identical(backend_name, "cpu")) {
+        function() invisible(chol_solve(fac, case$B))
       } else {
         NULL
       }
@@ -135,18 +146,18 @@ benchmark_case <- function(case) {
     )
   })
 
-  total_rows <- lapply(c("cpu", "mlx"), function(backend_name) {
+  total_rows <- lapply(backend_names, function(backend_name) {
     elapsed <- benchmark_elapsed(
       function() {
-        fac <- am_chol_factor(make_amatrix(case$A, backend_name))
-        out <- am_chol_solve(fac, case$B)
+        fac <- chol_factor(make_amatrix(case$A, backend_name))
+        out <- chol_solve(fac, case$B)
         invisible(out)
       },
       iterations = iterations,
-      warmup = if (identical(backend_name, "mlx")) {
+      warmup = if (!identical(backend_name, "cpu")) {
         function() {
-          fac <- am_chol_factor(make_amatrix(case$A, backend_name))
-          invisible(am_chol_solve(fac, case$B))
+          fac <- chol_factor(make_amatrix(case$A, backend_name))
+          invisible(chol_solve(fac, case$B))
         }
       } else {
         NULL
@@ -160,11 +171,7 @@ benchmark_case <- function(case) {
       phase = "factor_plus_batched_solve",
       runtime = backend_name,
       elapsed = elapsed,
-      rel_error = if (identical(backend_name, "cpu")) {
-        frob_norm(sol_cpu - ref_sol) / frob_norm(ref_sol)
-      } else {
-        frob_norm(sol_mlx - ref_sol) / frob_norm(ref_sol)
-      },
+      rel_error = frob_norm(solutions[[backend_name]] - ref_sol) / frob_norm(ref_sol),
       stringsAsFactors = FALSE
     )
   })
@@ -187,8 +194,9 @@ results$rel_error <- ifelse(
 )
 
 cat("Notes:\n")
-cat("- factor benchmarks are cold builds on fresh adgeMatrix objects, so am_chol_factor() cache reuse is not counted.\n")
+cat("- factor benchmarks are cold builds on fresh adgeMatrix objects, so chol_factor() cache reuse is not counted.\n")
 cat("- batched_solve benchmarks reuse a precomputed factor and isolate the many-RHS triangular-solve path.\n")
 cat("- ridge_spd uses crossprod(X) + lambda*I; kernel_spd uses an RBF kernel matrix plus diagonal jitter.\n")
 cat("- rel_error is the Cholesky reconstruction residual for factor rows and the relative solution error versus CPU solve for solve rows.\n\n")
+cat(sprintf("- backends on this run: %s\n\n", paste(backend_names, collapse = ", ")))
 print(results)

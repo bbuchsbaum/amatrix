@@ -1,5 +1,5 @@
 local_backend_libpaths <- function() {
-  candidates <- c(".tmp/opencl-lib", ".tmp/lib", ".tmp/backends-lib")
+  candidates <- c(".tmp/opencl-lib", ".tmp/lib", ".tmp/backends-lib", ".tmp/metal-lib")
   Filter(dir.exists, candidates)
 }
 
@@ -71,6 +71,17 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
       options = c(amatrix.enable_opencl = TRUE),
       env = c(AMATRIX_OPENCL_PROBE_GPU = "1"),
       available_args = list(force = TRUE)
+    ),
+    metal = list(
+      package = "amatrix.metal",
+      repo_dir = "backends/amatrix.metal",
+      name = "metal",
+      precision = "fast",
+      register_fun = "amatrix_metal_register",
+      available_fun = "amatrix_metal_native_available",
+      options = c(amatrix.enable_metal = TRUE, amatrix.metal.available = TRUE),
+      env = c(AMATRIX_METAL_PROBE_GPU = "1"),
+      available_args = list(force = TRUE)
     )
   )
 
@@ -112,6 +123,7 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
 available_benchmark_backends <- function(
   include_cpu = TRUE,
   include_mlx = TRUE,
+  include_metal = TRUE,
   include_opencl = TRUE,
   include_arrayfire = .benchmark_arrayfire_requested()
 ) {
@@ -124,6 +136,7 @@ available_benchmark_backends <- function(
   specs <- .benchmark_optional_backend_specs(include_arrayfire = include_arrayfire)
   wanted <- c(
     if (isTRUE(include_mlx)) "mlx",
+    if (isTRUE(include_metal)) "metal",
     if (isTRUE(include_opencl)) "opencl",
     if (isTRUE(include_arrayfire)) "arrayfire"
   )

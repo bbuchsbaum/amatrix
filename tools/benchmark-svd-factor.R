@@ -48,6 +48,9 @@ if (allow_nested_mlx && direct_file_entry && !mlx_main_process) {
 benchmark_mlx_in_process <- allow_nested_mlx && (mlx_main_process || !direct_file_entry)
 
 suppressPackageStartupMessages({
+  if (file.exists(file.path(repo_root, "tools", "benchmark-helpers.R"))) {
+    source(file.path(repo_root, "tools", "benchmark-helpers.R"), local = FALSE)
+  }
   if (requireNamespace("pkgload", quietly = TRUE) && file.exists("DESCRIPTION")) {
     pkgload::load_all(".", quiet = TRUE)
   } else {
@@ -76,6 +79,8 @@ have_mlx <- if (benchmark_mlx_in_process) {
 } else {
   FALSE
 }
+opencl_source_dir <- file.path(repo_root, "backends", "amatrix.opencl")
+have_opencl <- dir.exists(opencl_source_dir) || requireNamespace("amatrix.opencl", quietly = TRUE)
 
 if (!requireNamespace("irlba", quietly = TRUE)) {
   stop("Package 'irlba' is required for this benchmark", call. = FALSE)
@@ -83,11 +88,18 @@ if (!requireNamespace("irlba", quietly = TRUE)) {
 
 options(
   amatrix.optional_backends = FALSE,
-  amatrix.mlx.available = have_mlx
+  amatrix.mlx.available = have_mlx,
+  amatrix.enable_opencl = have_opencl,
+  amatrix.opencl.available = have_opencl
 )
 
 if (have_mlx) {
   load_optional_backend("amatrix.mlx")
+}
+if (have_opencl) {
+  Sys.setenv(AMATRIX_OPENCL_PROBE_GPU = "1")
+  load_optional_backend("amatrix.opencl")
+  have_opencl <- isTRUE(try(amatrix.opencl::amatrix_opencl_native_available(force = TRUE), silent = TRUE))
 }
 
 clear_factor_cache <- function() {
@@ -263,6 +275,28 @@ benchmark_case <- function(n, p, k = 20L, n_oversamples = 10L, n_iter = 2L) {
       reference_d = reference_d
     )
   }
+  if (have_opencl) {
+    rows[[length(rows) + 1L]] <- benchmark_factor_path(
+      host = host,
+      k = k,
+      n_oversamples = n_oversamples,
+      n_iter = n_iter,
+      preferred_backend = "opencl",
+      method = "exact",
+      phase = "steady_state",
+      reference_d = reference_d
+    )
+    rows[[length(rows) + 1L]] <- benchmark_factor_path(
+      host = host,
+      k = k,
+      n_oversamples = n_oversamples,
+      n_iter = n_iter,
+      preferred_backend = "opencl",
+      method = "auto",
+      phase = "steady_state",
+      reference_d = reference_d
+    )
+  }
 
   out <- do.call(rbind, rows)
   out$case <- sprintf("%dx%d", n, p)
@@ -285,12 +319,31 @@ benchmark_case <- function(n, p, k = 20L, n_oversamples = 10L, n_iter = 2L) {
   )]
 }
 
-cases <- list(
-  c(300L, 240L),
-  c(500L, 400L),
-  c(1000L, 800L),
-  c(2000L, 1600L)
-)
+.svd_factor_cases <- function() {
+  env <- Sys.getenv("AMATRIX_SVD_FACTOR_CASES", unset = "")
+  default_cases <- list(
+    c(300L, 240L),
+    c(500L, 400L),
+    c(1000L, 800L),
+    c(2000L, 1600L)
+  )
+
+  if (!nzchar(env)) {
+    return(default_cases)
+  }
+
+  specs <- strsplit(env, ",", fixed = TRUE)[[1L]]
+  parsed <- lapply(specs, function(spec) {
+    dims <- as.integer(strsplit(trimws(spec), "x", fixed = TRUE)[[1L]])
+    if (length(dims) != 2L || any(!is.finite(dims)) || any(dims < 1L)) {
+      stop("AMATRIX_SVD_FACTOR_CASES must be a comma-separated list like '300x240,500x400'", call. = FALSE)
+    }
+    dims
+  })
+  parsed
+}
+
+cases <- .svd_factor_cases()
 
 mlx_warmup_elapsed <- measure_mlx_warmup()
 rows <- do.call(
@@ -319,6 +372,9 @@ if (have_mlx) {
   cat("- MLX rows are skipped here by default to keep direct file-entry benchmarking stable on this machine.\n")
   cat("- Re-run with the direct command below to benchmark MLX through the stable `Rscript -e 'source(...)'` launch path.\n")
   cat(sprintf("  %s\n", safe_mlx_command))
+}
+if (have_opencl) {
+  cat("- OpenCL rows include both exact parity (`method = \"exact\"`) and auto-policy factorization on the active device.\n")
 }
 if (nzchar(bench_lib)) {
   cat(sprintf("- Prepended library path from AMATRIX_BENCH_LIB=%s\n", bench_lib))

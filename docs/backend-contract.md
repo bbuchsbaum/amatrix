@@ -105,6 +105,92 @@ gemm_resident = function(x_key, y_key, c_key = NULL, out_key,
 This is planned optional surface, not part of the current minimal backend
 registration contract.
 
+### Planned Optional Resident-Vector Extension
+
+Iterative resident algorithms often need a reduction to feed directly into a
+later broadcast kernel without round-tripping through host memory. Backends may
+optionally expose:
+
+```r
+rowSums_resident_key = function(x_key, out_key, na.rm = FALSE, dims = 1L) NULL
+colSums_resident_key = function(x_key, out_key, na.rm = FALSE, dims = 1L) NULL
+broadcast_ewise_resident_key = function(lhs_key, v_key, margin, op, out_key,
+                                        defer = FALSE) NULL
+```
+
+These are not required for backend registration, but they are the right shape
+for chained iterative workloads such as matrix balancing, Sinkhorn, and future
+resident optimization loops.
+
+### Planned Optional Factorization Extension
+
+Backends that expose factorization helpers may optionally surface reusable
+triangular and Cholesky solve hooks:
+
+```r
+chol_solve_factor = function(R, B) NULL
+solve_triangular_factor = function(R, B, lower = FALSE, transpose = FALSE) NULL
+solve_triangular_resident = function(factor_key, rhs_key, out_key,
+                                     lower = FALSE, transpose = FALSE,
+                                     defer = FALSE) NULL
+```
+
+Where:
+
+- `chol_solve_factor()` consumes a Cholesky factor `R` and one or more RHS
+  columns and returns the solved system.
+- `solve_triangular_factor()` exposes one triangular solve step explicitly so
+  high-level code can reuse factor objects without forcing host fallback.
+- `solve_triangular_resident()` is the resident analogue that keeps both the
+  factor and RHS on the backend and writes the output to `out_key`.
+
+These hooks are optional, but they are the right surface for reusable
+factorization objects and backend-native repeated solves.
+
+### Planned Optional Resident Sparse Extension
+
+The current opportunistic sparse hook can return a host matrix:
+
+```r
+spmm_resident = function(sp_key, y, trans_lhs = FALSE) NULL
+```
+
+That is enough for correctness and light reuse, but it is not the right shape
+for a true GPU sparse path because it forces the result back to host memory.
+
+Backends that want a real sparse resident path may optionally expose:
+
+```r
+spmm_resident_key = function(sp_key, y_key, out_key,
+                             trans_lhs = FALSE,
+                             defer = FALSE) NULL
+spmm_resident_host = function(sp_key, y, trans_lhs = FALSE) NULL
+```
+
+Where:
+
+- `spmm_resident_key()` performs sparse resident times dense resident and keeps
+  the output resident.
+- `spmm_resident_host()` is the compatibility fallback when the RHS is only
+  available on host.
+
+This optional extension is the right surface for any future backend that wants
+to make sparse-dense GPU products truly competitive instead of merely available.
+
+### Planned Optional Resident In-Place Extension
+
+Backends may also expose in-place resident updates for iterative loops whose
+reads and writes are elementwise independent:
+
+```r
+ewise_resident_inplace = function(lhs_key, rhs, op) NULL
+broadcast_ewise_resident_inplace = function(lhs_key, v, margin, op) NULL
+broadcast_ewise_resident_inplace_key = function(lhs_key, v_key, margin, op) NULL
+```
+
+These are optional. Core code should treat them as performance hints and fall
+back to the existing out-key resident surface when they are absent.
+
 ### Required Fields
 
 - `capabilities()`

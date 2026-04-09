@@ -41,6 +41,16 @@ drop_mock_backend <- function(name = "mockgpu") {
   invisible(name)
 }
 
+.opencl_svd_spec <- function() {
+  specs <- optional_backend_specs()
+  specs[[match("opencl", vapply(specs, `[[`, character(1), "backend"))]]
+}
+
+.register_optional_backend <- function(spec) {
+  ns <- optional_backend_namespace(spec$package)
+  get(spec$register_fun, envir = ns, inherits = FALSE)
+}
+
 test_that("svd_factor singular values match base::svd", {
   dat <- make_dense(20L, 8L, seed = 1L)
   k <- 5L
@@ -381,6 +391,89 @@ test_that("svd_factor auto chooses subspace for fast moderate-rank GPU factors",
   expect_identical(fac@engine, "gram")
   expect_identical(fac@backend, "mockgpu")
   expect_equal(fac@d, base::svd(dat$host)$d[seq_len(80L)], tolerance = 1e-10)
+})
+
+test_that("svd_factor auto chooses OpenCL subspace for fast moderate-rank factors", {
+  spec <- .opencl_svd_spec()
+  skip_if_backend_package_missing(spec)
+
+  register_backend <- .register_optional_backend(spec)
+
+  with_optional_backend_available(spec, {
+    register_backend(overwrite = TRUE)
+
+    old_rsvd_min_dim <- getOption("amatrix.svd_factor.rsvd_min_dim")
+    old_subspace_min_dim <- getOption("amatrix.svd_factor.subspace_min_dim")
+    options(
+      amatrix.svd_factor.rsvd_min_dim = 256L,
+      amatrix.svd_factor.subspace_min_dim = 256L
+    )
+    on.exit(
+      options(
+        amatrix.svd_factor.rsvd_min_dim = old_rsvd_min_dim,
+        amatrix.svd_factor.subspace_min_dim = old_subspace_min_dim
+      ),
+      add = TRUE
+    )
+
+    dat <- make_dense(420L, 300L, seed = 20260412L)
+    X <- adgeMatrix(dat$host, preferred_backend = "opencl", precision = "fast")
+
+    plan <- amatrix:::.amatrix_svd_factor_plan(
+      X,
+      k = 80L,
+      method = "auto",
+      n_oversamples = 6L,
+      n_iter = 1L
+    )
+    expect_identical(plan$method, "subspace")
+    expect_identical(plan$subspace_backend, "opencl")
+
+    set.seed(20260412L)
+    fac <- svd_factor(X, k = 80L, n_oversamples = 6L, n_iter = 1L)
+    ref_d <- base::svd(dat$host, nu = 80L, nv = 80L)$d[seq_len(80L)]
+    rel_sv <- abs(fac@d - ref_d) / pmax(abs(ref_d), 1e-12)
+
+    expect_identical(fac@method, "subspace")
+    expect_identical(fac@backend, "opencl")
+    expect_identical(fac@precision, "fast")
+    expect_true(fac@engine %in% c("gram", "qr", "svd_core"))
+    expect_lt(max(rel_sv[seq_len(20L)]), 0.05)
+  })
+})
+
+test_that("svd_factor exact supports OpenCL parity on dense inputs", {
+  spec <- .opencl_svd_spec()
+  skip_if_backend_package_missing(spec)
+
+  register_backend <- .register_optional_backend(spec)
+
+  with_optional_backend_available(spec, {
+    register_backend(overwrite = TRUE)
+
+    dat <- make_dense(96L, 48L, seed = 20260413L)
+    X <- adgeMatrix(dat$host, preferred_backend = "opencl", precision = "fast")
+
+    plan <- amatrix:::.amatrix_svd_factor_plan(
+      X,
+      k = 12L,
+      method = "exact",
+      n_oversamples = 6L,
+      n_iter = 1L
+    )
+    expect_identical(plan$method, "exact")
+
+    fac <- svd_factor(X, k = 12L, method = "exact", n_oversamples = 6L, n_iter = 1L)
+    ref <- base::svd(dat$host, nu = 12L, nv = 12L)
+
+    expect_identical(fac@method, "exact")
+    expect_identical(fac@backend, "opencl")
+    expect_identical(fac@precision, "fast")
+    expect_identical(fac@engine, "exact_svd")
+    expect_equal(fac@d, ref$d[seq_len(12L)], tolerance = 1e-8)
+    expect_equal(base::crossprod(fac@u), diag(12L), tolerance = 1e-8)
+    expect_equal(base::crossprod(fac@v), diag(12L), tolerance = 1e-8)
+  })
 })
 
 test_that("svd_factor cache key distinguishes exact, rsvd, and subspace factors", {
