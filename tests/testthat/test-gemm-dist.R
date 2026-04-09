@@ -128,3 +128,19 @@ test_that("dist_matrix tiled X,Y matches untiled", {
   expect_equal(dim(tiled), c(20L, 15L))
   expect_equal(tiled, ref, tolerance = 1e-6)
 })
+
+test_that("metric helpers respect cpu-tagged dense inputs", {
+  set.seed(66)
+  X_r <- matrix(rnorm(24 * 6), 24, 6)
+  X_cpu <- adgeMatrix(X_r, preferred_backend = "cpu", precision = "strict")
+  nx <- rowSums(X_r^2)
+  ref_dist <- sqrt(pmax(outer(nx, nx, "+") - 2 * tcrossprod(X_r), 0))
+  diag(ref_dist) <- 0
+  ref_kernel <- tcrossprod(X_r)
+
+  spec <- .am_metric_backend_spec(X_cpu)
+  expect_identical(spec$name, "cpu")
+  expect_equal(.am_metric_tcrossprod_backend(X_cpu, spec = spec), tcrossprod(X_r), tolerance = 1e-10)
+  expect_equal(dist_matrix(X_cpu, method = "euclidean"), ref_dist, tolerance = 1e-10)
+  expect_equal(kernel_matrix(X_cpu, kernel = "linear"), ref_kernel, tolerance = 1e-10)
+})

@@ -69,11 +69,27 @@
   NULL
 }
 
+.amatrix_bind2 <- function(kind, x, y) {
+  template <- .amatrix_template(x, y)
+  value <- switch(
+    kind,
+    cbind2 = methods::cbind2(.amatrix_host_arg(x), .amatrix_host_arg(y)),
+    rbind2 = methods::rbind2(.amatrix_host_arg(x), .amatrix_host_arg(y)),
+    stop(sprintf("unsupported bind kind '%s'", kind), call. = FALSE)
+  )
+
+  if (is.null(template)) {
+    return(value)
+  }
+
+  .amatrix_rewrap_value(template, value)
+}
+
 .amatrix_is_dense_matrix_like <- function(value) {
   inherits(value, "adgeMatrix") || inherits(value, "dgeMatrix") || is.matrix(value)
 }
 
-.amatrix_prepare_resident_arg <- function(value, backend_name) {
+.amatrix_prepare_resident_arg <- function(value, backend_name, promote_amatrix = TRUE) {
   backend <- .amatrix_get_backend(backend_name)
   if (!.amatrix_backend_residency_capable(backend)) {
     return(NULL)
@@ -83,6 +99,9 @@
     resident_key <- .amatrix_resident_key(value, backend = backend_name)
     if (!is.null(resident_key) && isTRUE(backend$sparse_resident_has(resident_key))) {
       return(list(key = resident_key, temporary = FALSE, tracked = TRUE, sparse = TRUE))
+    }
+    if (!isTRUE(promote_amatrix)) {
+      return(NULL)
     }
     resident_key <- .amatrix_next_resident_key(backend_name)
     host <- amatrix_materialize_host(value)  # returns dgCMatrix
@@ -95,6 +114,9 @@
     resident_key <- .amatrix_resident_key(value, backend = backend_name)
     if (!is.null(resident_key) && isTRUE(backend$resident_has(resident_key))) {
       return(list(key = resident_key, temporary = FALSE, tracked = TRUE))
+    }
+    if (!isTRUE(promote_amatrix)) {
+      return(NULL)
     }
 
     resident_key <- .amatrix_next_resident_key(backend_name)
@@ -179,24 +201,45 @@
   backend <- .amatrix_get_backend(backend_name)
 
   # Sparse resident path: LHS is adgCMatrix with spmm_resident support
-  if (inherits(x, "adgCMatrix") && is.function(backend$spmm_resident)) {
-    lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+  if (inherits(x, "adgCMatrix")) {
+    lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
     if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
-    rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
-    if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
-    value <- backend$spmm_resident(lhs$key, rhs_mat, trans_lhs = FALSE)
-    # No out_key for sparse path (result is returned as plain R matrix)
-    out_key <- .amatrix_next_resident_key(backend_name)
-    backend$resident_store(out_key, value)
-    return(list(value = value, backend = backend_name, resident_key = out_key))
+
+    if (is.function(backend$spmm_resident_key)) {
+      rhs <- .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = FALSE)
+      if (!is.null(rhs) && !isTRUE(rhs$sparse)) {
+        defer <- .amatrix_defer_host_active()
+        out_key <- .amatrix_next_resident_key(backend_name)
+        value <- tryCatch(
+          backend$spmm_resident_key(lhs$key, rhs$key, out_key, trans_lhs = FALSE, defer = defer),
+          error = function(e) {
+            try(backend$resident_drop(out_key), silent = TRUE)
+            NULL
+          }
+        )
+        .amatrix_cleanup_temp_resident(list(rhs), backend_name)
+        if (!is.null(value)) {
+          return(list(value = value, backend = backend_name, resident_key = out_key))
+        }
+      } else {
+        .amatrix_cleanup_temp_resident(list(rhs), backend_name)
+      }
+    }
+
+    if (is.function(backend$spmm_resident)) {
+      rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
+      if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
+      value <- backend$spmm_resident(lhs$key, rhs_mat, trans_lhs = FALSE)
+      return(list(value = value, backend = NULL, resident_key = NULL, host_only = TRUE))
+    }
   }
 
-  if (!.amatrix_backend_supports_resident_op(backend, "matmul")) {
+  if (!.amatrix_backend_supports_resident_op(backend, "matmul", x = x, y = y)) {
     return(NULL)
   }
 
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
-  rhs <- .amatrix_prepare_resident_arg(y, backend_name)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
+  rhs <- .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = FALSE)
   if (is.null(lhs) || is.null(rhs)) {
     .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
     return(NULL)
@@ -219,22 +262,20 @@
 
   # Sparse resident path: crossprod(X, Y) = t(X) %*% Y → spmm_resident with trans_lhs=TRUE
   if (inherits(x, "adgCMatrix") && !is.null(y) && is.function(backend$spmm_resident)) {
-    lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+    lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
     if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
     rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
     if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
     value <- backend$spmm_resident(lhs$key, rhs_mat, trans_lhs = TRUE)
-    out_key <- .amatrix_next_resident_key(backend_name)
-    backend$resident_store(out_key, value)
-    return(list(value = value, backend = backend_name, resident_key = out_key))
+    return(list(value = value, backend = NULL, resident_key = NULL, host_only = TRUE))
   }
 
-  if (!.amatrix_backend_supports_resident_op(backend, "crossprod")) {
+  if (!.amatrix_backend_supports_resident_op(backend, "crossprod", x = x, y = y)) {
     return(NULL)
   }
 
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
-  rhs <- if (is.null(y)) NULL else .amatrix_prepare_resident_arg(y, backend_name)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
+  rhs <- if (is.null(y)) NULL else .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = FALSE)
   if (is.null(lhs) || (!is.null(y) && is.null(rhs))) {
     .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
     return(NULL)
@@ -255,12 +296,24 @@
 
 .amatrix_try_resident_tcrossprod <- function(x, y, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
-  if (!.amatrix_backend_supports_resident_op(backend, "tcrossprod")) {
+
+  # Sparse resident path: tcrossprod(X, Y) = X %*% t(Y) → spmm_resident with
+  # the dense RHS transposed on the host side.
+  if (inherits(x, "adgCMatrix") && !is.null(y) && is.function(backend$spmm_resident)) {
+    lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
+    if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
+    rhs_mat <- if (is.matrix(y)) y else as.matrix(.amatrix_host_arg(y))
+    if (!is.double(rhs_mat)) storage.mode(rhs_mat) <- "double"
+    value <- backend$spmm_resident(lhs$key, t(rhs_mat), trans_lhs = FALSE)
+    return(list(value = value, backend = NULL, resident_key = NULL, host_only = TRUE))
+  }
+
+  if (!.amatrix_backend_supports_resident_op(backend, "tcrossprod", x = x, y = y)) {
     return(NULL)
   }
 
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
-  rhs <- if (is.null(y)) NULL else .amatrix_prepare_resident_arg(y, backend_name)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
+  rhs <- if (is.null(y)) NULL else .amatrix_prepare_resident_arg(y, backend_name, promote_amatrix = FALSE)
   if (is.null(lhs) || (!is.null(y) && is.null(rhs))) {
     .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
     return(NULL)
@@ -281,26 +334,25 @@
 
 .amatrix_try_resident_ewise <- function(op, e1, e2, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
-  if (!.amatrix_backend_supports_resident_op(backend, "ewise")) {
-    return(NULL)
-  }
-
   template <- .amatrix_template(e1, e2)
   if (is.null(template) || !inherits(template, "adgeMatrix")) {
     return(NULL)
   }
+  rhs_arg <- if (inherits(e1, "adgeMatrix")) e2 else e1
+  if (!.amatrix_backend_supports_resident_op(backend, "ewise", x = template, y = rhs_arg)) {
+    return(NULL)
+  }
 
-  lhs <- if (inherits(e1, "adgeMatrix")) .amatrix_prepare_resident_arg(e1, backend_name) else .amatrix_prepare_resident_arg(e2, backend_name)
+  lhs <- if (inherits(e1, "adgeMatrix")) .amatrix_prepare_resident_arg(e1, backend_name, promote_amatrix = FALSE) else .amatrix_prepare_resident_arg(e2, backend_name, promote_amatrix = FALSE)
   if (is.null(lhs)) {
     return(NULL)
   }
 
-  rhs_arg <- if (inherits(e1, "adgeMatrix")) e2 else e1
   rhs <- NULL
   rhs_payload <- rhs_arg
 
   if (inherits(rhs_arg, "adgeMatrix") || .amatrix_is_dense_matrix_like(rhs_arg)) {
-    rhs <- .amatrix_prepare_resident_arg(rhs_arg, backend_name)
+    rhs <- .amatrix_prepare_resident_arg(rhs_arg, backend_name, promote_amatrix = FALSE)
     if (is.null(rhs)) {
       .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       return(NULL)
@@ -315,8 +367,18 @@
 
   defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
-  value <- backend$ewise_resident(lhs$key, rhs_payload, op, out_key, defer = defer)
+  value <- tryCatch(
+    backend$ewise_resident(lhs$key, rhs_payload, op, out_key, defer = defer),
+    error = function(e) {
+      try(backend$resident_drop(out_key), silent = TRUE)
+      NULL
+    }
+  )
   .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
+
+  if (is.null(value)) {
+    return(NULL)
+  }
 
   list(value = value, backend = backend_name, resident_key = out_key)
 }
@@ -324,8 +386,8 @@
 # rowSums/colSums: output is a vector — no resident binding on result.
 .amatrix_try_resident_rowSums <- function(x, na.rm, dims, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
-  if (!.amatrix_backend_supports_resident_op(backend, "rowSums")) return(NULL)
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+  if (!.amatrix_backend_supports_resident_op(backend, "rowSums", x = x)) return(NULL)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
   if (is.null(lhs)) return(NULL)
   result <- backend$rowSums_resident(lhs$key, na.rm, dims)
   .amatrix_cleanup_temp_resident(list(lhs), backend_name)
@@ -334,8 +396,8 @@
 
 .amatrix_try_resident_colSums <- function(x, na.rm, dims, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
-  if (!.amatrix_backend_supports_resident_op(backend, "colSums")) return(NULL)
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+  if (!.amatrix_backend_supports_resident_op(backend, "colSums", x = x)) return(NULL)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
   if (is.null(lhs)) return(NULL)
   result <- backend$colSums_resident(lhs$key, na.rm, dims)
   .amatrix_cleanup_temp_resident(list(lhs), backend_name)
@@ -345,8 +407,8 @@
 # am_solve: output is a matrix; store at out_key and bind resident.
 .amatrix_try_resident_solve <- function(a, b, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
-  if (!.amatrix_backend_supports_resident_op(backend, "solve")) return(NULL)
-  lhs <- .amatrix_prepare_resident_arg(a, backend_name)
+  if (!.amatrix_backend_supports_resident_op(backend, "solve", x = a, y = b)) return(NULL)
+  lhs <- .amatrix_prepare_resident_arg(a, backend_name, promote_amatrix = FALSE)
   if (is.null(lhs)) return(NULL)
   out_key <- .amatrix_next_resident_key(backend_name)
   if (is.null(b)) {
@@ -357,7 +419,7 @@
     .amatrix_cleanup_temp_resident(list(lhs), backend_name)
   } else {
     b_arg <- if (is.vector(b)) matrix(b, ncol = 1L) else b
-    rhs <- .amatrix_prepare_resident_arg(b_arg, backend_name)
+    rhs <- .amatrix_prepare_resident_arg(b_arg, backend_name, promote_amatrix = FALSE)
     if (is.null(rhs)) {
       .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       return(NULL)
@@ -375,8 +437,8 @@
 # chol: output is a matrix; store at out_key and bind resident.
 .amatrix_try_resident_chol <- function(x, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
-  if (!.amatrix_backend_supports_resident_op(backend, "chol")) return(NULL)
-  lhs <- .amatrix_prepare_resident_arg(x, backend_name)
+  if (!.amatrix_backend_supports_resident_op(backend, "chol", x = x)) return(NULL)
+  lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = FALSE)
   if (is.null(lhs)) return(NULL)
   out_key <- .amatrix_next_resident_key(backend_name)
   value <- tryCatch(
@@ -400,6 +462,12 @@ matmul <- function(x, y) {
   choice <- .amatrix_backend_for(x, "matmul", y = y_eff)
   resident <- .amatrix_try_resident_matmul(x, y_eff, choice$name)
   if (!is.null(resident)) {
+    if (isTRUE(resident$host_only)) {
+      if (y_vec) {
+        return(drop(resident$value))
+      }
+      return(.amatrix_rewrap_like(x, resident$value))
+    }
     if (y_vec) {
       # Result is an m×1 matrix stored at out_key on device. Materialize to host,
       # squeeze to vector, then free the out_key (not useful as a resident matrix).
@@ -413,6 +481,14 @@ matmul <- function(x, y) {
     }
     return(.amatrix_resident_wrap(x, resident,
                                    out_dim = c(nrow(x), ncol(y_eff))))
+  }
+
+  if (identical(choice$name, "cpu")) {
+    cpu_value <- choice$backend$matmul(x, y_eff)
+    if (y_vec) {
+      return(drop(cpu_value))
+    }
+    return(.amatrix_rewrap_like(x, cpu_value))
   }
 
   .amatrix_rewrap_like(
@@ -436,8 +512,15 @@ am_crossprod <- function(x, y = NULL, ...) {
   choice <- .amatrix_backend_for(x, "crossprod", y = y)
   resident <- .amatrix_try_resident_crossprod(x, y, choice$name)
   if (!is.null(resident)) {
+    if (isTRUE(resident$host_only)) {
+      return(.amatrix_rewrap_like(x, resident$value))
+    }
     nc <- if (is.null(y)) ncol(x) else ncol(y)
     return(.amatrix_resident_wrap(x, resident, out_dim = c(ncol(x), nc)))
+  }
+
+  if (identical(choice$name, "cpu")) {
+    return(.amatrix_rewrap_like(x, choice$backend$crossprod(x, y = y, ...)))
   }
 
   .amatrix_rewrap_like(
@@ -466,8 +549,15 @@ am_tcrossprod <- function(x, y = NULL, ...) {
   choice <- .amatrix_backend_for(x, "tcrossprod", y = y)
   resident <- .amatrix_try_resident_tcrossprod(x, y, choice$name)
   if (!is.null(resident)) {
+    if (isTRUE(resident$host_only)) {
+      return(.amatrix_rewrap_like(x, resident$value))
+    }
     nr <- if (is.null(y)) nrow(x) else nrow(y)
     return(.amatrix_resident_wrap(x, resident, out_dim = c(nrow(x), nr)))
+  }
+
+  if (identical(choice$name, "cpu")) {
+    return(.amatrix_rewrap_like(x, choice$backend$tcrossprod(x, y = y, ...)))
   }
 
   .amatrix_rewrap_like(
@@ -757,8 +847,8 @@ crossprod_weighted <- function(X, w) {
   backend_name <- .amatrix_live_resident_backend(X_arg)
   if (!is.null(backend_name)) {
     backend <- .amatrix_get_backend(backend_name)
-    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise") &&
-        .amatrix_backend_supports_resident_op(backend, "crossprod")) {
+    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise", x = X_arg) &&
+        .amatrix_backend_supports_resident_op(backend, "crossprod", x = X_arg)) {
       lhs <- .amatrix_prepare_resident_arg(X_arg, backend_name)
       if (!is.null(lhs)) {
         scaled_key <- .amatrix_next_resident_key(backend_name)
@@ -801,8 +891,8 @@ tcrossprod_weighted <- function(X, w) {
   backend_name <- .amatrix_live_resident_backend(X_arg)
   if (!is.null(backend_name)) {
     backend <- .amatrix_get_backend(backend_name)
-    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise") &&
-        .amatrix_backend_supports_resident_op(backend, "tcrossprod")) {
+    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise", x = X_arg) &&
+        .amatrix_backend_supports_resident_op(backend, "tcrossprod", x = X_arg)) {
       lhs <- .amatrix_prepare_resident_arg(X_arg, backend_name)
       if (!is.null(lhs)) {
         scaled_key <- .amatrix_next_resident_key(backend_name)
@@ -848,8 +938,8 @@ xty_weighted <- function(X, w, y) {
   backend_name <- .amatrix_live_resident_backend(X_arg)
   if (!is.null(backend_name)) {
     backend <- .amatrix_get_backend(backend_name)
-    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise") &&
-        .amatrix_backend_supports_resident_op(backend, "crossprod")) {
+    if (.amatrix_backend_supports_resident_op(backend, "broadcast_ewise", x = X_arg) &&
+        .amatrix_backend_supports_resident_op(backend, "crossprod", x = X_arg)) {
       lhs <- .amatrix_prepare_resident_arg(X_arg, backend_name)
       if (!is.null(lhs)) {
         x_scaled_key <- .amatrix_next_resident_key(backend_name)
@@ -1470,7 +1560,7 @@ am_scatter_mean <- function(x, labels, K) {
 
 .amatrix_try_resident_broadcast_ewise <- function(x, v, margin, op, backend_name) {
   backend <- .amatrix_get_backend(backend_name)
-  if (!.amatrix_backend_supports_resident_op(backend, "broadcast_ewise")) return(NULL)
+  if (!.amatrix_backend_supports_resident_op(backend, "broadcast_ewise", x = x)) return(NULL)
   lhs <- .amatrix_prepare_resident_arg(x, backend_name)
   if (is.null(lhs)) return(NULL)
   defer <- .amatrix_defer_host_active()
@@ -1619,6 +1709,84 @@ am_set_dimnames <- function(x, value) {
   )
 }
 
+.am_metric_backend_spec <- function(X, Y = NULL, preferred_backend = NULL) {
+  if (!is.null(preferred_backend)) {
+    return(list(
+      name = preferred_backend,
+      precision = amatrix_default_precision(),
+      policy = amatrix_default_policy()
+    ))
+  }
+
+  template <- NULL
+  if (inherits(X, "aMatrix")) {
+    template <- X
+  } else if (!is.null(Y) && inherits(Y, "aMatrix")) {
+    template <- Y
+  }
+
+  if (is.null(template)) {
+    return(list(
+      name = "auto",
+      precision = amatrix_default_precision(),
+      policy = amatrix_default_policy()
+    ))
+  }
+
+  list(
+    name = template@preferred_backend,
+    precision = template@precision,
+    policy = template@policy
+  )
+}
+
+.am_metric_wrap_dense_operand <- function(x, spec) {
+  if (inherits(x, "adgeMatrix")) {
+    return(x)
+  }
+
+  adgeMatrix(
+    .am_as_double_matrix(x),
+    preferred_backend = spec$name,
+    precision = spec$precision,
+    policy = spec$policy
+  )
+}
+
+.am_metric_tcrossprod_backend <- function(X, Y = NULL, spec = .am_metric_backend_spec(X, Y)) {
+  x_host <- .am_as_double_matrix(X)
+  y_host <- if (is.null(Y)) NULL else .am_as_double_matrix(Y)
+
+  if (identical(spec$name, "cpu")) {
+    return(if (is.null(y_host)) tcrossprod(x_host) else tcrossprod(x_host, y_host))
+  }
+
+  if (identical(spec$name, "arrayfire") && isTRUE(.am_af_ok())) {
+    return(.Call("amatrix_arrayfire_tcrossprod_correct_bridge", x_host, y_host, PACKAGE = "amatrix.arrayfire"))
+  }
+
+  if (identical(spec$name, "mlx") && isTRUE(.am_mlx_ok())) {
+    return(.Call("amatrix_mlx_tcrossprod_bridge", x_host, y_host, PACKAGE = "amatrix.mlx"))
+  }
+
+  if (identical(spec$name, "opencl")) {
+    x_arg <- .am_metric_wrap_dense_operand(X, spec)
+    y_arg <- if (is.null(Y)) NULL else .am_metric_wrap_dense_operand(Y, spec)
+    return(as.matrix(amatrix_materialize_host(am_tcrossprod(x_arg, y_arg))))
+  }
+
+  if (identical(spec$name, "auto")) {
+    if (isTRUE(.am_af_ok())) {
+      return(.Call("amatrix_arrayfire_tcrossprod_correct_bridge", x_host, y_host, PACKAGE = "amatrix.arrayfire"))
+    }
+    if (isTRUE(.am_mlx_ok())) {
+      return(.Call("amatrix_mlx_tcrossprod_bridge", x_host, y_host, PACKAGE = "amatrix.mlx"))
+    }
+  }
+
+  if (is.null(y_host)) tcrossprod(x_host) else tcrossprod(x_host, y_host)
+}
+
 # MLX is preferred on Apple Silicon (39x vs 9x speedup in benchmarks).
 # AF is the fallback for CUDA/other platforms where MLX is unavailable.
 
@@ -1626,73 +1794,81 @@ am_set_dimnames <- function(x, value) {
 # R-level allocation overhead, so it's fast regardless of GPU vs CPU backend.
 # MLX path only does the GEMM on GPU; subsequent R ops on 3M-element matrices
 # add ~150ms overhead for large matrices — only worthwhile when AF unavailable.
-.dist_matrix_sq_gpu <- function(X, Y = NULL) {
-  if (isTRUE(.am_af_ok()))
-    return(.Call("am_af_dist_sq_bridge", X, Y, PACKAGE = "amatrix.arrayfire"))
-  Y_eff <- if (is.null(Y)) X else Y
-  if (isTRUE(.am_mlx_ok())) {
-    G  <- .Call("amatrix_mlx_tcrossprod_bridge", X, Y, PACKAGE = "amatrix.mlx")
-    nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
-    return(pmax(outer(nx, ny, "+") - 2 * G, 0))
+.dist_matrix_sq_gpu <- function(X, Y = NULL, spec = .am_metric_backend_spec(X, Y)) {
+  x_host <- .am_as_double_matrix(X)
+  y_host <- if (is.null(Y)) NULL else .am_as_double_matrix(Y)
+  y_eff <- if (is.null(y_host)) x_host else y_host
+
+  if (identical(spec$name, "arrayfire") && isTRUE(.am_af_ok())) {
+    return(.Call("am_af_dist_sq_bridge", x_host, y_host, PACKAGE = "amatrix.arrayfire"))
   }
-  G  <- am_tcrossprod(X, Y)
-  nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+
+  if (identical(spec$name, "auto") && isTRUE(.am_af_ok())) {
+    return(.Call("am_af_dist_sq_bridge", x_host, y_host, PACKAGE = "amatrix.arrayfire"))
+  }
+
+  G <- .am_metric_tcrossprod_backend(X, Y, spec = spec)
+  nx <- rowSums(x_host^2)
+  ny <- if (is.null(y_host)) nx else rowSums(y_eff^2)
   pmax(outer(nx, ny, "+") - 2 * G, 0)
 }
 
-.am_kernel_gpu <- function(X, Y = NULL, kernel, sigma, degree, coef) {
+.am_kernel_gpu <- function(X, Y = NULL, kernel, sigma, degree, coef, spec = .am_metric_backend_spec(X, Y)) {
+  x_host <- .am_as_double_matrix(X)
+  y_host <- if (is.null(Y)) NULL else .am_as_double_matrix(Y)
+  y_eff <- if (is.null(y_host)) x_host else y_host
+
   # AF bridge computes entire kernel in C — no R allocation overhead.
-  if (isTRUE(.am_af_ok()))
-    return(.Call("am_af_kernel_bridge", X, Y, kernel,
+  if ((identical(spec$name, "arrayfire") || identical(spec$name, "auto")) && isTRUE(.am_af_ok())) {
+    return(.Call("am_af_kernel_bridge", x_host, y_host, kernel,
                  as.double(sigma), as.integer(degree), as.double(coef),
                  PACKAGE = "amatrix.arrayfire"))
+  }
   # MLX: GPU GEMM + R-level transforms (cheap for linear/poly/cosine; heavier for rbf/lap)
-  if (isTRUE(.am_mlx_ok())) {
-    G     <- .Call("amatrix_mlx_tcrossprod_bridge", X, Y, PACKAGE = "amatrix.mlx")
-    Y_eff <- if (is.null(Y)) X else Y
+  if (identical(spec$name, "mlx") && isTRUE(.am_mlx_ok())) {
+    G <- .Call("amatrix_mlx_tcrossprod_bridge", x_host, y_host, PACKAGE = "amatrix.mlx")
     return(switch(kernel,
       linear     = G,
       polynomial = (coef + G)^degree,
       cosine     = {
-        nx <- sqrt(rowSums(X^2)); ny <- if (is.null(Y)) nx else sqrt(rowSums(Y_eff^2))
+        nx <- sqrt(rowSums(x_host^2)); ny <- if (is.null(y_host)) nx else sqrt(rowSums(y_eff^2))
         G / pmax(outer(nx, ny), .Machine$double.eps)
       },
       rbf        = {
-        nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+        nx <- rowSums(x_host^2); ny <- if (is.null(y_host)) nx else rowSums(y_eff^2)
         D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
-        if (is.null(Y)) diag(D_sq) <- 0
+        if (is.null(y_host)) diag(D_sq) <- 0
         exp(-D_sq / (2 * sigma^2))
       },
       laplacian  = {
-        nx <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+        nx <- rowSums(x_host^2); ny <- if (is.null(y_host)) nx else rowSums(y_eff^2)
         D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
-        if (is.null(Y)) diag(D_sq) <- 0
+        if (is.null(y_host)) diag(D_sq) <- 0
         exp(-sqrt(D_sq) / sigma)
       }
     ))
   }
   # CPU fallback
-  Y_eff <- if (is.null(Y)) X else Y
-  G <- am_tcrossprod(X, Y)
+  G <- .am_metric_tcrossprod_backend(X, Y, spec = spec)
 
   switch(kernel,
     linear     = G,
     polynomial = (coef + G)^degree,
     cosine     = {
-      nx <- sqrt(rowSums(X^2))
-      ny <- if (is.null(Y)) nx else sqrt(rowSums(Y_eff^2))
+      nx <- sqrt(rowSums(x_host^2))
+      ny <- if (is.null(y_host)) nx else sqrt(rowSums(y_eff^2))
       G / pmax(outer(nx, ny), .Machine$double.eps)
     },
     rbf        = {
-      nx   <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+      nx   <- rowSums(x_host^2); ny <- if (is.null(y_host)) nx else rowSums(y_eff^2)
       D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
-      if (is.null(Y)) diag(D_sq) <- 0
+      if (is.null(y_host)) diag(D_sq) <- 0
       exp(-D_sq / (2 * sigma^2))
     },
     laplacian  = {
-      nx   <- rowSums(X^2); ny <- if (is.null(Y)) nx else rowSums(Y_eff^2)
+      nx   <- rowSums(x_host^2); ny <- if (is.null(y_host)) nx else rowSums(y_eff^2)
       D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
-      if (is.null(Y)) diag(D_sq) <- 0
+      if (is.null(y_host)) diag(D_sq) <- 0
       exp(-sqrt(D_sq) / sigma)
     }
   )
@@ -1701,7 +1877,7 @@ am_set_dimnames <- function(x, value) {
 # Tiled pairwise distance for large n (avoids GPU OOM on n > 50k).
 # Processes row-blocks of X (and Y) independently, assembling the host result
 # block by block.  Exploits symmetry when Y = NULL to halve the GEMM count.
-.dist_matrix_tiled <- function(X, Y, method, tile_size) {
+.dist_matrix_tiled <- function(X, Y, method, tile_size, spec = .am_metric_backend_spec(X, Y)) {
   m <- nrow(X)
   symmetric <- is.null(Y)
   Y_eff <- if (symmetric) X else Y
@@ -1724,7 +1900,7 @@ am_set_dimnames <- function(x, value) {
       j0 <- j_breaks[jj]; j1 <- j_breaks[jj + 1L] - 1L
       Xj <- Y_eff[j0:j1, , drop = FALSE]
 
-      D_sq <- .dist_matrix_sq_gpu(Xi, Xj)
+      D_sq <- .dist_matrix_sq_gpu(Xi, Xj, spec = spec)
       D_block <- if (method == "euclidean") sqrt(D_sq) else D_sq
 
       result[i0:i1, j0:j1] <- D_block
@@ -1759,6 +1935,7 @@ dist_matrix <- function(X, Y = NULL,
                     method = c("euclidean", "sqeuclidean", "cosine"),
                     tile_size = NULL) {
   method <- match.arg(method)
+  spec <- .am_metric_backend_spec(X, Y)
   X_mat <- .am_as_double_matrix(X)
   Y_mat <- if (!is.null(Y)) .am_as_double_matrix(Y) else NULL
 
@@ -1767,13 +1944,13 @@ dist_matrix <- function(X, Y = NULL,
     tile_size <- 10000L
 
   if (!is.null(tile_size) && method != "cosine") {
-    return(.dist_matrix_tiled(X_mat, Y_mat, method, as.integer(tile_size)))
+    return(.dist_matrix_tiled(X_mat, Y_mat, method, as.integer(tile_size), spec = spec))
   }
 
   if (method == "cosine")
-    return(.am_kernel_gpu(X_mat, Y_mat, "cosine", 1.0, 2L, 0.0))
+    return(.am_kernel_gpu(X, Y, "cosine", 1.0, 2L, 0.0, spec = spec))
 
-  D_sq <- .dist_matrix_sq_gpu(X_mat, Y_mat)
+  D_sq <- .dist_matrix_sq_gpu(X, Y, spec = spec)
   if (is.null(Y_mat)) diag(D_sq) <- 0   # fix float32/float64 diagonal mismatch
   if (method == "sqeuclidean") return(D_sq)
   sqrt(D_sq)
@@ -1809,6 +1986,7 @@ kernel_matrix <- function(X, Y = NULL,
                       sigma = 1.0, degree = 2L, coef = 0.0,
                       preferred_backend = NULL, zero_diag = FALSE) {
   kernel <- match.arg(kernel)
+  spec <- .am_metric_backend_spec(X, Y, preferred_backend = preferred_backend)
   X_mat  <- .am_as_double_matrix(X)
   Y_mat  <- if (!is.null(Y)) .am_as_double_matrix(Y) else NULL
 
@@ -1829,8 +2007,8 @@ kernel_matrix <- function(X, Y = NULL,
     }
   }
 
-  .am_kernel_gpu(X_mat, Y_mat, kernel,
-                 sigma = sigma, degree = degree, coef = coef)
+  .am_kernel_gpu(X, Y, kernel,
+                 sigma = sigma, degree = degree, coef = coef, spec = spec)
 }
 
 # ---------------------------------------------------------------------------
