@@ -291,14 +291,14 @@ test_that("OpenCL explicit QR honors pivoting when host QR fallback pivots colum
 
     set.seed(20260410L)
     X_host <- matrix(rnorm(240 * 8), nrow = 240, ncol = 8)
-    X_host[, 1] <- X_host[, 1] * 1e-8
-    X_host[, 8] <- X_host[, 8] * 1e3
+    X_host[, 1] <- 0
     Y_host <- matrix(rnorm(240 * 3), nrow = 240, ncol = 3)
     X_arg <- adgeMatrix(X_host, preferred_backend = "opencl", precision = "fast")
 
     qr_fit <- am_qr(X_arg)
     qr_ref <- qr(X_host)
 
+    expect_false(identical(qr_ref$pivot, seq_len(ncol(X_host))))
     expect_true(isTRUE(qr_info(qr_fit)$pivoted))
     expect_equal(
       as.matrix(qr.coef(qr_fit, Y_host)),
@@ -308,7 +308,7 @@ test_that("OpenCL explicit QR honors pivoting when host QR fallback pivots colum
   })
 })
 
-test_that("OpenCL QR solve helper matches base solve for dense non-SPD systems", {
+test_that("OpenCL planner avoids experimental QR solve by default for dense non-SPD systems", {
   spec <- .opencl_model_spec()
   skip_if_backend_package_missing(spec)
 
@@ -319,7 +319,36 @@ test_that("OpenCL QR solve helper matches base solve for dense non-SPD systems",
 
     old <- options(
       amatrix.opencl.factor_gpu = TRUE,
-      amatrix.opencl.solve_qr_min_dim = 1L
+      amatrix.opencl.solve_qr_min_dim = 1L,
+      amatrix.opencl.solve_qr_min_rhs = 1L
+    )
+    on.exit(options(old), add = TRUE)
+
+    set.seed(20260409L)
+    A_host <- matrix(rnorm(96 * 96), nrow = 96, ncol = 96) + diag(96) * 0.5
+    B_host <- matrix(rnorm(96 * 4), nrow = 96, ncol = 4)
+    A_arg <- adgeMatrix(A_host, preferred_backend = "opencl", precision = "fast")
+    B_arg <- adgeMatrix(B_host, preferred_backend = "opencl", precision = "fast")
+
+    expect_identical(amatrix_backend_plan(A_arg, "solve", y = B_arg)$chosen, "cpu")
+    .expect_opencl_fast_equal(solve(A_arg, B_arg), solve(A_host, B_host), tolerance = 5e-5)
+  })
+})
+
+test_that("OpenCL QR solve helper matches base solve when experimental route is enabled", {
+  spec <- .opencl_model_spec()
+  skip_if_backend_package_missing(spec)
+
+  register_backend <- .opencl_register_backend(spec)
+
+  with_optional_backend_available(spec, {
+    register_backend(overwrite = TRUE)
+
+    old <- options(
+      amatrix.opencl.factor_gpu = TRUE,
+      amatrix.opencl.experimental_qr_solve = TRUE,
+      amatrix.opencl.solve_qr_min_dim = 1L,
+      amatrix.opencl.solve_qr_min_rhs = 1L
     )
     on.exit(options(old), add = TRUE)
 

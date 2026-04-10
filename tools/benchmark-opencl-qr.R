@@ -28,6 +28,14 @@ benchmark_elapsed <- function(fn, reps = 5L) {
   median(timings)
 }
 
+dispatch_backend <- function(x, op, y = NULL) {
+  amatrix_backend_plan(x, op, y = y)$chosen
+}
+
+experimental_qr_solve_requested <- function() {
+  identical(Sys.getenv("AMATRIX_OPENCL_EXPERIMENTAL_QR_SOLVE", unset = ""), "1")
+}
+
 relative_error <- function(actual, expected) {
   denom <- max(1, max(abs(expected)))
   max(abs(actual - expected)) / denom
@@ -55,12 +63,14 @@ qr_cases <- function() {
 
 bench_qr_case <- function(case_name, case, backend, reps = 5L) {
   x_arg <- make_qr_operand(case$X, backend)
+  y_arg <- make_qr_operand(case$Y, backend)
   qr_fit <- qr(x_arg)
   qr_meta <- tryCatch(qr_info(qr_fit), error = function(e) NULL)
   qr_ref <- qr(case$X)
   coef_ref <- qr.coef(qr_ref, case$Y)
   fitted_ref <- qr.fitted(qr_ref, case$Y)
   resid_ref <- qr.resid(qr_ref, case$Y)
+  qr_dispatch <- dispatch_backend(x_arg, "qr")
 
   rows <- list(
     data.frame(
@@ -70,6 +80,7 @@ bench_qr_case <- function(case_name, case, backend, reps = 5L) {
       op = "factor",
       elapsed = benchmark_elapsed(function() qr(make_qr_operand(case$X, backend)), reps = reps),
       rel_error = 0,
+      dispatch_backend = qr_dispatch,
       helper_path = if (is.null(qr_meta)) NA_character_ else qr_meta$helper_path,
       representation = if (is.null(qr_meta)) NA_character_ else qr_meta$representation,
       factor_source = if (is.null(qr_meta)) NA_character_ else qr_meta$compact_factor_source %||% qr_fit$state$factor_source %||% NA_character_,
@@ -82,6 +93,7 @@ bench_qr_case <- function(case_name, case, backend, reps = 5L) {
       op = "coef_cached",
       elapsed = benchmark_elapsed(function() qr.coef(qr_fit, case$Y), reps = reps),
       rel_error = relative_error(as.matrix(qr.coef(qr_fit, case$Y)), coef_ref),
+      dispatch_backend = qr_dispatch,
       helper_path = if (is.null(qr_meta)) NA_character_ else qr_meta$helper_path,
       representation = if (is.null(qr_meta)) NA_character_ else qr_meta$representation,
       factor_source = if (is.null(qr_meta)) NA_character_ else qr_meta$compact_factor_source %||% qr_fit$state$factor_source %||% NA_character_,
@@ -94,6 +106,7 @@ bench_qr_case <- function(case_name, case, backend, reps = 5L) {
       op = "fitted_cached",
       elapsed = benchmark_elapsed(function() qr.fitted(qr_fit, case$Y), reps = reps),
       rel_error = relative_error(as.matrix(qr.fitted(qr_fit, case$Y)), fitted_ref),
+      dispatch_backend = qr_dispatch,
       helper_path = if (is.null(qr_meta)) NA_character_ else qr_meta$helper_path,
       representation = if (is.null(qr_meta)) NA_character_ else qr_meta$representation,
       factor_source = if (is.null(qr_meta)) NA_character_ else qr_meta$compact_factor_source %||% qr_fit$state$factor_source %||% NA_character_,
@@ -106,6 +119,7 @@ bench_qr_case <- function(case_name, case, backend, reps = 5L) {
       op = "resid_cached",
       elapsed = benchmark_elapsed(function() qr.resid(qr_fit, case$Y), reps = reps),
       rel_error = relative_error(as.matrix(qr.resid(qr_fit, case$Y)), resid_ref),
+      dispatch_backend = qr_dispatch,
       helper_path = if (is.null(qr_meta)) NA_character_ else qr_meta$helper_path,
       representation = if (is.null(qr_meta)) NA_character_ else qr_meta$representation,
       factor_source = if (is.null(qr_meta)) NA_character_ else qr_meta$compact_factor_source %||% qr_fit$state$factor_source %||% NA_character_,
@@ -115,6 +129,7 @@ bench_qr_case <- function(case_name, case, backend, reps = 5L) {
 
   if (identical(case$kind, "square")) {
     solve_ref <- solve(case$X, case$Y)
+    solve_dispatch <- dispatch_backend(x_arg, "solve", y = y_arg)
     rows[[length(rows) + 1L]] <- data.frame(
       case = case_name,
       kind = case$kind,
@@ -122,6 +137,7 @@ bench_qr_case <- function(case_name, case, backend, reps = 5L) {
       op = "solve_rhs",
       elapsed = benchmark_elapsed(function() solve(x_arg, case$Y), reps = reps),
       rel_error = relative_error(as.matrix(solve(x_arg, case$Y)), solve_ref),
+      dispatch_backend = solve_dispatch,
       helper_path = if (is.null(qr_meta)) NA_character_ else qr_meta$helper_path,
       representation = if (is.null(qr_meta)) NA_character_ else qr_meta$representation,
       factor_source = if (is.null(qr_meta)) NA_character_ else qr_meta$compact_factor_source %||% qr_fit$state$factor_source %||% NA_character_,
@@ -142,6 +158,16 @@ benchmark_opencl_qr <- function(backends = available_qr_backends(), reps = 5L) {
 
 if (sys.nframe() == 0L) {
   old <- options(amatrix.opencl.factor_gpu = TRUE)
+  if (experimental_qr_solve_requested()) {
+    old <- c(
+      old,
+      options(
+        amatrix.opencl.experimental_qr_solve = TRUE,
+        amatrix.opencl.solve_qr_min_dim = 1L,
+        amatrix.opencl.solve_qr_min_rhs = 1L
+      )
+    )
+  }
   on.exit(options(old), add = TRUE)
   print(benchmark_opencl_qr())
 }

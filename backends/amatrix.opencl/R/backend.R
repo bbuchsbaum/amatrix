@@ -90,6 +90,10 @@
   isTRUE(getOption("amatrix.opencl.factor_gpu", FALSE))
 }
 
+.amatrix_opencl_experimental_qr_solve_enabled <- function() {
+  isTRUE(getOption("amatrix.opencl.experimental_qr_solve", FALSE))
+}
+
 .amatrix_opencl_is_square_matrix <- function(x) {
   dims <- dim(x)
   !is.null(dims) && length(dims) == 2L && identical(dims[[1L]], dims[[2L]])
@@ -106,10 +110,15 @@
 }
 
 .amatrix_opencl_can_try_device_qr_solve <- function(a, b = NULL) {
-  !is.null(b) &&
+  rhs_width <- .amatrix_opencl_rhs_width(b)
+
+  .amatrix_opencl_experimental_qr_solve_enabled() &&
+    !is.null(b) &&
+    !is.na(rhs_width) &&
     .amatrix_opencl_device_linalg_available() &&
     .amatrix_opencl_is_square_matrix(a) &&
-    max(dim(a)) >= getOption("amatrix.opencl.solve_qr_min_dim", 512L)
+    max(dim(a)) >= getOption("amatrix.opencl.solve_qr_min_dim", 1536L) &&
+    rhs_width >= getOption("amatrix.opencl.solve_qr_min_rhs", 64L)
 }
 
 .amatrix_opencl_dense_product_supported <- function(op, x, y = NULL) {
@@ -1024,7 +1033,16 @@ amatrix_opencl_backend <- function() {
       }
 
       if (op %in% c("solve", "chol")) {
-        return(.amatrix_opencl_is_square_matrix(x))
+        if (!.amatrix_opencl_is_square_matrix(x)) {
+          return(FALSE)
+        }
+        if (identical(op, "chol")) {
+          return(TRUE)
+        }
+        return(
+          .amatrix_opencl_is_symmetric_matrix(x) ||
+            .amatrix_opencl_can_try_device_qr_solve(x, b = y)
+        )
       }
 
       if (identical(op, "eigen")) {
