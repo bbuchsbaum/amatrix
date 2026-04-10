@@ -94,6 +94,46 @@ setMethod("colSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colsums
 setMethod("rowMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) rowmeans(x, na.rm = na.rm))
 setMethod("colMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colmeans(x, na.rm = na.rm))
 
+setMethod("cbind2", signature(x = "aMatrix", y = "aMatrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+setMethod("cbind2", signature(x = "aMatrix", y = "ANY"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+setMethod("cbind2", signature(x = "ANY", y = "aMatrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+setMethod("cbind2", signature(x = "matrix", y = "aMatrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+setMethod("cbind2", signature(x = "Matrix", y = "aMatrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+setMethod("rbind2", signature(x = "aMatrix", y = "aMatrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+setMethod("rbind2", signature(x = "aMatrix", y = "ANY"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+setMethod("rbind2", signature(x = "ANY", y = "aMatrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+setMethod("rbind2", signature(x = "matrix", y = "aMatrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+setMethod("rbind2", signature(x = "Matrix", y = "aMatrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
 setMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })

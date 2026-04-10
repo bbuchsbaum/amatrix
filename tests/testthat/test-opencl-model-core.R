@@ -47,6 +47,7 @@ test_that("OpenCL normal-equation lm_fit matches lm.fit", {
     .expect_opencl_fast_equal(fit$coefficients, ref_coef)
     expect_identical(fit$backend, "opencl")
     expect_identical(fit$precision, "fast")
+    expect_s4_class(fit$coefficients, "adgeMatrix")
   })
 })
 

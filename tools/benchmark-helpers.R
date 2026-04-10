@@ -30,9 +30,19 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
   prepare_benchmark_libpaths()
 
   if (!is.null(repo_dir) && dir.exists(repo_dir) && requireNamespace("pkgload", quietly = TRUE)) {
-    pkgload::load_all(repo_dir, quiet = TRUE, helpers = FALSE, export_all = FALSE)
-    if (package %in% loadedNamespaces()) {
-      return(asNamespace(package))
+    source_ns <- tryCatch(
+      {
+        pkgload::load_all(repo_dir, quiet = TRUE, helpers = FALSE, export_all = FALSE)
+        if (package %in% loadedNamespaces()) {
+          asNamespace(package)
+        } else {
+          NULL
+        }
+      },
+      error = function(e) NULL
+    )
+    if (!is.null(source_ns)) {
+      return(source_ns)
     }
   }
 

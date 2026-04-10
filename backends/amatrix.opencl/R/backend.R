@@ -218,11 +218,11 @@
 
 amatrix_opencl_capabilities <- function() {
   c("matmul", "crossprod", "tcrossprod", "ewise",
-    "broadcast_ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "covariance")
+    "broadcast_ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "rsvd", "eigen", "covariance")
 }
 
 amatrix_opencl_features <- function() {
-  c("dense_f32", "resident_dense", "custom_ops", "solve", "chol", "qr", "svd", "eigen_sym", "covariance", "sparse_spmm")
+  c("dense_f32", "resident_dense", "resident_sparse", "custom_ops", "solve", "chol", "qr", "svd", "rsvd", "eigen_sym", "covariance", "sparse_spmm")
 }
 
 amatrix_opencl_precision_modes <- function() {
@@ -277,7 +277,16 @@ amatrix_opencl_diagnostics <- function() {
 
 amatrix_opencl_matmul <- function(x, y) {
   if (inherits(x, "dgCMatrix")) {
-    return(as.matrix(.amatrix_opencl_sparse_host(x) %*% .amatrix_opencl_dense_host(y)))
+    return(.Call(
+      "amatrix_opencl_spmm_bridge",
+      as.double(x@x),
+      as.integer(x@p),
+      as.integer(x@i),
+      as.integer(x@Dim),
+      .amatrix_opencl_dense_host(y),
+      FALSE,
+      PACKAGE = "amatrix.opencl"
+    ))
   }
   .Call(
     "amatrix_opencl_matmul_bridge",
@@ -292,7 +301,16 @@ amatrix_opencl_crossprod <- function(x, y = NULL) {
     if (is.null(y)) {
       return(as.matrix(Matrix::crossprod(.amatrix_opencl_sparse_host(x))))
     }
-    return(as.matrix(Matrix::crossprod(.amatrix_opencl_sparse_host(x), .amatrix_opencl_dense_host(y))))
+    return(.Call(
+      "amatrix_opencl_spmm_bridge",
+      as.double(x@x),
+      as.integer(x@p),
+      as.integer(x@i),
+      as.integer(x@Dim),
+      .amatrix_opencl_dense_host(y),
+      TRUE,
+      PACKAGE = "amatrix.opencl"
+    ))
   }
   rhs <- if (is.null(y)) NULL else .amatrix_opencl_dense_host(y)
   .Call(
@@ -308,7 +326,16 @@ amatrix_opencl_tcrossprod <- function(x, y = NULL) {
     if (is.null(y)) {
       return(as.matrix(Matrix::tcrossprod(.amatrix_opencl_sparse_host(x))))
     }
-    return(as.matrix(Matrix::tcrossprod(.amatrix_opencl_sparse_host(x), .amatrix_opencl_dense_host(y))))
+    return(.Call(
+      "amatrix_opencl_spmm_bridge",
+      as.double(x@x),
+      as.integer(x@p),
+      as.integer(x@i),
+      as.integer(x@Dim),
+      t(.amatrix_opencl_dense_host(y)),
+      FALSE,
+      PACKAGE = "amatrix.opencl"
+    ))
   }
   rhs <- if (is.null(y)) NULL else .amatrix_opencl_dense_host(y)
   .Call(
@@ -614,6 +641,60 @@ amatrix_opencl_svd <- function(x, nu, nv, LINPACK = FALSE, ...) {
   base::svd(.amatrix_opencl_dense_host(x), nu = nu, nv = nv, ...)
 }
 
+amatrix_opencl_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L) {
+  mat <- .amatrix_opencl_dense_host(x)
+  m <- nrow(mat)
+  n <- ncol(mat)
+  p <- min(as.integer(k) + as.integer(n_oversamples), m, n)
+  k_eff <- min(as.integer(k), p)
+
+  x_key <- .amatrix_opencl_temp_key("rsvd-x")
+  on.exit(.amatrix_opencl_drop_if_present(x_key), add = TRUE)
+  amatrix_opencl_resident_store(x_key, mat)
+
+  left_apply <- function(rhs) {
+    amatrix_opencl_matmul_resident_host(x_key, rhs)
+  }
+  right_apply <- function(rhs) {
+    amatrix_opencl_crossprod_resident_host(x_key, rhs)
+  }
+
+  Omega <- matrix(stats::rnorm(n * p), nrow = n, ncol = p)
+  storage.mode(Omega) <- "double"
+  Q <- qr.Q(qr(left_apply(Omega)))
+  storage.mode(Q) <- "double"
+
+  if (n_iter > 0L) {
+    for (idx in seq_len(as.integer(n_iter))) {
+      Z <- right_apply(Q)
+      Q <- qr.Q(qr(Z))
+      storage.mode(Q) <- "double"
+      Y <- left_apply(Q)
+      Q <- qr.Q(qr(Y))
+      storage.mode(Q) <- "double"
+    }
+  }
+
+  # B = t(Q) %*% A, computed as t(A^T %*% Q) to reuse the resident A.
+  B <- t(right_apply(Q))
+  svd_B <- base::svd(B, nu = k_eff, nv = k_eff)
+  U_B <- svd_B$u[, seq_len(k_eff), drop = FALSE]
+  storage.mode(U_B) <- "double"
+
+  q_key <- .amatrix_opencl_temp_key("rsvd-q")
+  on.exit(.amatrix_opencl_drop_if_present(q_key), add = TRUE)
+  amatrix_opencl_resident_store(q_key, Q)
+  U <- amatrix_opencl_matmul_resident_host(q_key, U_B)
+
+  list(
+    u = U,
+    d = svd_B$d[seq_len(k_eff)],
+    v = svd_B$v[, seq_len(k_eff), drop = FALSE],
+    iter = as.integer(n_iter),
+    mprod = as.integer(2L * as.integer(n_iter) + 2L)
+  )
+}
+
 amatrix_opencl_eigen <- function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
   x_host <- .amatrix_opencl_dense_host(x)
   if (nrow(x_host) != ncol(x_host)) {
@@ -648,6 +729,26 @@ amatrix_opencl_solve_triangular_resident <- function(factor_key, rhs_key, out_ke
       lower = lower,
       transpose = transpose
     )
+    amatrix_opencl_resident_store(out_key, host_result)
+    if (defer) NULL else host_result
+  })
+  result
+}
+
+amatrix_opencl_chol_solve_resident <- function(factor_key, rhs_key, out_key, defer = FALSE) {
+  result <- tryCatch({
+    .Call(
+      "amatrix_opencl_chol_solve_resident_bridge",
+      as.character(factor_key),
+      as.character(rhs_key),
+      as.character(out_key),
+      PACKAGE = "amatrix.opencl"
+    )
+    if (defer) NULL else amatrix_opencl_resident_materialize(out_key)
+  }, error = function(e) {
+    factor_host <- amatrix_opencl_resident_materialize(factor_key)
+    rhs_host <- amatrix_opencl_resident_materialize(rhs_key)
+    host_result <- amatrix_opencl_chol_solve_factor(factor_host, rhs_host)
     amatrix_opencl_resident_store(out_key, host_result)
     if (defer) NULL else host_result
   })
@@ -739,43 +840,56 @@ amatrix_opencl_resident_materialize <- function(key) {
 }
 
 amatrix_opencl_sparse_resident_store <- function(key, x_sp) {
-  assign(as.character(key), .amatrix_opencl_sparse_host(x_sp), envir = .amatrix_opencl_sparse_host_resident)
+  x_sp <- .amatrix_opencl_sparse_host(x_sp)
+  .Call(
+    "amatrix_opencl_sparse_store_bridge",
+    as.character(key),
+    as.double(x_sp@x),
+    as.integer(x_sp@p),
+    as.integer(x_sp@i),
+    as.integer(x_sp@Dim),
+    PACKAGE = "amatrix.opencl"
+  )
   invisible(TRUE)
 }
 
 amatrix_opencl_sparse_resident_has <- function(key) {
-  exists(as.character(key), envir = .amatrix_opencl_sparse_host_resident, inherits = FALSE)
+  isTRUE(.Call(
+    "amatrix_opencl_sparse_has_bridge",
+    as.character(key),
+    PACKAGE = "amatrix.opencl"
+  ))
 }
 
 amatrix_opencl_sparse_resident_drop <- function(key) {
-  key <- as.character(key)
-  if (exists(key, envir = .amatrix_opencl_sparse_host_resident, inherits = FALSE)) {
-    rm(list = key, envir = .amatrix_opencl_sparse_host_resident)
-  }
+  .Call(
+    "amatrix_opencl_sparse_drop_bridge",
+    as.character(key),
+    PACKAGE = "amatrix.opencl"
+  )
   invisible(TRUE)
 }
 
 amatrix_opencl_spmm_resident <- function(sp_key, B, trans_lhs = FALSE) {
-  sp_key <- as.character(sp_key)
-  if (!exists(sp_key, envir = .amatrix_opencl_sparse_host_resident, inherits = FALSE)) {
-    stop(sprintf("unknown opencl sparse resident key '%s'", sp_key), call. = FALSE)
-  }
-
-  sparse_x <- get(sp_key, envir = .amatrix_opencl_sparse_host_resident, inherits = FALSE)
-  rhs <- .amatrix_opencl_dense_host(B)
-  if (isTRUE(trans_lhs)) {
-    return(as.matrix(Matrix::crossprod(sparse_x, rhs)))
-  }
-  as.matrix(sparse_x %*% rhs)
+  .Call(
+    "amatrix_opencl_spmm_resident_bridge",
+    as.character(sp_key),
+    .amatrix_opencl_dense_host(B),
+    as.logical(trans_lhs),
+    PACKAGE = "amatrix.opencl"
+  )
 }
 
 amatrix_opencl_spmm_resident_key <- function(sp_key, y_key, out_key, trans_lhs = FALSE, defer = FALSE) {
-  host_result <- amatrix_opencl_spmm_resident(sp_key, amatrix_opencl_resident_materialize(y_key), trans_lhs = trans_lhs)
-  amatrix_opencl_resident_store(out_key, host_result)
-  if (isTRUE(defer)) {
-    return(NULL)
-  }
-  host_result
+  .Call(
+    "amatrix_opencl_spmm_resident_key_bridge",
+    as.character(sp_key),
+    as.character(y_key),
+    as.character(out_key),
+    as.logical(trans_lhs),
+    as.logical(defer),
+    PACKAGE = "amatrix.opencl"
+  )
 }
 
 amatrix_opencl_solve_resident <- function(a_key, b_key = NULL, out_key, defer = FALSE) {
@@ -1088,6 +1202,9 @@ amatrix_opencl_backend <- function() {
     svd = function(x, nu, nv, LINPACK = FALSE, ...) {
       amatrix_opencl_svd(x, nu = nu, nv = nv, LINPACK = LINPACK, ...)
     },
+    rsvd = function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
+      amatrix_opencl_rsvd(x, k = k, n_oversamples = n_oversamples, n_iter = n_iter)
+    },
     eigen = function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
       amatrix_opencl_eigen(x, symmetric = symmetric, only.values = only.values, EISPACK = EISPACK)
     },
@@ -1169,6 +1286,9 @@ amatrix_opencl_backend <- function() {
         transpose = transpose,
         defer = defer
       )
+    },
+    chol_solve_resident = function(factor_key, rhs_key, out_key, defer = FALSE) {
+      amatrix_opencl_chol_solve_resident(factor_key, rhs_key, out_key, defer = defer)
     },
     chol_resident = function(x_key, out_key) {
       amatrix_opencl_chol_resident(x_key, out_key = out_key)

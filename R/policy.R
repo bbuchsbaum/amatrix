@@ -1,4 +1,4 @@
-.amatrix_valid_policies   <- c("auto", "cpu", "mlx", "arrayfire", "torch")
+.amatrix_valid_policies   <- c("auto", "cpu", "mlx", "metal", "arrayfire", "torch")
 .amatrix_valid_precisions <- c("strict", "fast")
 .amatrix_valid_modes      <- c("exact", "balanced", "fast")
 
@@ -53,6 +53,53 @@ amatrix_set_default_policy <- function(policy) {
 
 amatrix_default_precision <- function() {
   .amatrix_state$default_precision
+}
+
+.amatrix_backend_precision_modes_safe <- function(backend_name) {
+  if (is.null(backend_name) ||
+      !nzchar(backend_name) ||
+      backend_name %in% c("auto", "cpu")) {
+    return(NULL)
+  }
+
+  backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
+  if (is.null(backend) || !is.function(backend$precision_modes)) {
+    return(NULL)
+  }
+
+  modes <- tryCatch(unique(backend$precision_modes()), error = function(e) character())
+  modes[modes %in% .amatrix_valid_precisions]
+}
+
+.amatrix_resolve_backend_precision <- function(backend_name, precision, precision_missing = FALSE) {
+  if (!isTRUE(precision_missing)) {
+    return(precision)
+  }
+
+  modes <- .amatrix_backend_precision_modes_safe(backend_name)
+  if (is.null(modes) || length(modes) == 0L || precision %in% modes) {
+    return(precision)
+  }
+
+  if ("fast" %in% modes) {
+    return("fast")
+  }
+
+  modes[[1L]]
+}
+
+.amatrix_check_backend_precision <- function(backend_name, precision) {
+  modes <- .amatrix_backend_precision_modes_safe(backend_name)
+  if (is.null(modes) || length(modes) == 0L || precision %in% modes) {
+    return(invisible(TRUE))
+  }
+
+  stop(sprintf(
+    "backend '%s' does not support precision '%s' (supports: %s)",
+    backend_name,
+    precision,
+    paste(modes, collapse = ", ")
+  ), call. = FALSE)
 }
 
 amatrix_set_default_precision <- function(precision) {

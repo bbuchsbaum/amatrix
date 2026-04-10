@@ -20,6 +20,17 @@ amatrix_execution_info <- function(
 }
 
 .amatrix_backend_for <- function(x, op, y = NULL) {
+  resident_backend <- .amatrix_live_resident_backend(x)
+  if (!is.null(resident_backend)) {
+    backend <- tryCatch(.amatrix_get_backend(resident_backend), error = function(e) NULL)
+    if (!is.null(backend) &&
+        isTRUE(backend$available()) &&
+        x@precision %in% unique(backend$precision_modes()) &&
+        .amatrix_backend_supports_resident_op(backend, op, x = x, y = y)) {
+      return(list(name = resident_backend, backend = backend))
+    }
+  }
+
   plan <- amatrix_backend_plan(x, op, y = y)
   chosen <- plan$candidates[[match(TRUE, vapply(plan$candidates, function(candidate) isTRUE(candidate$chosen), logical(1)))]]
 
@@ -64,13 +75,13 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
         entry$supported_resident <- (
           entry$resident_active &&
             .amatrix_backend_residency_capable(backend) &&
-            .amatrix_backend_supports_resident_op(backend, op)
+            .amatrix_backend_supports_resident_op(backend, op, x = x, y = y)
         )
         # Calibration gates the cold path only. Resident path is always ok
         # because the upload cost has already been paid.
         entry$calibration_ok <- (
           entry$supported_resident ||
-          .amatrix_calibration_ok(x, op, candidate_name)
+          .amatrix_calibration_ok(x, op, candidate_name, y = y)
         )
         entry$supported <- isTRUE(
           (entry$supported_cold || entry$supported_resident) && entry$calibration_ok
@@ -203,7 +214,8 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
   if (!is.null(resident_backend_name)) {
     backend <- .amatrix_get_backend(resident_backend_name)
     resident_op_name <- paste0(method, "_resident")
-    if (is.function(backend[[resident_op_name]])) {
+    if (is.function(backend[[resident_op_name]]) &&
+        .amatrix_backend_supports_resident_op(backend, method, x = x, y = y)) {
       lhs <- .amatrix_prepare_resident_arg(x, resident_backend_name)
       if (!is.null(lhs)) {
         out_key <- .amatrix_next_resident_key(resident_backend_name)

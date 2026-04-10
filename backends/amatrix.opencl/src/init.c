@@ -11,13 +11,20 @@ extern SEXP amatrix_opencl_tcrossprod_bridge(SEXP x, SEXP y);
 extern SEXP amatrix_opencl_ewise_bridge(SEXP lhs, SEXP rhs, SEXP op);
 extern SEXP amatrix_opencl_broadcast_ewise_bridge(SEXP lhs, SEXP v, SEXP margin, SEXP op);
 extern SEXP amatrix_opencl_sum_axis_bridge(SEXP x, SEXP axis);
+extern SEXP amatrix_opencl_sparse_store_bridge(SEXP key, SEXP values, SEXP p, SEXP i, SEXP dim);
+extern SEXP amatrix_opencl_sparse_has_bridge(SEXP key);
+extern SEXP amatrix_opencl_sparse_drop_bridge(SEXP key);
+extern SEXP amatrix_opencl_spmm_bridge(SEXP values, SEXP p, SEXP i, SEXP dim, SEXP b, SEXP trans_lhs);
 extern SEXP amatrix_opencl_resident_store_bridge(SEXP key, SEXP x);
 extern SEXP amatrix_opencl_resident_has_bridge(SEXP key);
 extern SEXP amatrix_opencl_resident_drop_bridge(SEXP key);
 extern SEXP amatrix_opencl_resident_materialize_bridge(SEXP key);
+extern SEXP amatrix_opencl_spmm_resident_bridge(SEXP key, SEXP b, SEXP trans_lhs);
+extern SEXP amatrix_opencl_spmm_resident_key_bridge(SEXP sp_key, SEXP y_key, SEXP out_key, SEXP trans_lhs, SEXP defer);
 extern SEXP amatrix_opencl_chol_resident_bridge(SEXP x_key, SEXP out_key);
 extern SEXP amatrix_opencl_solve_resident_bridge(SEXP a_key, SEXP b_key, SEXP out_key);
 extern SEXP amatrix_opencl_solve_triangular_resident_bridge(SEXP factor_key, SEXP rhs_key, SEXP out_key, SEXP lower, SEXP transpose);
+extern SEXP amatrix_opencl_chol_solve_resident_bridge(SEXP factor_key, SEXP rhs_key, SEXP out_key);
 extern SEXP amatrix_opencl_matmul_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
 extern SEXP amatrix_opencl_crossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
 extern SEXP amatrix_opencl_tcrossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
@@ -41,13 +48,20 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_opencl_ewise_bridge", (DL_FUNC) &amatrix_opencl_ewise_bridge, 3},
     {"amatrix_opencl_broadcast_ewise_bridge", (DL_FUNC) &amatrix_opencl_broadcast_ewise_bridge, 4},
     {"amatrix_opencl_sum_axis_bridge", (DL_FUNC) &amatrix_opencl_sum_axis_bridge, 2},
+    {"amatrix_opencl_sparse_store_bridge", (DL_FUNC) &amatrix_opencl_sparse_store_bridge, 5},
+    {"amatrix_opencl_sparse_has_bridge", (DL_FUNC) &amatrix_opencl_sparse_has_bridge, 1},
+    {"amatrix_opencl_sparse_drop_bridge", (DL_FUNC) &amatrix_opencl_sparse_drop_bridge, 1},
+    {"amatrix_opencl_spmm_bridge", (DL_FUNC) &amatrix_opencl_spmm_bridge, 6},
     {"amatrix_opencl_resident_store_bridge", (DL_FUNC) &amatrix_opencl_resident_store_bridge, 2},
     {"amatrix_opencl_resident_has_bridge", (DL_FUNC) &amatrix_opencl_resident_has_bridge, 1},
     {"amatrix_opencl_resident_drop_bridge", (DL_FUNC) &amatrix_opencl_resident_drop_bridge, 1},
     {"amatrix_opencl_resident_materialize_bridge", (DL_FUNC) &amatrix_opencl_resident_materialize_bridge, 1},
+    {"amatrix_opencl_spmm_resident_bridge", (DL_FUNC) &amatrix_opencl_spmm_resident_bridge, 3},
+    {"amatrix_opencl_spmm_resident_key_bridge", (DL_FUNC) &amatrix_opencl_spmm_resident_key_bridge, 5},
     {"amatrix_opencl_chol_resident_bridge", (DL_FUNC) &amatrix_opencl_chol_resident_bridge, 2},
     {"amatrix_opencl_solve_resident_bridge", (DL_FUNC) &amatrix_opencl_solve_resident_bridge, 3},
     {"amatrix_opencl_solve_triangular_resident_bridge", (DL_FUNC) &amatrix_opencl_solve_triangular_resident_bridge, 5},
+    {"amatrix_opencl_chol_solve_resident_bridge", (DL_FUNC) &amatrix_opencl_chol_solve_resident_bridge, 3},
     {"amatrix_opencl_matmul_resident_bridge", (DL_FUNC) &amatrix_opencl_matmul_resident_bridge, 3},
     {"amatrix_opencl_crossprod_resident_bridge", (DL_FUNC) &amatrix_opencl_crossprod_resident_bridge, 3},
     {"amatrix_opencl_tcrossprod_resident_bridge", (DL_FUNC) &amatrix_opencl_tcrossprod_resident_bridge, 3},

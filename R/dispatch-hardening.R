@@ -103,14 +103,26 @@ setMethod("%*%", signature(x = "dgCMatrix",  y = "adgCMatrix"), function(x, y) {
   matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
 })
 setMethod("crossprod",  signature(x = "matrix",  y = "adgCMatrix"), function(x, y, ...) {
-  crossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "col"), y, ...)
+  am_crossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "col"), y, ...)
 })
 setMethod("crossprod",  signature(x = "numeric", y = "adgCMatrix"), function(x, y, ...) {
-  crossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "col"), y, ...)
+  am_crossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "col"), y, ...)
+})
+setMethod("crossprod",  signature(x = "dgeMatrix", y = "adgCMatrix"), function(x, y, ...) {
+  am_crossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "col"), y, ...)
+})
+setMethod("crossprod",  signature(x = "dgCMatrix", y = "adgCMatrix"), function(x, y, ...) {
+  am_crossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "col"), y, ...)
 })
 setMethod("tcrossprod", signature(x = "matrix",  y = "adgCMatrix"), function(x, y, ...) {
-  tcrossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y, ...)
+  am_tcrossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y, ...)
 })
 setMethod("tcrossprod", signature(x = "numeric", y = "adgCMatrix"), function(x, y, ...) {
-  tcrossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y, ...)
+  am_tcrossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y, ...)
+})
+setMethod("tcrossprod", signature(x = "dgeMatrix", y = "adgCMatrix"), function(x, y, ...) {
+  am_tcrossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y, ...)
+})
+setMethod("tcrossprod", signature(x = "dgCMatrix", y = "adgCMatrix"), function(x, y, ...) {
+  am_tcrossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y, ...)
 })

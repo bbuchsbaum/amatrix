@@ -18,8 +18,9 @@ test_that("mlx backend advertises dense-first capabilities", {
 test_that("mlx capability list is stable and explicit", {
   expect_identical(
     amatrix_mlx_capabilities(),
-    c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums",
-      "qr", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen", "covariance")
+    c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax",
+      "scatter_mean", "segment_sum", "segment_mean", "addmm", "rowSums", "colSums",
+      "solve", "qr", "svd", "rsvd", "chol", "chol_gpu", "batched_trsm", "eigen", "covariance")
   )
 })
 
@@ -138,7 +139,7 @@ test_that("mlx availability can be enabled for routing tests", {
 
   x <- amatrix::adgeMatrix(matrix(1:4, nrow = 2), preferred_backend = "mlx", precision = "fast")
   dense_plan <- amatrix::amatrix_backend_plan(x, "matmul", y = diag(2))
-  unsupported_plan <- amatrix::amatrix_backend_plan(x, "solve")
+  solve_plan <- amatrix::amatrix_backend_plan(x, "solve")
   sparse_plan <- amatrix::amatrix_backend_plan(
     amatrix::adgCMatrix(matrix(c(1, 0, 0, 1), nrow = 2), preferred_backend = "mlx", precision = "fast"),
     "matmul",
@@ -147,7 +148,7 @@ test_that("mlx availability can be enabled for routing tests", {
 
   expect_true(amatrix_mlx_is_available())
   expect_identical(dense_plan$chosen, "mlx")
-  expect_identical(unsupported_plan$chosen, "cpu")
+  expect_identical(solve_plan$chosen, "mlx")
   expect_identical(sparse_plan$chosen, "cpu")
 })
 
@@ -163,4 +164,36 @@ test_that("forced availability bypasses size heuristics for backend tests", {
   expect_true(backend$supports("crossprod", x))
   expect_true(backend$supports("tcrossprod", x))
   expect_true(backend$supports("qr", x))
+})
+
+test_that("mlx sparse routing distinguishes spmv from spmm thresholds", {
+  old_opts <- options(
+    amatrix.mlx.spmv_min_nnz = Inf,
+    amatrix.mlx.spmm_min_nnz = 10L
+  )
+  on.exit(options(old_opts), add = TRUE)
+
+  backend <- amatrix_mlx_backend()
+  sparse <- amatrix::adgCMatrix(
+    Matrix::rsparsematrix(64, 64, density = 0.05),
+    preferred_backend = "mlx",
+    precision = "fast"
+  )
+
+  expect_false(backend$supports("matmul", sparse, y = matrix(1, nrow = 64, ncol = 1)))
+  expect_true(backend$supports("matmul", sparse, y = matrix(1, nrow = 64, ncol = 8)))
+  expect_true(backend$supports("crossprod", sparse, y = matrix(1, nrow = 64, ncol = 8)))
+  expect_true(backend$supports("tcrossprod", sparse, y = matrix(1, nrow = 8, ncol = 64)))
+})
+
+test_that("mlx sparse spmm is disabled by default pending winning benchmarks", {
+  backend <- amatrix_mlx_backend()
+  sparse <- amatrix::adgCMatrix(
+    Matrix::rsparsematrix(512, 512, density = 0.05),
+    preferred_backend = "mlx",
+    precision = "fast"
+  )
+
+  expect_false(backend$supports("matmul", sparse, y = matrix(1, nrow = 512, ncol = 32)))
+  expect_false(backend$supports("crossprod", sparse, y = matrix(1, nrow = 512, ncol = 32)))
 })

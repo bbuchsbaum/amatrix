@@ -239,7 +239,12 @@
     return(.amatrix_host_solve_rewrap(lhs, rhs, template = template))
   }
 
-  .amatrix_rewrap_like(template, chol_solve(chol_factor(lhs), rhs))
+  value <- chol_solve(chol_factor(lhs), rhs)
+  if (inherits(value, "aMatrix")) {
+    return(value)
+  }
+
+  .amatrix_rewrap_like(template, value)
 }
 
 .amatrix_ridge_penalized_xtx <- function(XtX, lambda, penalize_intercept = FALSE, has_intercept = FALSE) {

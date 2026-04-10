@@ -56,10 +56,14 @@ make_recording_backend <- function(
   cold_supported_ops = supported_ops,
   resident_supported_ops = supported_ops,
   precision_modes = c("strict", "fast"),
-  features = c("dense_f64")
+  features = c("dense_f64"),
+  supports_sparse_matmul = FALSE,
+  supports_sparse_ops = if (isTRUE(supports_sparse_matmul)) "matmul" else character(),
+  supports_sparse_resident = length(supports_sparse_ops) > 0L
 ) {
   cpu <- amatrix:::.amatrix_cpu_backend()
   resident <- new.env(parent = emptyenv())
+  sparse_resident <- new.env(parent = emptyenv())
 
   wrap <- function(method_name) {
     force(method_name)
@@ -74,12 +78,25 @@ make_recording_backend <- function(
 
   backend <- list(
     capabilities = function() sort(unique(c(cold_supported_ops, resident_supported_ops))),
-    features = function() features,
+    features = function() {
+      feats <- features
+      if (length(supports_sparse_ops) > 0L && !("sparse_spmm" %in% feats)) {
+        feats <- c(feats, "sparse_spmm")
+      }
+      feats
+    },
     precision_modes = function() precision_modes,
     available = function() TRUE,
     supports = function(op, x, y = NULL) {
-      inherits(x, "adgeMatrix") &&
-        (x@precision %in% precision_modes) &&
+      precision_ok <- inherits(x, "aMatrix") && (x@precision %in% precision_modes)
+      dense_ok <- inherits(x, "adgeMatrix")
+      sparse_ok <- inherits(x, "adgCMatrix") && (op %in% supports_sparse_ops)
+      if (sparse_ok && op %in% c("crossprod", "tcrossprod") && is.null(y)) {
+        sparse_ok <- FALSE
+      }
+
+      precision_ok &&
+        (dense_ok || sparse_ok) &&
         op %in% cold_supported_ops
     },
     matmul = wrap("matmul"),
@@ -190,6 +207,76 @@ make_recording_backend <- function(
     }
   }
 
+  if (isTRUE(supports_sparse_resident) && length(supports_sparse_ops) > 0L) {
+    backend$sparse_resident_has <- function(key) {
+      exists(key, envir = sparse_resident, inherits = FALSE)
+    }
+
+    backend$sparse_resident_store <- function(key, x_sp) {
+      if (is.null(counter$sparse_resident_store)) {
+        counter$sparse_resident_store <- 0L
+      }
+      counter$sparse_resident_store <- counter$sparse_resident_store + 1L
+      assign(key, methods::as(x_sp, "dgCMatrix"), envir = sparse_resident)
+      invisible(key)
+    }
+
+    backend$sparse_resident_drop <- function(key) {
+      if (is.null(counter$sparse_resident_drop)) {
+        counter$sparse_resident_drop <- 0L
+      }
+      counter$sparse_resident_drop <- counter$sparse_resident_drop + 1L
+      if (exists(key, envir = sparse_resident, inherits = FALSE)) {
+        rm(list = key, envir = sparse_resident)
+      }
+      invisible(key)
+    }
+
+    backend$spmm_resident <- function(sp_key, B, trans_lhs = FALSE) {
+      if (is.null(counter$spmm_resident)) {
+        counter$spmm_resident <- 0L
+      }
+      counter$spmm_resident <- counter$spmm_resident + 1L
+
+      if (isTRUE(trans_lhs)) {
+        if (is.null(counter$spmm_resident_trans_true)) {
+          counter$spmm_resident_trans_true <- 0L
+        }
+        counter$spmm_resident_trans_true <- counter$spmm_resident_trans_true + 1L
+      } else {
+        if (is.null(counter$spmm_resident_trans_false)) {
+          counter$spmm_resident_trans_false <- 0L
+        }
+        counter$spmm_resident_trans_false <- counter$spmm_resident_trans_false + 1L
+      }
+
+      sp <- get(sp_key, envir = sparse_resident, inherits = FALSE)
+      B_mat <- as.matrix(B)
+      if (isTRUE(trans_lhs)) {
+        as.matrix(Matrix::crossprod(sp, B_mat))
+      } else {
+        as.matrix(sp %*% B_mat)
+      }
+    }
+
+    backend$spmm_resident_key <- function(sp_key, y_key, out_key, trans_lhs = FALSE, defer = FALSE) {
+      if (is.null(counter$spmm_resident_key)) {
+        counter$spmm_resident_key <- 0L
+      }
+      counter$spmm_resident_key <- counter$spmm_resident_key + 1L
+
+      sp <- get(sp_key, envir = sparse_resident, inherits = FALSE)
+      y_mat <- get(y_key, envir = resident, inherits = FALSE)
+      value <- if (isTRUE(trans_lhs)) {
+        as.matrix(Matrix::crossprod(sp, y_mat))
+      } else {
+        as.matrix(sp %*% y_mat)
+      }
+      assign(out_key, value, envir = resident)
+      value
+    }
+  }
+
   backend
 }
 
@@ -197,6 +284,7 @@ optional_backend_specs <- function() {
   list(
     list(
       package = "amatrix.mlx",
+      repo_dir = "backends/amatrix.mlx",
       backend = "mlx",
       option = "amatrix.mlx.available",
       enable_option = NULL,
@@ -205,7 +293,18 @@ optional_backend_specs <- function() {
       available_fun = "amatrix_mlx_is_available"
     ),
     list(
+      package = "amatrix.opencl",
+      repo_dir = "backends/amatrix.opencl",
+      backend = "opencl",
+      option = "amatrix.opencl.available",
+      enable_option = "amatrix.enable_opencl",
+      register_fun = "amatrix_opencl_register",
+      capabilities_fun = "amatrix_opencl_capabilities",
+      available_fun = "amatrix_opencl_is_available"
+    ),
+    list(
       package = "amatrix.arrayfire",
+      repo_dir = "backends/amatrix.arrayfire",
       backend = "arrayfire",
       option = "amatrix.arrayfire.available",
       enable_option = "amatrix.enable_arrayfire",
@@ -223,6 +322,19 @@ skip_if_backend_package_missing <- function(spec) {
 }
 
 optional_backend_namespace <- function(package) {
+  specs <- optional_backend_specs()
+  spec_idx <- match(package, vapply(specs, `[[`, character(1), "package"))
+  spec <- if (is.na(spec_idx)) NULL else specs[[spec_idx]]
+  if (!is.null(spec) &&
+      !is.null(spec$repo_dir) &&
+      dir.exists(spec$repo_dir) &&
+      requireNamespace("pkgload", quietly = TRUE)) {
+    pkgload::load_all(spec$repo_dir, quiet = TRUE, helpers = FALSE, export_all = FALSE)
+    if (package %in% loadedNamespaces()) {
+      return(asNamespace(package))
+    }
+  }
+
   lib_locs <- unique(c(.libPaths(), .Library, .Library.site))
   tryCatch(
     loadNamespace(package, lib.loc = lib_locs),

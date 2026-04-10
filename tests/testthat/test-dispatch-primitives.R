@@ -77,6 +77,33 @@ test_that("crossprod(matrix, adgCMatrix) routes through amatrix dispatch", {
   expect_equal(as.matrix(result), base::crossprod(A_r, B_r), tolerance = .disp_tol)
 })
 
+test_that("crossprod(dgeMatrix, adgCMatrix) routes through amatrix dispatch", {
+  set.seed(4301)
+  A_r <- matrix(rnorm(5 * 4), 5, 4)
+  B_r <- matrix(rnorm(5 * 3), 5, 3)
+  A   <- Matrix::Matrix(A_r, sparse = FALSE)
+  B   <- adgCMatrix(B_r, preferred_backend = "cpu")
+
+  result <- crossprod(A, B)
+
+  expect_true(inherits(result, "adgeMatrix"))
+  expect_equal(as.matrix(result), base::crossprod(A_r, B_r), tolerance = .disp_tol)
+})
+
+test_that("crossprod(dgCMatrix, adgCMatrix) routes through amatrix dispatch", {
+  set.seed(4302)
+  A_r <- matrix(rnorm(5 * 4), 5, 4)
+  A_r[abs(A_r) < 0.5] <- 0
+  B_r <- matrix(rnorm(5 * 3), 5, 3)
+  A   <- as(Matrix::Matrix(A_r, sparse = TRUE), "dgCMatrix")
+  B   <- adgCMatrix(B_r, preferred_backend = "cpu")
+
+  result <- crossprod(A, B)
+
+  expect_true(inherits(result, "adgeMatrix"))
+  expect_equal(as.matrix(result), base::crossprod(as.matrix(A), B_r), tolerance = .disp_tol)
+})
+
 test_that("tcrossprod(matrix, adgCMatrix) routes through amatrix dispatch", {
   set.seed(44)
   A_r <- matrix(rnorm(3 * 4), 3, 4)
@@ -87,6 +114,33 @@ test_that("tcrossprod(matrix, adgCMatrix) routes through amatrix dispatch", {
 
   expect_true(inherits(result, "adgeMatrix"))
   expect_equal(as.matrix(result), base::tcrossprod(A_r, B_r), tolerance = .disp_tol)
+})
+
+test_that("tcrossprod(dgeMatrix, adgCMatrix) routes through amatrix dispatch", {
+  set.seed(4401)
+  A_r <- matrix(rnorm(3 * 4), 3, 4)
+  B_r <- matrix(rnorm(2 * 4), 2, 4)
+  A   <- Matrix::Matrix(A_r, sparse = FALSE)
+  B   <- adgCMatrix(B_r, preferred_backend = "cpu")
+
+  result <- tcrossprod(A, B)
+
+  expect_true(inherits(result, "adgeMatrix"))
+  expect_equal(as.matrix(result), base::tcrossprod(A_r, B_r), tolerance = .disp_tol)
+})
+
+test_that("tcrossprod(dgCMatrix, adgCMatrix) routes through amatrix dispatch", {
+  set.seed(4402)
+  A_r <- matrix(rnorm(3 * 4), 3, 4)
+  A_r[abs(A_r) < 0.5] <- 0
+  B_r <- matrix(rnorm(2 * 4), 2, 4)
+  A   <- as(Matrix::Matrix(A_r, sparse = TRUE), "dgCMatrix")
+  B   <- adgCMatrix(B_r, preferred_backend = "cpu")
+
+  result <- tcrossprod(A, B)
+
+  expect_true(inherits(result, "adgeMatrix"))
+  expect_equal(as.matrix(result), base::tcrossprod(as.matrix(A), B_r), tolerance = .disp_tol)
 })
 
 test_that("crossprod(numeric, adgeMatrix) routes to GPU path", {
@@ -169,6 +223,34 @@ test_that("adgeMatrix tcrossprod self/cross shape and type are correct", {
   tc_cross <- tcrossprod(A, C)
   expect_equal(dim(tc_cross), c(15L, 12L))
   expect_equal(as.matrix(tc_cross), base::tcrossprod(A_r, C_r), tolerance = .disp_tol)
+})
+
+test_that("cbind preserves adgeMatrix wrapper across mixed dense inputs", {
+  set.seed(38)
+  A_r <- matrix(rnorm(8), 2, 4)
+  B_r <- matrix(rnorm(6), 2, 3)
+  C_r <- matrix(rnorm(4), 2, 2)
+  A <- adgeMatrix(A_r, preferred_backend = "cpu")
+  C <- adgeMatrix(C_r, preferred_backend = "cpu")
+
+  result <- cbind(A, B_r, C)
+
+  expect_s4_class(result, "adgeMatrix")
+  expect_equal(as.matrix(result), cbind(A_r, B_r, C_r), tolerance = .disp_tol)
+})
+
+test_that("rbind preserves adgeMatrix wrapper across mixed dense inputs", {
+  set.seed(39)
+  A_r <- matrix(rnorm(8), 4, 2)
+  B_r <- matrix(rnorm(6), 3, 2)
+  C_r <- matrix(rnorm(4), 2, 2)
+  A <- adgeMatrix(A_r, preferred_backend = "cpu")
+  C <- adgeMatrix(C_r, preferred_backend = "cpu")
+
+  result <- rbind(B_r, A, C)
+
+  expect_s4_class(result, "adgeMatrix")
+  expect_equal(as.matrix(result), rbind(B_r, A_r, C_r), tolerance = .disp_tol)
 })
 
 # --- aTransposeView structural view tests ------------------------------------

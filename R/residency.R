@@ -21,28 +21,28 @@
       backend_name <- entry$backend
       resident_key <- entry$resident_key
       rm(list = object_key, envir = .amatrix_state$residency)
-      if (identical(backend_name, "mlx")) {
-        if (!requireNamespace("amatrix.mlx", quietly = TRUE)) {
-          return(invisible(NULL))
+      backend <- tryCatch(
+        .amatrix_get_backend(backend_name),
+        error = function(e) NULL
+      )
+      if (!is.null(backend) && .amatrix_backend_residency_capable(backend)) {
+        if (isTRUE(entry$sparse) && is.function(backend$sparse_resident_drop)) {
+          try(backend$sparse_resident_drop(resident_key), silent = TRUE)
+        } else {
+          try(backend$resident_drop(resident_key), silent = TRUE)
         }
+      } else if (identical(backend_name, "mlx") && requireNamespace("amatrix.mlx", quietly = TRUE)) {
+        ns <- asNamespace("amatrix.mlx")
         drop_fun <- tryCatch(
-          get("amatrix_mlx_resident_drop", envir = asNamespace("amatrix.mlx"), inherits = FALSE),
+          get(
+            if (isTRUE(entry$sparse)) "amatrix_mlx_sparse_drop" else "amatrix_mlx_resident_drop",
+            envir = ns,
+            inherits = FALSE
+          ),
           error = function(e) NULL
         )
         if (!is.null(drop_fun)) {
           try(drop_fun(resident_key), silent = TRUE)
-        }
-      } else {
-        backend <- tryCatch(
-          .amatrix_get_backend(backend_name),
-          error = function(e) NULL
-        )
-        if (!is.null(backend) && .amatrix_backend_residency_capable(backend)) {
-          if (isTRUE(entry$sparse) && is.function(backend$sparse_resident_drop)) {
-            try(backend$sparse_resident_drop(resident_key), silent = TRUE)
-          } else {
-            try(backend$resident_drop(resident_key), silent = TRUE)
-          }
         }
       }
       invisible(NULL)
@@ -93,6 +93,10 @@
     envir = .amatrix_state$residency
   )
 
+  if (inherits(x, "adgeMatrix") && !isTRUE(sparse) && !isTRUE(x@finalizer_env$host_deferred)) {
+    x@finalizer_env$host_cache_valid <- TRUE
+  }
+
   x
 }
 
@@ -110,6 +114,33 @@
   invisible(FALSE)
 }
 
+.amatrix_release_resident <- function(x) {
+  if (!inherits(x, "aMatrix")) {
+    return(invisible(FALSE))
+  }
+
+  entry <- .amatrix_resident_entry(x)
+  if (is.null(entry)) {
+    return(invisible(FALSE))
+  }
+
+  backend <- tryCatch(.amatrix_get_backend(entry$backend), error = function(e) NULL)
+  if (!is.null(backend) && .amatrix_backend_residency_capable(backend)) {
+    if (isTRUE(entry$sparse) &&
+        is.function(backend$sparse_resident_has) &&
+        isTRUE(backend$sparse_resident_has(entry$resident_key)) &&
+        is.function(backend$sparse_resident_drop)) {
+      try(backend$sparse_resident_drop(entry$resident_key), silent = TRUE)
+    } else if (is.function(backend$resident_has) &&
+               isTRUE(backend$resident_has(entry$resident_key)) &&
+               is.function(backend$resident_drop)) {
+      try(backend$resident_drop(entry$resident_key), silent = TRUE)
+    }
+  }
+
+  .amatrix_drop_resident_binding(x)
+}
+
 .amatrix_resident_backend <- function(x) {
   entry <- .amatrix_resident_entry(x)
   if (is.null(entry)) {
@@ -125,7 +156,8 @@
   }
 
   backend <- .amatrix_get_backend(entry$backend)
-  if (!.amatrix_backend_residency_capable(backend) || !isTRUE(backend$resident_has(entry$resident_key))) {
+  if (!.amatrix_backend_residency_capable(backend) ||
+      !.amatrix_backend_has_resident_key(backend, entry$resident_key, sparse = isTRUE(entry$sparse))) {
     return(NULL)
   }
 
@@ -150,8 +182,76 @@
   all(vapply(required, function(field) is.function(backend[[field]]), logical(1)))
 }
 
-.amatrix_backend_supports_resident_op <- function(backend, method) {
-  is.function(backend[[paste0(method, "_resident")]])
+.amatrix_backend_has_resident_key <- function(backend, resident_key, sparse = FALSE) {
+  if (isTRUE(sparse) && is.function(backend$sparse_resident_has)) {
+    return(isTRUE(backend$sparse_resident_has(resident_key)))
+  }
+
+  is.function(backend$resident_has) && isTRUE(backend$resident_has(resident_key))
+}
+
+.amatrix_sparse_resident_probe_rhs <- function(x, method) {
+  if (!inherits(x, "adgCMatrix") || !(method %in% c("matmul", "crossprod", "tcrossprod"))) {
+    return(NULL)
+  }
+
+  dims <- dim(x)
+  if (is.null(dims) || length(dims) != 2L) {
+    return(NULL)
+  }
+
+  nrow_probe <- switch(
+    method,
+    matmul = dims[[2L]],
+    crossprod = dims[[1L]],
+    tcrossprod = dims[[2L]],
+    NULL
+  )
+
+  if (is.null(nrow_probe) || is.na(nrow_probe) || nrow_probe < 1L) {
+    return(NULL)
+  }
+
+  matrix(0, nrow = as.integer(nrow_probe), ncol = 1L)
+}
+
+.amatrix_backend_supports_resident_op <- function(backend, method, x = NULL, y = NULL) {
+  if (inherits(x, "adgCMatrix") && method %in% c("matmul", "crossprod", "tcrossprod")) {
+    sparse_fn <- if (identical(method, "matmul") && is.function(backend$spmm_resident_key)) {
+      backend$spmm_resident_key
+    } else if (is.function(backend$spmm_resident)) {
+      backend$spmm_resident
+    } else {
+      NULL
+    }
+
+    if (is.null(sparse_fn)) {
+      return(FALSE)
+    }
+
+    predicate <- backend[["supports_resident"]]
+    if (is.function(predicate) && !is.null(x)) {
+      probe_y <- y
+      if (is.null(probe_y)) {
+        probe_y <- .amatrix_sparse_resident_probe_rhs(x, method)
+      }
+      return(isTRUE(predicate(method, x, y = probe_y)))
+    }
+
+    return(TRUE)
+  }
+
+  resident_fn <- backend[[paste0(method, "_resident")]]
+  if (!is.function(resident_fn)) {
+    return(FALSE)
+  }
+
+  predicate <- backend[["supports_resident"]]
+  if (is.function(predicate) && !is.null(x)) {
+    return(isTRUE(predicate(method, x, y = y)))
+  }
+
+  TRUE
 }
 
 .amatrix_object_is_resident <- function(x, backend_name) {
@@ -165,7 +265,8 @@
   }
 
   backend <- .amatrix_get_backend(backend_name)
-  .amatrix_backend_residency_capable(backend) && isTRUE(backend$resident_has(entry$resident_key))
+  .amatrix_backend_residency_capable(backend) &&
+    .amatrix_backend_has_resident_key(backend, entry$resident_key, sparse = isTRUE(entry$sparse))
 }
 
 amatrix_residency_info <- function(x) {
@@ -188,7 +289,7 @@ amatrix_residency_info <- function(x) {
     backend = entry$backend,
     resident_key = entry$resident_key,
     pinned_backend = if (is.null(pinned_backend)) NA_character_ else pinned_backend,
-    live = isTRUE(backend$resident_has(entry$resident_key)),
+    live = .amatrix_backend_has_resident_key(backend, entry$resident_key, sparse = isTRUE(entry$sparse)),
     stringsAsFactors = FALSE
   )
 }
@@ -215,6 +316,10 @@ amatrix_materialize_dense <- function(x) {
       }
     }
     return(.amatrix_dense_base(fenv$host_x))
+  }
+
+  if (isTRUE(fenv$host_cache_valid)) {
+    return(new("dgeMatrix", x = x@x, Dim = x@Dim, Dimnames = x@Dimnames, factors = x@factors))
   }
 
   # ── Eager path (existing logic) ─────────────────────────────────────────

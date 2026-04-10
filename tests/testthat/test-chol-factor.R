@@ -74,6 +74,41 @@ test_that("chol_solve matches base::solve for multi-column B (k=1, 10, 100)", {
   }
 })
 
+test_that("chol_solve_batches matches repeated chol_solve calls", {
+  n <- 10L
+  M <- make_spd(n, seed = 13L)
+  X <- as_adgeMatrix(M)
+  fac <- chol_factor(X)
+
+  rhs <- list(
+    rnorm(n),
+    matrix(rnorm(n * 3L), nrow = n, ncol = 3L),
+    matrix(rnorm(n), nrow = n, ncol = 1L)
+  )
+
+  out <- chol_solve_batches(fac, rhs)
+  ref <- lapply(rhs, function(b) chol_solve(fac, b))
+
+  expect_length(out, length(rhs))
+  for (idx in seq_along(rhs)) {
+    expect_equal(out[[idx]], ref[[idx]], tolerance = 1e-10)
+  }
+
+  rhs_arr <- array(rnorm(n * 2L * 4L), dim = c(n, 2L, 4L))
+  arr_out <- chol_solve_batches(fac, rhs_arr)
+  expect_length(arr_out, 4L)
+  for (idx in seq_along(arr_out)) {
+    expect_equal(arr_out[[idx]], solve(M, rhs_arr[, , idx]), tolerance = 1e-10)
+  }
+})
+
+test_that("chol_solve_batches validates RHS dimensions", {
+  M <- make_spd(5L, seed = 17L)
+  fac <- chol_factor(as_adgeMatrix(M))
+  expect_error(chol_solve_batches(fac, list(matrix(rnorm(6L), nrow = 6L))), "nrow")
+  expect_error(chol_solve_batches(fac, matrix(rnorm(5L), nrow = 5L)), "list of RHS")
+})
+
 test_that("chol_factor reuses cache on second call", {
   M <- make_spd(6L, seed = 3L)
   X <- as_adgeMatrix(M)
@@ -229,12 +264,20 @@ test_that("fast OpenCL chol_factor retains resident factor for repeated solves",
     sol <- chol_solve(fac, B)
     tri_opencl <- solve_triangular(fac, B_opencl)
     sol_opencl <- chol_solve(fac, B_opencl)
+    batch_opencl <- chol_solve_batches(fac, list(B_opencl, B_opencl))
 
     expect_true(inherits(fac@factor_obj, "aMatrix"))
     expect_identical(amatrix:::.amatrix_live_resident_backend(fac@factor_obj), "opencl")
+    expect_identical(length(fac@factor), 0L)
     expect_equal(tri, backsolve(chol(A), B), tolerance = 5e-6)
     expect_equal(sol, solve(A, B), tolerance = 5e-6)
     expect_equal(tri_opencl, backsolve(chol(A), B), tolerance = 5e-6)
-    expect_equal(sol_opencl, solve(A, B), tolerance = 5e-6)
+    expect_s4_class(sol_opencl, "adgeMatrix")
+    expect_identical(amatrix:::.amatrix_live_resident_backend(sol_opencl), "opencl")
+    expect_equal(as.matrix(sol_opencl), solve(A, B), tolerance = 5e-6)
+    expect_length(batch_opencl, 2L)
+    expect_equal(batch_opencl[[1L]], solve(A, B), tolerance = 5e-6)
+    expect_equal(batch_opencl[[2L]], solve(A, B), tolerance = 5e-6)
+    expect_identical(length(fac@factor), 0L)
   })
 })

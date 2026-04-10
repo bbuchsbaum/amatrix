@@ -348,6 +348,9 @@
 
   # Sparse resident path: LHS is adgCMatrix with spmm_resident support
   if (inherits(x, "adgCMatrix")) {
+    if (!.amatrix_backend_supports_resident_op(backend, "matmul", x = x, y = y)) {
+      return(NULL)
+    }
     lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
     if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
 
@@ -447,6 +450,9 @@
 
   # Sparse resident path: crossprod(X, Y) = t(X) %*% Y → spmm_resident with trans_lhs=TRUE
   if (inherits(x, "adgCMatrix") && !is.null(y)) {
+    if (!.amatrix_backend_supports_resident_op(backend, "crossprod", x = x, y = y)) {
+      return(NULL)
+    }
     lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
     if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
 
@@ -515,6 +521,9 @@
   # Sparse resident path: tcrossprod(X, Y) = X %*% t(Y) → spmm_resident with
   # the dense RHS transposed on the host side.
   if (inherits(x, "adgCMatrix") && !is.null(y)) {
+    if (!.amatrix_backend_supports_resident_op(backend, "tcrossprod", x = x, y = y)) {
+      return(NULL)
+    }
     lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
     if (is.null(lhs) || !isTRUE(lhs$sparse)) return(NULL)
 

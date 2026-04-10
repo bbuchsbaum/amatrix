@@ -100,10 +100,27 @@ typedef struct {
   int     ncol;
   int     nnz;
   bool    in_use;
+#ifdef HAVE_MLXC
+  mlx_array csr_values;
+  mlx_array csr_row_ptr;
+  mlx_array csr_col_idx;
+  mlx_array coo_values_col;
+  mlx_array coo_row_idx;
+  mlx_array coo_col_idx;
+#endif
 } amatrix_mlx_sparse_entry;
 
 static amatrix_mlx_sparse_entry* amatrix_mlx_sparse_registry = NULL;
 static size_t amatrix_mlx_sparse_registry_capacity = 0;
+
+#ifdef HAVE_MLXC
+#define AMATRIX_MLX_SPMM_TILE_COLS 32
+#define AMATRIX_MLX_SPMM_TILE_MIN_COLS 16
+#define AMATRIX_MLX_SPMM_GATHER_CHUNK_NNZ 4096
+
+static mlx_fast_metal_kernel amatrix_mlx_spmm_csr_scalar_kernel = {0};
+static mlx_fast_metal_kernel amatrix_mlx_spmm_csr_tiled_kernel = {0};
+#endif
 
 static void amatrix_mlx_sparse_registry_init(void) {
   if (amatrix_mlx_sparse_registry != NULL) return;
@@ -128,6 +145,20 @@ static void amatrix_mlx_sparse_entry_free_data(amatrix_mlx_sparse_entry* entry) 
   if (entry->values) { free(entry->values); entry->values = NULL; }
   if (entry->p)      { free(entry->p);      entry->p = NULL; }
   if (entry->i)      { free(entry->i);      entry->i = NULL; }
+#ifdef HAVE_MLXC
+  amatrix_mlx_free_array_if_needed(entry->csr_values);
+  amatrix_mlx_free_array_if_needed(entry->csr_row_ptr);
+  amatrix_mlx_free_array_if_needed(entry->csr_col_idx);
+  amatrix_mlx_free_array_if_needed(entry->coo_values_col);
+  amatrix_mlx_free_array_if_needed(entry->coo_row_idx);
+  amatrix_mlx_free_array_if_needed(entry->coo_col_idx);
+  entry->csr_values = mlx_array_new();
+  entry->csr_row_ptr = mlx_array_new();
+  entry->csr_col_idx = mlx_array_new();
+  entry->coo_values_col = mlx_array_new();
+  entry->coo_row_idx = mlx_array_new();
+  entry->coo_col_idx = mlx_array_new();
+#endif
   if (entry->key)    { free(entry->key);    entry->key = NULL; }
   entry->in_use = false;
 }
@@ -142,6 +173,20 @@ static amatrix_mlx_sparse_entry* amatrix_mlx_sparse_registry_reserve(const char*
     existing->values = NULL;
     existing->p = NULL;
     existing->i = NULL;
+#ifdef HAVE_MLXC
+    amatrix_mlx_free_array_if_needed(existing->csr_values);
+    amatrix_mlx_free_array_if_needed(existing->csr_row_ptr);
+    amatrix_mlx_free_array_if_needed(existing->csr_col_idx);
+    amatrix_mlx_free_array_if_needed(existing->coo_values_col);
+    amatrix_mlx_free_array_if_needed(existing->coo_row_idx);
+    amatrix_mlx_free_array_if_needed(existing->coo_col_idx);
+    existing->csr_values = mlx_array_new();
+    existing->csr_row_ptr = mlx_array_new();
+    existing->csr_col_idx = mlx_array_new();
+    existing->coo_values_col = mlx_array_new();
+    existing->coo_row_idx = mlx_array_new();
+    existing->coo_col_idx = mlx_array_new();
+#endif
     return existing;
   }
 
@@ -153,6 +198,14 @@ static amatrix_mlx_sparse_entry* amatrix_mlx_sparse_registry_reserve(const char*
       amatrix_mlx_sparse_registry[idx].values = NULL;
       amatrix_mlx_sparse_registry[idx].p = NULL;
       amatrix_mlx_sparse_registry[idx].i = NULL;
+#ifdef HAVE_MLXC
+      amatrix_mlx_sparse_registry[idx].csr_values = mlx_array_new();
+      amatrix_mlx_sparse_registry[idx].csr_row_ptr = mlx_array_new();
+      amatrix_mlx_sparse_registry[idx].csr_col_idx = mlx_array_new();
+      amatrix_mlx_sparse_registry[idx].coo_values_col = mlx_array_new();
+      amatrix_mlx_sparse_registry[idx].coo_row_idx = mlx_array_new();
+      amatrix_mlx_sparse_registry[idx].coo_col_idx = mlx_array_new();
+#endif
       if (amatrix_mlx_sparse_registry[idx].key == NULL)
         error("failed to allocate mlx sparse resident key");
       return &amatrix_mlx_sparse_registry[idx];
@@ -181,6 +234,471 @@ static void copy_row_major_float_to_r(double* out, const float* in, int nrow, in
   for (int j = 0; j < ncol; ++j) {
     for (int i = 0; i < nrow; ++i) {
       out[i + nrow * j] = (double)in[i * ncol + j];
+    }
+  }
+}
+
+static void copy_r_to_row_major_double(double* out, const double* in, int nrow, int ncol) {
+  for (int j = 0; j < ncol; ++j) {
+    for (int i = 0; i < nrow; ++i) {
+      out[i * ncol + j] = in[i + nrow * j];
+    }
+  }
+}
+
+static void copy_row_major_double_to_r(double* out, const double* in, int nrow, int ncol) {
+  for (int j = 0; j < ncol; ++j) {
+    for (int i = 0; i < nrow; ++i) {
+      out[i + nrow * j] = in[i * ncol + j];
+    }
+  }
+}
+
+static inline void amatrix_axpy_row(double* out, const double* x, double alpha, int n) {
+  int k = 0;
+  for (; k + 3 < n; k += 4) {
+    out[k]     += alpha * x[k];
+    out[k + 1] += alpha * x[k + 1];
+    out[k + 2] += alpha * x[k + 2];
+    out[k + 3] += alpha * x[k + 3];
+  }
+  for (; k < n; ++k) {
+    out[k] += alpha * x[k];
+  }
+}
+
+#ifdef HAVE_MLXC
+static int amatrix_mlx_sparse_upload_csr(amatrix_mlx_sparse_entry* entry) {
+  int nrow = entry->nrow;
+  int ncol = entry->ncol;
+  int nnz = entry->nnz;
+  int* row_counts = (int*) calloc((size_t)nrow, sizeof(int));
+  int* row_ptr = (int*) malloc((size_t)(nrow + 1) * sizeof(int));
+  int* next = (int*) malloc((size_t)nrow * sizeof(int));
+  int* csr_col_idx = (int*) malloc((size_t)nnz * sizeof(int));
+  int* coo_col_idx = (int*) malloc((size_t)nnz * sizeof(int));
+  int* coo_row_idx = (int*) malloc((size_t)nnz * sizeof(int));
+  float* csr_values = (float*) malloc((size_t)nnz * sizeof(float));
+  float* coo_values = (float*) malloc((size_t)nnz * sizeof(float));
+
+  if (!row_counts || !row_ptr || !next || !csr_col_idx || !coo_col_idx ||
+      !coo_row_idx || !csr_values || !coo_values) {
+    free(row_counts);
+    free(row_ptr);
+    free(next);
+    free(csr_col_idx);
+    free(coo_col_idx);
+    free(coo_row_idx);
+    free(csr_values);
+    free(coo_values);
+    return -1;
+  }
+
+  for (int sp = 0; sp < nnz; ++sp) {
+    row_counts[entry->i[sp]]++;
+  }
+
+  row_ptr[0] = 0;
+  for (int row = 0; row < nrow; ++row) {
+    row_ptr[row + 1] = row_ptr[row] + row_counts[row];
+  }
+  memcpy(next, row_ptr, (size_t)nrow * sizeof(int));
+
+  for (int col = 0; col < ncol; ++col) {
+    for (int sp = entry->p[col]; sp < entry->p[col + 1]; ++sp) {
+      int row = entry->i[sp];
+      int dest = next[row]++;
+      csr_col_idx[dest] = col;
+      csr_values[dest] = (float) entry->values[sp];
+      coo_col_idx[sp] = col;
+      coo_row_idx[sp] = row;
+      coo_values[sp] = (float) entry->values[sp];
+    }
+  }
+
+  {
+    int row_ptr_shape[1] = {nrow + 1};
+    int idx_shape[1] = {nnz};
+    int val_shape[1] = {nnz};
+    int val_col_shape[2] = {nnz, 1};
+    entry->csr_row_ptr = mlx_array_new_data(row_ptr, row_ptr_shape, 1, MLX_INT32);
+    entry->csr_col_idx = mlx_array_new_data(csr_col_idx, idx_shape, 1, MLX_INT32);
+    entry->csr_values = mlx_array_new_data(csr_values, val_shape, 1, MLX_FLOAT32);
+    entry->coo_row_idx = mlx_array_new_data(coo_row_idx, idx_shape, 1, MLX_INT32);
+    entry->coo_col_idx = mlx_array_new_data(coo_col_idx, idx_shape, 1, MLX_INT32);
+    entry->coo_values_col = mlx_array_new_data(coo_values, val_col_shape, 2, MLX_FLOAT32);
+  }
+
+  if (entry->csr_row_ptr.ctx == NULL ||
+      entry->csr_col_idx.ctx == NULL ||
+      entry->csr_values.ctx == NULL ||
+      entry->coo_row_idx.ctx == NULL ||
+      entry->coo_col_idx.ctx == NULL ||
+      entry->coo_values_col.ctx == NULL ||
+      mlx_array_eval(entry->csr_row_ptr) != 0 ||
+      mlx_array_eval(entry->csr_col_idx) != 0 ||
+      mlx_array_eval(entry->csr_values) != 0 ||
+      mlx_array_eval(entry->coo_row_idx) != 0 ||
+      mlx_array_eval(entry->coo_col_idx) != 0 ||
+      mlx_array_eval(entry->coo_values_col) != 0) {
+    free(row_counts);
+    free(row_ptr);
+    free(next);
+    free(csr_col_idx);
+    free(coo_col_idx);
+    free(coo_row_idx);
+    free(csr_values);
+    free(coo_values);
+    return -1;
+  }
+
+  free(row_counts);
+  free(row_ptr);
+  free(next);
+  free(csr_col_idx);
+  free(coo_col_idx);
+  free(coo_row_idx);
+  free(csr_values);
+  free(coo_values);
+
+  return (entry->csr_row_ptr.ctx != NULL &&
+          entry->csr_col_idx.ctx != NULL &&
+          entry->csr_values.ctx != NULL) ? 0 : -1;
+}
+
+static int amatrix_mlx_spmm_scalar_kernel_init(void) {
+  if (amatrix_mlx_spmm_csr_scalar_kernel.ctx != NULL) {
+    return 0;
+  }
+
+  {
+    const char* input_names_raw[] = {"row_ptr", "col_idx", "values", "B"};
+    const char* output_names_raw[] = {"out"};
+    const char* source =
+      "uint elem = thread_position_in_grid.x;\n"
+      "int rows = row_ptr_shape[0] - 1;\n"
+      "int cols = B_shape[1];\n"
+      "uint total = (uint)(rows * cols);\n"
+      "if (elem >= total) return;\n"
+      "int row = elem / cols;\n"
+      "int col = elem - row * cols;\n"
+      "int start = row_ptr[row];\n"
+      "int end = row_ptr[row + 1];\n"
+      "float acc = 0.0f;\n"
+      "for (int idx = start; idx < end; ++idx) {\n"
+      "  int k = col_idx[idx];\n"
+      "  acc += values[idx] * B[k * cols + col];\n"
+      "}\n"
+      "out[elem] = acc;\n";
+    mlx_vector_string input_names = mlx_vector_string_new_data(input_names_raw, 4);
+    mlx_vector_string output_names = mlx_vector_string_new_data(output_names_raw, 1);
+    amatrix_mlx_spmm_csr_scalar_kernel = mlx_fast_metal_kernel_new(
+      "amatrix_spmm_csr_scalar",
+      input_names,
+      output_names,
+      source,
+      NULL,
+      true,
+      false
+    );
+    mlx_vector_string_free(input_names);
+    mlx_vector_string_free(output_names);
+  }
+
+  return amatrix_mlx_spmm_csr_scalar_kernel.ctx != NULL ? 0 : -1;
+}
+
+static int amatrix_mlx_spmm_tiled_kernel_init(void) {
+  if (amatrix_mlx_spmm_csr_tiled_kernel.ctx != NULL) {
+    return 0;
+  }
+
+  {
+    const char* input_names_raw[] = {"row_ptr", "col_idx", "values", "B"};
+    const char* output_names_raw[] = {"out"};
+    const char* source =
+      "constant int TILE_COLS = 32;\n"
+      "constant int CHUNK_NNZ = 32;\n"
+      "uint elem = thread_position_in_grid.x;\n"
+      "int rows = row_ptr_shape[0] - 1;\n"
+      "int cols = B_shape[1];\n"
+      "int num_col_tiles = (cols + TILE_COLS - 1) / TILE_COLS;\n"
+      "uint total = (uint)(rows * num_col_tiles * TILE_COLS);\n"
+      "if (elem >= total) return;\n"
+      "int lane = (int)(elem % TILE_COLS);\n"
+      "int tile = (int)(elem / TILE_COLS);\n"
+      "int row = tile / num_col_tiles;\n"
+      "int col_tile = tile - row * num_col_tiles;\n"
+      "int col = col_tile * TILE_COLS + lane;\n"
+      "bool active = (row < rows && col < cols);\n"
+      "int start = row_ptr[row];\n"
+      "int end = row_ptr[row + 1];\n"
+      "float acc = 0.0f;\n"
+      "threadgroup int cached_idx[CHUNK_NNZ];\n"
+      "threadgroup float cached_val[CHUNK_NNZ];\n"
+      "for (int base = start; base < end; base += CHUNK_NNZ) {\n"
+      "  int chunk = end - base;\n"
+      "  if (chunk > CHUNK_NNZ) chunk = CHUNK_NNZ;\n"
+      "  if (lane < chunk) {\n"
+      "    cached_idx[lane] = col_idx[base + lane];\n"
+      "    cached_val[lane] = values[base + lane];\n"
+      "  }\n"
+      "  threadgroup_barrier(metal::mem_flags::mem_threadgroup);\n"
+      "  if (active) {\n"
+      "    for (int j = 0; j < chunk; ++j) {\n"
+      "      int k = cached_idx[j];\n"
+      "      acc += cached_val[j] * B[k * cols + col];\n"
+      "    }\n"
+      "  }\n"
+      "  threadgroup_barrier(metal::mem_flags::mem_threadgroup);\n"
+      "}\n"
+      "if (active) out[row * cols + col] = acc;\n";
+    mlx_vector_string input_names = mlx_vector_string_new_data(input_names_raw, 4);
+    mlx_vector_string output_names = mlx_vector_string_new_data(output_names_raw, 1);
+    amatrix_mlx_spmm_csr_tiled_kernel = mlx_fast_metal_kernel_new(
+      "amatrix_spmm_csr_tiled32",
+      input_names,
+      output_names,
+      source,
+      NULL,
+      true,
+      false
+    );
+    mlx_vector_string_free(input_names);
+    mlx_vector_string_free(output_names);
+  }
+
+  return amatrix_mlx_spmm_csr_tiled_kernel.ctx != NULL ? 0 : -1;
+}
+
+static int amatrix_mlx_spmm_scatter_apply(mlx_array* out,
+                                          const amatrix_mlx_sparse_entry* entry,
+                                          const mlx_array B,
+                                          bool trans,
+                                          const mlx_stream stream) {
+  mlx_array gather_src;
+  mlx_array scatter_src;
+  mlx_array current = mlx_array_new();
+  mlx_array next = mlx_array_new();
+  mlx_array gather_idx = mlx_array_new();
+  mlx_array scatter_idx = mlx_array_new();
+  mlx_array values_chunk = mlx_array_new();
+  mlx_array gathered = mlx_array_new();
+  mlx_array scaled = mlx_array_new();
+  mlx_array updates = mlx_array_new();
+  mlx_array zero_scalar = mlx_array_new_float32(0.0f);
+  int out_shape[2];
+  int err = 0;
+  int rhs_cols;
+  int nnz;
+  int start = 0;
+
+  if (entry->coo_row_idx.ctx == NULL ||
+      entry->coo_col_idx.ctx == NULL ||
+      entry->coo_values_col.ctx == NULL) {
+    amatrix_mlx_free_array_if_needed(zero_scalar);
+    return -1;
+  }
+
+  rhs_cols = mlx_array_dim(B, 1);
+  nnz = entry->nnz;
+  out_shape[0] = trans ? entry->ncol : entry->nrow;
+  out_shape[1] = rhs_cols;
+  gather_src = trans ? entry->coo_row_idx : entry->coo_col_idx;
+  scatter_src = trans ? entry->coo_col_idx : entry->coo_row_idx;
+
+  err = mlx_full(&current, out_shape, 2, zero_scalar, MLX_FLOAT32, stream);
+  if (err != 0) {
+    amatrix_mlx_free_array_if_needed(zero_scalar);
+    amatrix_mlx_free_array_if_needed(current);
+    return trans ? -21 : -11;
+  }
+
+  while (start < nnz && err == 0) {
+    int end = start + AMATRIX_MLX_SPMM_GATHER_CHUNK_NNZ;
+    int start1[1] = {start};
+    int stop1[1];
+    int stride1[1] = {1};
+    int start2[2];
+    int stop2[2];
+    int stride2[2] = {1, 1};
+
+    if (end > nnz) {
+      end = nnz;
+    }
+    stop1[0] = end;
+    start2[0] = start;
+    start2[1] = 0;
+    stop2[0] = end;
+    stop2[1] = 1;
+
+    err = mlx_slice(&gather_idx, gather_src, start1, 1, stop1, 1, stride1, 1, stream);
+    if (err != 0) { err = trans ? -22 : -12; break; }
+    err = mlx_slice(&scatter_idx, scatter_src, start1, 1, stop1, 1, stride1, 1, stream);
+    if (err != 0) { err = trans ? -22 : -12; break; }
+    err = mlx_slice(&values_chunk, entry->coo_values_col, start2, 2, stop2, 2, stride2, 2, stream);
+    if (err != 0) { err = trans ? -22 : -12; break; }
+    if (mlx_array_eval(gather_idx) != 0 ||
+        mlx_array_eval(scatter_idx) != 0 ||
+        mlx_array_eval(values_chunk) != 0) {
+      err = trans ? -22 : -12;
+      break;
+    }
+    err = mlx_take_axis(&gathered, B, gather_idx, 0, stream);
+    if (err != 0) { err = trans ? -23 : -13; break; }
+    err = mlx_multiply(&scaled, gathered, values_chunk, stream);
+    if (err != 0) { err = trans ? -24 : -14; break; }
+    err = mlx_add(&updates, scaled, zero_scalar, stream);
+    if (err != 0) { err = trans ? -24 : -14; break; }
+    err = mlx_scatter_add_axis(&next, current, scatter_idx, updates, 0, stream);
+    if (err != 0) { err = trans ? -25 : -15; break; }
+
+    amatrix_mlx_free_array_if_needed(current);
+    current = next;
+    next = mlx_array_new();
+
+    amatrix_mlx_free_array_if_needed(gather_idx);
+    amatrix_mlx_free_array_if_needed(scatter_idx);
+    amatrix_mlx_free_array_if_needed(values_chunk);
+    amatrix_mlx_free_array_if_needed(gathered);
+    amatrix_mlx_free_array_if_needed(scaled);
+    amatrix_mlx_free_array_if_needed(updates);
+    gather_idx = mlx_array_new();
+    scatter_idx = mlx_array_new();
+    values_chunk = mlx_array_new();
+    gathered = mlx_array_new();
+    scaled = mlx_array_new();
+    updates = mlx_array_new();
+    start = end;
+  }
+
+  amatrix_mlx_free_array_if_needed(gather_idx);
+  amatrix_mlx_free_array_if_needed(scatter_idx);
+  amatrix_mlx_free_array_if_needed(values_chunk);
+  amatrix_mlx_free_array_if_needed(gathered);
+  amatrix_mlx_free_array_if_needed(scaled);
+  amatrix_mlx_free_array_if_needed(updates);
+  amatrix_mlx_free_array_if_needed(next);
+  amatrix_mlx_free_array_if_needed(zero_scalar);
+
+  if (err != 0) {
+    amatrix_mlx_free_array_if_needed(current);
+    return err;
+  }
+
+  *out = current;
+  return 0;
+}
+
+static int amatrix_mlx_spmm_kernel_apply(mlx_array* out,
+                                         const amatrix_mlx_sparse_entry* entry,
+                                         const mlx_array B,
+                                         const mlx_stream stream) {
+  return amatrix_mlx_spmm_scatter_apply(out, entry, B, false, stream);
+}
+
+static int amatrix_mlx_spmm_transposed_apply(mlx_array* out,
+                                             const amatrix_mlx_sparse_entry* entry,
+                                             const mlx_array B,
+                                             const mlx_stream stream) {
+  return amatrix_mlx_spmm_scatter_apply(out, entry, B, true, stream);
+}
+#endif
+
+static void amatrix_mlx_spmm_blocked(double* out_cm,
+                                     const double* xdata,
+                                     const int* xi,
+                                     const int* xp,
+                                     int X_nrow,
+                                     int X_ncol,
+                                     const double* b_cm,
+                                     int B_nrow,
+                                     int B_ncol,
+                                     int trans) {
+  int out_nrow = trans ? X_ncol : X_nrow;
+  size_t b_size = (size_t)B_nrow * (size_t)B_ncol;
+  size_t out_size = (size_t)out_nrow * (size_t)B_ncol;
+  double* b_rm = (double*) malloc(b_size * sizeof(double));
+  double* out_rm = (double*) calloc(out_size, sizeof(double));
+
+  if (b_rm == NULL || out_rm == NULL) {
+    free(b_rm);
+    free(out_rm);
+    error("spmm: blocked workspace allocation failed");
+  }
+
+  copy_r_to_row_major_double(b_rm, b_cm, B_nrow, B_ncol);
+
+  if (!trans) {
+    for (int j = 0; j < X_ncol; ++j) {
+      const double* brow = b_rm + (size_t)j * (size_t)B_ncol;
+      for (int sp = xp[j]; sp < xp[j + 1]; ++sp) {
+        amatrix_axpy_row(out_rm + (size_t)xi[sp] * (size_t)B_ncol,
+                         brow,
+                         xdata[sp],
+                         B_ncol);
+      }
+    }
+  } else {
+    for (int j = 0; j < X_ncol; ++j) {
+      double* outrow = out_rm + (size_t)j * (size_t)B_ncol;
+      for (int sp = xp[j]; sp < xp[j + 1]; ++sp) {
+        amatrix_axpy_row(outrow,
+                         b_rm + (size_t)xi[sp] * (size_t)B_ncol,
+                         xdata[sp],
+                         B_ncol);
+      }
+    }
+  }
+
+  copy_row_major_double_to_r(out_cm, out_rm, out_nrow, B_ncol);
+  free(b_rm);
+  free(out_rm);
+}
+
+static void amatrix_mlx_spmm_cpu_compute(double* res,
+                                         const double* xdata,
+                                         const int* xi,
+                                         const int* xp,
+                                         int X_nrow,
+                                         int X_ncol,
+                                         const double* bdata,
+                                         int B_nrow,
+                                         int B_ncol,
+                                         int trans) {
+  int out_nrow = trans ? X_ncol : X_nrow;
+
+  if (B_ncol >= 8) {
+    amatrix_mlx_spmm_blocked(res, xdata, xi, xp, X_nrow, X_ncol, bdata, B_nrow, B_ncol, trans);
+    return;
+  }
+
+  if (!trans) {
+    for (int cb = 0; cb < B_ncol; ++cb) {
+      const double* bcol = bdata + (size_t)X_ncol * cb;
+      double* outcol = res + (size_t)out_nrow * cb;
+      for (int j = 0; j < X_ncol; ++j) {
+        double bj = bcol[j];
+        if (bj == 0.0) {
+          continue;
+        }
+        for (int sp = xp[j]; sp < xp[j + 1]; ++sp) {
+          outcol[xi[sp]] += xdata[sp] * bj;
+        }
+      }
+    }
+    return;
+  }
+
+  for (int cb = 0; cb < B_ncol; ++cb) {
+    const double* bcol = bdata + (size_t)B_nrow * cb;
+    double* outcol = res + (size_t)out_nrow * cb;
+    for (int j = 0; j < X_ncol; ++j) {
+      double acc = 0.0;
+      for (int sp = xp[j]; sp < xp[j + 1]; ++sp) {
+        acc += xdata[sp] * bcol[xi[sp]];
+      }
+      outcol[j] = acc;
     }
   }
 }
@@ -1437,7 +1955,32 @@ static SEXP amatrix_mlx_sum_axis_real(SEXP x, SEXP axis) {
 
 static SEXP amatrix_mlx_resident_store_real(SEXP key, SEXP x) {
   amatrix_mlx_resident_entry* entry = amatrix_mlx_registry_reserve(CHAR(asChar(key)));
+  mlx_stream stream = {0};
+  mlx_array gpu_copy = mlx_array_new();
+  mlx_array zero_scalar = mlx_array_new_float32(0.0f);
+
   entry->array = amatrix_mlx_matrix_from_r(x);
+  if (entry->array.ctx == NULL || mlx_array_eval(entry->array) != 0) {
+    amatrix_mlx_free_array_if_needed(entry->array);
+    entry->array = mlx_array_new();
+    amatrix_mlx_free_array_if_needed(zero_scalar);
+    error("resident_store: mlx_array_eval failed");
+  }
+
+  if (amatrix_mlx_gpu_stream_ok(&stream)) {
+    if (mlx_add(&gpu_copy, entry->array, zero_scalar, stream) == 0 &&
+        mlx_synchronize(stream) == 0) {
+      mlx_stream_free(stream);
+      amatrix_mlx_free_array_if_needed(zero_scalar);
+      amatrix_mlx_free_array_if_needed(entry->array);
+      entry->array = gpu_copy;
+      return ScalarLogical(1);
+    }
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(gpu_copy);
+  }
+
+  amatrix_mlx_free_array_if_needed(zero_scalar);
   return ScalarLogical(1);
 }
 
@@ -3951,22 +4494,30 @@ SEXP amatrix_mlx_spmm_bridge(SEXP values_r, SEXP p_r, SEXP i_r,
   const int    *xi    = INTEGER(i_r);
   const int    *xp    = INTEGER(p_r);
 
-  if (!trans) {
-    for (int j = 0; j < X_ncol; j++) {
-      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
-        int    ri = xi[sp];
-        double v  = xdata[sp];
-        for (int cb = 0; cb < B_ncol; cb++)
-          res[ri + (size_t)out_nrow * cb] += v * bdata[j + (size_t)X_ncol * cb];
+  if (B_ncol >= 8) {
+    amatrix_mlx_spmm_blocked(res, xdata, xi, xp, X_nrow, X_ncol, bdata, B_nrow, B_ncol, trans);
+  } else if (!trans) {
+    for (int cb = 0; cb < B_ncol; cb++) {
+      const double *bcol = bdata + (size_t)X_ncol * cb;
+      double *outcol = res + (size_t)out_nrow * cb;
+      for (int j = 0; j < X_ncol; j++) {
+        double bj = bcol[j];
+        if (bj == 0.0) continue;
+        for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+          outcol[xi[sp]] += xdata[sp] * bj;
+        }
       }
     }
   } else {
-    for (int j = 0; j < X_ncol; j++) {
-      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
-        int    ri = xi[sp];
-        double v  = xdata[sp];
-        for (int cb = 0; cb < B_ncol; cb++)
-          res[j + (size_t)out_nrow * cb] += v * bdata[ri + (size_t)X_nrow * cb];
+    for (int cb = 0; cb < B_ncol; cb++) {
+      const double *bcol = bdata + (size_t)X_nrow * cb;
+      double *outcol = res + (size_t)out_nrow * cb;
+      for (int j = 0; j < X_ncol; j++) {
+        double acc = 0.0;
+        for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
+          acc += xdata[sp] * bcol[xi[sp]];
+        }
+        outcol[j] = acc;
       }
     }
   }
@@ -4014,6 +4565,13 @@ SEXP amatrix_mlx_sparse_store_bridge(SEXP key_r, SEXP values_r, SEXP p_r,
   memcpy(entry->p,      INTEGER(p_r),      (size_t)np  * sizeof(int));
   memcpy(entry->i,      INTEGER(i_r),      (size_t)nnz * sizeof(int));
 
+#ifdef HAVE_MLXC
+  if (amatrix_mlx_sparse_upload_csr(entry) != 0) {
+    amatrix_mlx_sparse_entry_free_data(entry);
+    error("sparse_store: failed to build MLX CSR sparse buffers");
+  }
+#endif
+
   return ScalarLogical(1);
 }
 
@@ -4041,6 +4599,7 @@ SEXP amatrix_mlx_spmm_resident_bridge(SEXP sp_key_r, SEXP B_r,
                                        SEXP trans_lhs_r) {
   const char* key = CHAR(asChar(sp_key_r));
   amatrix_mlx_sparse_entry* entry = amatrix_mlx_sparse_registry_find(key);
+  SEXP out_r = R_NilValue;
   if (entry == NULL)
     error("spmm_resident: sparse key not found: %s", key);
 
@@ -4059,35 +4618,145 @@ SEXP amatrix_mlx_spmm_resident_bridge(SEXP sp_key_r, SEXP B_r,
     error("spmm_resident: dimension mismatch: B has %d rows but %s(X) has %d cols",
           B_nrow, trans ? "t" : "", expected_rows);
 
-  SEXP out_r = PROTECT(allocMatrix(REALSXP, out_nrow, B_ncol));
-  double *res = REAL(out_r);
-  memset(res, 0, (size_t)out_nrow * (size_t)B_ncol * sizeof(double));
+#ifdef HAVE_MLXC
+  {
+    mlx_stream stream;
+    mlx_array B = mlx_array_new();
+    mlx_array out = mlx_array_new();
+    int err = 0;
 
-  const double *xdata = entry->values;
-  const double *bdata = REAL(B_r);
-  const int    *xi    = entry->i;
-  const int    *xp    = entry->p;
+    amatrix_mlx_install_error_handler();
+    if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+      error("spmm_resident: MLX GPU stream unavailable");
+    }
 
-  if (!trans) {
-    for (int j = 0; j < X_ncol; j++) {
-      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
-        int    ri = xi[sp];
-        double v  = xdata[sp];
-        for (int cb = 0; cb < B_ncol; cb++)
-          res[ri + (size_t)out_nrow * cb] += v * bdata[j + (size_t)X_ncol * cb];
+    B = amatrix_mlx_matrix_from_r(B_r);
+    err = trans ?
+      amatrix_mlx_spmm_transposed_apply(&out, entry, B, stream) :
+      amatrix_mlx_spmm_kernel_apply(&out, entry, B, stream);
+    if (err == 0) {
+      if (mlx_synchronize(stream) != 0) {
+        mlx_stream_free(stream);
+        amatrix_mlx_free_array_if_needed(B);
+        amatrix_mlx_free_array_if_needed(out);
+        error("spmm_resident: MLX sparse synchronize failed");
       }
+      out_r = amatrix_mlx_result_to_r_matrix(out);
+      mlx_stream_free(stream);
+      amatrix_mlx_free_array_if_needed(B);
+      amatrix_mlx_free_array_if_needed(out);
+      return out_r;
     }
-  } else {
-    for (int j = 0; j < X_ncol; j++) {
-      for (int sp = xp[j]; sp < xp[j + 1]; sp++) {
-        int    ri = xi[sp];
-        double v  = xdata[sp];
-        for (int cb = 0; cb < B_ncol; cb++)
-          res[j + (size_t)out_nrow * cb] += v * bdata[ri + (size_t)X_nrow * cb];
-      }
-    }
+
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(B);
+    amatrix_mlx_free_array_if_needed(out);
+  }
+#endif
+
+  out_r = PROTECT(allocMatrix(REALSXP, out_nrow, B_ncol));
+  {
+    double *res = REAL(out_r);
+    memset(res, 0, (size_t)out_nrow * (size_t)B_ncol * sizeof(double));
+
+    const double *xdata = entry->values;
+    const double *bdata = REAL(B_r);
+    const int    *xi    = entry->i;
+    const int    *xp    = entry->p;
+
+    amatrix_mlx_spmm_cpu_compute(res, xdata, xi, xp, X_nrow, X_ncol, bdata, B_nrow, B_ncol, trans);
   }
 
   UNPROTECT(1);
   return out_r;
+}
+
+SEXP amatrix_mlx_spmm_resident_key_bridge(SEXP sp_key_r, SEXP y_key_r,
+                                          SEXP out_key_r, SEXP trans_lhs_r) {
+#ifdef HAVE_MLXC
+  const char* sp_key = CHAR(asChar(sp_key_r));
+  amatrix_mlx_sparse_entry* entry = amatrix_mlx_sparse_registry_find(sp_key);
+  mlx_array y = mlx_array_new();
+  mlx_array y_work = mlx_array_new();
+  mlx_array out = mlx_array_new();
+  mlx_array zero_scalar = mlx_array_new_float32(0.0f);
+  mlx_stream stream;
+  SEXP result = R_NilValue;
+  amatrix_mlx_resident_entry* out_entry = NULL;
+  int trans = asLogical(trans_lhs_r);
+
+  if (entry == NULL) {
+    error("spmm_resident_key: sparse key not found: %s", sp_key);
+  }
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+    error("spmm_resident_key: MLX GPU stream unavailable");
+  }
+
+  y = amatrix_mlx_array_from_resident_key(y_key_r);
+  if (mlx_add(&y_work, y, zero_scalar, stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(zero_scalar);
+    amatrix_mlx_free_array_if_needed(y_work);
+    error("spmm_resident_key: failed to prepare resident dense rhs");
+  }
+  {
+    int err = trans ?
+      amatrix_mlx_spmm_transposed_apply(&out, entry, y_work, stream) :
+      amatrix_mlx_spmm_kernel_apply(&out, entry, y_work, stream);
+    if (err != 0) {
+      amatrix_mlx_free_array_if_needed(out);
+      out = mlx_array_new();
+    } else {
+      if (mlx_synchronize(stream) != 0) {
+        mlx_stream_free(stream);
+        amatrix_mlx_free_array_if_needed(zero_scalar);
+        amatrix_mlx_free_array_if_needed(y_work);
+        amatrix_mlx_free_array_if_needed(out);
+        error("spmm_resident_key: MLX sparse synchronize failed");
+      }
+
+      out_entry = amatrix_mlx_registry_reserve(CHAR(asChar(out_key_r)));
+      out_entry->array = out;
+      result = amatrix_mlx_result_to_r_matrix(out_entry->array);
+      amatrix_mlx_free_array_if_needed(zero_scalar);
+      amatrix_mlx_free_array_if_needed(y_work);
+      mlx_stream_free(stream);
+      return result;
+    }
+  }
+  mlx_stream_free(stream);
+  amatrix_mlx_free_array_if_needed(zero_scalar);
+  amatrix_mlx_free_array_if_needed(y_work);
+
+  {
+    SEXP y_host = PROTECT(amatrix_mlx_result_to_r_matrix(y));
+    SEXP y_dim = getAttrib(y_host, R_DimSymbol);
+    int y_nrow = INTEGER(y_dim)[0];
+    int y_ncol = INTEGER(y_dim)[1];
+    int out_nrow = trans ? entry->ncol : entry->nrow;
+    SEXP host_out = PROTECT(allocMatrix(REALSXP, out_nrow, y_ncol));
+
+    memset(REAL(host_out), 0, (size_t)out_nrow * (size_t)y_ncol * sizeof(double));
+    amatrix_mlx_spmm_cpu_compute(
+      REAL(host_out),
+      entry->values,
+      entry->i,
+      entry->p,
+      entry->nrow,
+      entry->ncol,
+      REAL(y_host),
+      y_nrow,
+      y_ncol,
+      trans
+    );
+    amatrix_mlx_resident_store_real(out_key_r, host_out);
+    UNPROTECT(2);
+    return host_out;
+  }
+#else
+  error("spmm_resident_key requires mlx-c (HAVE_MLXC not defined)");
+  return R_NilValue;
+#endif
 }

@@ -216,7 +216,7 @@ Legend: **tested** = in cross-backend harness or dedicated suite | **partial** =
 | `am_block_lanczos` / `am_block_svd` | `La.svd` | own suite | tested |
 | `am_sinkhorn` | plain Sinkhorn loop | own suite | tested |
 | `am_irlba` | `am_rsvd` | own suite | — |
-| `am_chol_solve` / `am_chol_factor` | `solve(chol(...))` | own suite | — |
+| `am_chol_solve` / `am_chol_factor` / `chol_solve_batches` | `solve(chol(...))` | own suite | — |
 | `am_svd_factor` + project/reconstruct | reconstruction | own suite | partial |
 | `am_qr` + qr.* methods | `base::qr.*` | own suite | tested |
 | `am_ridge_fit` | `lm.fit` + penalty | partial | — |

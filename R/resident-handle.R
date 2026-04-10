@@ -25,8 +25,14 @@
 resident_handle <- function(x, backend = NULL) {
   if (inherits(x, "adgeMatrix")) {
     bk_name <- if (!is.null(backend)) backend else x@preferred_backend
+    policy <- x@policy
+    precision <- x@precision
+    handle_dimnames <- x@Dimnames
   } else if (is.matrix(x)) {
     bk_name <- if (!is.null(backend)) backend else "cpu"
+    policy <- amatrix_default_policy()
+    precision <- amatrix_default_precision()
+    handle_dimnames <- base::dimnames(x)
   } else {
     stop("x must be an adgeMatrix or matrix")
   }
@@ -55,6 +61,9 @@ resident_handle <- function(x, backend = NULL) {
   h$backend_name <- bk_name
   h$resident_key <- key
   h$dim <- if (inherits(x, "adgeMatrix")) x@Dim else as.integer(dim(x))
+  h$dimnames <- if (is.null(handle_dimnames)) vector("list", 2L) else handle_dimnames
+  h$policy <- policy
+  h$precision <- precision
   h$active <- TRUE
   class(h) <- "resident_handle"
 
@@ -80,6 +89,99 @@ resident_handle <- function(x, backend = NULL) {
   .amatrix_get_backend(h$backend_name)
 }
 
+.rh_drop_key <- function(backend, key) {
+  if (!is.null(key) && is.function(backend$resident_has) &&
+      isTRUE(backend$resident_has(key)) && is.function(backend$resident_drop)) {
+    backend$resident_drop(key)
+  }
+  invisible(NULL)
+}
+
+.rh_axis_sums_key <- function(h, margin, na.rm = FALSE, dims = 1L) {
+  .rh_check(h)
+  backend <- .rh_backend(h)
+  fn <- if (identical(as.integer(margin), 1L)) backend$rowSums_resident_key else backend$colSums_resident_key
+  if (!is.function(fn)) {
+    return(NULL)
+  }
+
+  out_key <- .amatrix_next_resident_key(h$backend_name)
+  ok <- FALSE
+  tryCatch({
+    fn(h$resident_key, out_key, na.rm = na.rm, dims = dims)
+    ok <- TRUE
+  }, error = function(e) {
+    .rh_drop_key(backend, out_key)
+  })
+
+  if (!ok) {
+    return(NULL)
+  }
+
+  out_key
+}
+
+.rh_sweep_inplace_key <- function(h, MARGIN, stats_key, FUN = "+", drop_stats = FALSE) {
+  .rh_check(h)
+  backend <- .rh_backend(h)
+  if (is.function(backend$broadcast_ewise_resident_inplace_key)) {
+    ok <- FALSE
+    tryCatch({
+      backend$broadcast_ewise_resident_inplace_key(
+        h$resident_key,
+        as.character(stats_key),
+        as.integer(MARGIN),
+        as.character(FUN)
+      )
+      ok <- TRUE
+    }, error = function(e) NULL)
+
+    if (isTRUE(drop_stats)) {
+      .rh_drop_key(backend, stats_key)
+    }
+    if (ok) {
+      return(invisible(h))
+    }
+    stop("backend failed to apply resident vector sweep", call. = FALSE)
+  }
+
+  if (!is.function(backend$broadcast_ewise_resident_key)) {
+    stop("backend does not support broadcast_ewise_resident_key")
+  }
+
+  old_key <- h$resident_key
+  new_key <- .amatrix_next_resident_key(h$backend_name)
+  ok <- FALSE
+
+  tryCatch({
+    backend$broadcast_ewise_resident_key(
+      old_key,
+      as.character(stats_key),
+      as.integer(MARGIN),
+      as.character(FUN),
+      new_key,
+      defer = TRUE
+    )
+    ok <- TRUE
+  }, error = function(e) {
+    .rh_drop_key(backend, new_key)
+  })
+
+  if (!ok) {
+    if (isTRUE(drop_stats)) {
+      .rh_drop_key(backend, stats_key)
+    }
+    stop("backend failed to apply resident vector sweep", call. = FALSE)
+  }
+
+  .rh_drop_key(backend, old_key)
+  if (isTRUE(drop_stats)) {
+    .rh_drop_key(backend, stats_key)
+  }
+  h$resident_key <- new_key
+  invisible(h)
+}
+
 # ── In-place operations ──────────────────────────────────────────────────────
 
 #' In-place broadcast sweep on a resident handle
@@ -96,6 +198,15 @@ resident_handle <- function(x, backend = NULL) {
 am_sweep_inplace <- function(h, MARGIN, STATS, FUN = "+") {
   .rh_check(h)
   backend <- .rh_backend(h)
+  if (is.function(backend$broadcast_ewise_resident_inplace)) {
+    backend$broadcast_ewise_resident_inplace(
+      h$resident_key,
+      as.double(STATS),
+      as.integer(MARGIN),
+      as.character(FUN)
+    )
+    return(invisible(h))
+  }
   if (!is.function(backend$broadcast_ewise_resident))
     stop("backend does not support broadcast_ewise_resident")
 
@@ -171,7 +282,11 @@ rh_colSums <- function(h) {
 as.matrix.resident_handle <- function(x, ...) {
   .rh_check(x)
   backend <- .rh_backend(x)
-  backend$resident_materialize(x$resident_key)
+  mat <- backend$resident_materialize(x$resident_key)
+  if (is.matrix(mat)) {
+    base::dimnames(mat) <- x$dimnames
+  }
+  mat
 }
 
 #' @export
@@ -190,10 +305,25 @@ ncol.resident_handle <- function(x) x$dim[2L]
 #'
 #' @param h A \code{resident_handle}.
 #' @return An \code{adgeMatrix}.
-as_adgeMatrix.resident_handle <- function(h, ...) {
+as_adgeMatrix.resident_handle <- function(h, ..., defer_host = FALSE) {
   .rh_check(h)
-  mat <- as.matrix(h)
-  obj <- new_adgeMatrix(mat, preferred_backend = h$backend_name)
+  if (isTRUE(defer_host)) {
+    obj <- new_adgeMatrix_deferred(
+      dim = h$dim,
+      dimnames = h$dimnames,
+      preferred_backend = h$backend_name,
+      policy = h$policy,
+      precision = h$precision
+    )
+  } else {
+    mat <- as.matrix(h)
+    obj <- new_adgeMatrix(
+      mat,
+      preferred_backend = h$backend_name,
+      policy = h$policy,
+      precision = h$precision
+    )
+  }
   .amatrix_bind_resident(obj, h$backend_name, h$resident_key)
   # Transfer ownership: handle no longer drops the key on GC
   h$active <- FALSE

@@ -85,6 +85,85 @@ test_that("svd_factor subspace method recovers full-rank small problems", {
   expect_equal(base::crossprod(fac@v), diag(k), tolerance = 1e-8)
 })
 
+test_that("svd_factor subspace uses compiled resident plans for dense backends", {
+  counter <- new.env(parent = emptyenv())
+
+  with_registered_backend(
+    "svd_subspace_dense_plan",
+    make_recording_backend(
+      counter,
+      supported_ops = character(),
+      cold_supported_ops = character(),
+      resident_supported_ops = c("matmul", "crossprod"),
+      precision_modes = "fast"
+    ),
+    {
+      dat <- make_dense(72L, 36L, seed = 13L)
+      X <- adgeMatrix(
+        dat$host,
+        preferred_backend = "svd_subspace_dense_plan",
+        precision = "fast"
+      )
+
+      set.seed(1301L)
+      fac <- svd_factor(X, k = 6L, method = "subspace", n_oversamples = 6L, n_iter = 1L)
+      ref <- base::svd(dat$host)$d[seq_len(6L)]
+      rel_sv_err <- max(abs(fac@d - ref) / pmax(abs(ref), 1e-12))
+
+      expect_identical(fac@backend, "svd_subspace_dense_plan")
+      expect_lt(rel_sv_err, 0.05)
+      expect_true(counter$resident_store >= 1L)
+      expect_true(counter$matmul_resident >= 1L)
+      expect_true(counter$crossprod_resident >= 1L)
+      expect_true(counter$resident_drop >= 1L)
+    }
+  )
+})
+
+test_that("svd_factor subspace reuses sparse lhs resident plans", {
+  skip_if_not_installed("Matrix")
+
+  counter <- new.env(parent = emptyenv())
+
+  with_registered_backend(
+    "svd_subspace_sparse_plan",
+    make_recording_backend(
+      counter,
+      supported_ops = character(),
+      cold_supported_ops = character(),
+      resident_supported_ops = character(),
+      precision_modes = "fast",
+      supports_sparse_ops = c("matmul", "crossprod"),
+      supports_sparse_resident = TRUE
+    ),
+    {
+      diag_vals <- seq(from = 48, to = 1, length.out = 48L)
+      x_host <- Matrix::sparseMatrix(
+        i = seq_along(diag_vals),
+        j = seq_along(diag_vals),
+        x = diag_vals,
+        dims = c(64L, 48L)
+      )
+      X <- adgCMatrix(
+        x_host,
+        preferred_backend = "svd_subspace_sparse_plan",
+        precision = "fast"
+      )
+
+      set.seed(1302L)
+      fac <- svd_factor(X, k = 6L, method = "subspace", n_oversamples = 8L, n_iter = 2L)
+      ref <- diag_vals[seq_len(6L)]
+      rel_sv_err <- max(abs(fac@d - ref) / pmax(abs(ref), 1e-12))
+
+      expect_identical(fac@backend, "svd_subspace_sparse_plan")
+      expect_lt(rel_sv_err, 0.05)
+      expect_true(counter$sparse_resident_store >= 1L)
+      expect_true(counter$spmm_resident_key >= 1L)
+      expect_true(counter$sparse_resident_drop >= 1L)
+    }
+  )
+})
+
 test_that("svd_factor subspace uses backend-native randomized SVD when available", {
   calls <- new.env(parent = emptyenv())
   calls$rsvd <- 0L
@@ -439,6 +518,65 @@ test_that("svd_factor auto chooses OpenCL subspace for fast moderate-rank factor
     expect_identical(fac@precision, "fast")
     expect_true(fac@engine %in% c("gram", "qr", "svd_core"))
     expect_lt(max(rel_sv[seq_len(20L)]), 0.05)
+  })
+})
+
+test_that("svd_factor sparse subspace keeps explicit OpenCL residency", {
+  spec <- .opencl_svd_spec()
+  skip_if_backend_package_missing(spec)
+  skip_if_not_installed("Matrix")
+
+  register_backend <- .register_optional_backend(spec)
+
+  with_optional_backend_available(spec, {
+    register_backend(overwrite = TRUE)
+
+    old_subspace_min_dim <- getOption("amatrix.svd_factor.subspace_min_dim")
+    old_spmv_min_nnz <- getOption("amatrix.opencl.spmv_min_nnz")
+    old_spmm_min_nnz <- getOption("amatrix.opencl.spmm_min_nnz")
+    options(
+      amatrix.svd_factor.subspace_min_dim = 128L,
+      amatrix.opencl.spmv_min_nnz = 1L,
+      amatrix.opencl.spmm_min_nnz = 1L
+    )
+    on.exit(
+      options(
+        amatrix.svd_factor.subspace_min_dim = old_subspace_min_dim,
+        amatrix.opencl.spmv_min_nnz = old_spmv_min_nnz,
+        amatrix.opencl.spmm_min_nnz = old_spmm_min_nnz
+      ),
+      add = TRUE
+    )
+
+    diag_vals <- seq(from = 256, to = 1, length.out = 256L)
+    x_host <- Matrix::sparseMatrix(
+      i = seq_along(diag_vals),
+      j = seq_along(diag_vals),
+      x = diag_vals,
+      dims = c(384L, 256L)
+    )
+    X <- adgCMatrix(x_host, preferred_backend = "opencl", precision = "fast")
+
+    plan <- amatrix:::.amatrix_svd_factor_plan(
+      X,
+      k = 32L,
+      method = "subspace",
+      n_oversamples = 8L,
+      n_iter = 1L
+    )
+    expect_identical(plan$subspace_backend, "opencl")
+    expect_identical(plan$factor_backend, "opencl")
+
+    set.seed(20260409L)
+    fac <- svd_factor(X, k = 32L, method = "subspace", n_oversamples = 8L, n_iter = 1L)
+    ref <- diag_vals[seq_len(32L)]
+    rel_sv <- abs(fac@d - ref) / pmax(abs(ref), 1e-12)
+
+    expect_identical(fac@method, "subspace")
+    expect_identical(fac@backend, "opencl")
+    expect_identical(fac@precision, "fast")
+    expect_true(fac@engine %in% c("gram", "qr", "svd_core"))
+    expect_lt(max(rel_sv[seq_len(8L)]), 0.06)
   })
 })
 

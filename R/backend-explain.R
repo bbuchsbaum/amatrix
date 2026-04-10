@@ -157,7 +157,15 @@ amatrix_explain <- function(x, op, y = NULL) {
   if (chosen != "cpu" && identical(chosen_path, "cold")) {
     add(sprintf(
       "* GPU cold path: matrix will be uploaded to '%s' each call.", chosen))
-    add("  \u2192 For repeated ops on the same matrix, bind it resident first:")
+    add("  \u2192 If the left operand is fixed across calls, compile a product plan:")
+    add(sprintf(
+      "      plan <- amatrix_compile_product(X, op = \"%s\")", op))
+    add("      out <- plan(Y)")
+    add("  \u2192 For repeated products, prepare operands once:")
+    add(sprintf(
+      "      prep <- amatrix_prepare_operands(X, Y, op = \"%s\")", op))
+    add("      out <- prep$x %*% prep$y")
+    add("  \u2192 If you only want to pin one operand, bind it resident first:")
     add(sprintf(
       "      X <- amatrix_bind_resident(X, \"%s\")", chosen))
     add("  \u2192 For the many-Y QR workflow, use:")

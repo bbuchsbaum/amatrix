@@ -24,6 +24,20 @@ benchmark_elapsed <- function(fn, reps = 3L, iterations = 5L, warmup = NULL) {
   median(timings)
 }
 
+cleanup_backend_value <- function(value) {
+  if (inherits(value, "aMatrix")) {
+    amatrix:::.amatrix_release_resident(value)
+  }
+  invisible(NULL)
+}
+
+materialize_backend_value <- function(value) {
+  if (inherits(value, "aMatrix")) {
+    return(as.matrix(value))
+  }
+  value
+}
+
 frob_norm <- function(x) {
   sqrt(sum(x * x))
 }
@@ -90,12 +104,25 @@ make_amatrix <- function(A, backend = backend_names[[1L]]) {
   adgeMatrix(A, preferred_backend = backend, precision = precision)
 }
 
+make_backend_rhs <- function(B, backend = backend_names[[1L]]) {
+  if (identical(backend, "cpu")) {
+    return(B)
+  }
+  make_amatrix(B, backend = backend)
+}
+
 benchmark_case <- function(case) {
   iterations <- if (nrow(case$A) >= 768L) 3L else 5L
   factors <- lapply(backend_names, function(backend_name) {
     chol_factor(make_amatrix(case$A, backend_name))
   })
   names(factors) <- backend_names
+  rhs_inputs <- lapply(backend_names, function(backend_name) make_backend_rhs(case$B, backend_name))
+  names(rhs_inputs) <- backend_names
+  rhs_batch_inputs <- lapply(backend_names, function(backend_name) {
+    lapply(case$rhs_batches, function(rhs) make_backend_rhs(rhs, backend_name))
+  })
+  names(rhs_batch_inputs) <- backend_names
   solutions <- lapply(backend_names, function(backend_name) {
     chol_solve(factors[[backend_name]], case$B)
   })
@@ -158,6 +185,43 @@ benchmark_case <- function(case) {
     )
   })
 
+  solve_resident_rhs_rows <- lapply(backend_names, function(backend_name) {
+    rhs_value <- rhs_inputs[[backend_name]]
+    sol <- chol_solve(factors[[backend_name]], rhs_value)
+    sol_host <- materialize_backend_value(sol)
+    on.exit(cleanup_backend_value(sol), add = TRUE)
+    elapsed <- benchmark_elapsed(
+      function() {
+        out <- chol_solve(factors[[backend_name]], rhs_value)
+        invisible(materialize_backend_value(out))
+        cleanup_backend_value(out)
+        invisible(out)
+      },
+      iterations = max(5L, iterations),
+      warmup = if (!identical(backend_name, "cpu")) {
+        function() {
+          out <- chol_solve(factors[[backend_name]], rhs_value)
+          invisible(materialize_backend_value(out))
+          cleanup_backend_value(out)
+          invisible(out)
+        }
+      } else {
+        NULL
+      }
+    )
+
+    data.frame(
+      workload = case$workload,
+      case = case$case,
+      rhs_cols = case$rhs_cols,
+      phase = "batched_solve_resident_rhs",
+      runtime = backend_name,
+      elapsed = elapsed,
+      rel_error = frob_norm(sol_host - ref_sol) / frob_norm(ref_sol),
+      stringsAsFactors = FALSE
+    )
+  })
+
   reuse_rows <- lapply(backend_names, function(backend_name) {
     fac <- factors[[backend_name]]
     batch_solutions <- lapply(case$rhs_batches, function(rhs) chol_solve(fac, rhs))
@@ -187,6 +251,122 @@ benchmark_case <- function(case) {
       case = case$case,
       rhs_cols = case$rhs_cols,
       phase = "factor_reuse_batches",
+      runtime = backend_name,
+      elapsed = elapsed,
+      rel_error = rel_error,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  reuse_resident_rhs_rows <- lapply(backend_names, function(backend_name) {
+    rhs_values <- rhs_batch_inputs[[backend_name]]
+    batch_solutions <- lapply(rhs_values, function(rhs) chol_solve(factors[[backend_name]], rhs))
+    batch_solutions_host <- lapply(batch_solutions, materialize_backend_value)
+    on.exit(invisible(lapply(batch_solutions, cleanup_backend_value)), add = TRUE)
+    rel_error <- max(vapply(
+      seq_along(batch_solutions),
+      function(idx) {
+        frob_norm(batch_solutions_host[[idx]] - ref_batch_solutions[[idx]]) / frob_norm(ref_batch_solutions[[idx]])
+      },
+      numeric(1)
+    ))
+
+    elapsed <- benchmark_elapsed(
+      function() {
+        out <- lapply(rhs_values, function(rhs) chol_solve(factors[[backend_name]], rhs))
+        invisible(lapply(out, materialize_backend_value))
+        invisible(lapply(out, cleanup_backend_value))
+        invisible(out)
+      },
+      iterations = max(2L, iterations),
+      warmup = if (!identical(backend_name, "cpu")) {
+        function() {
+          out <- lapply(rhs_values, function(rhs) chol_solve(factors[[backend_name]], rhs))
+          invisible(lapply(out, materialize_backend_value))
+          invisible(lapply(out, cleanup_backend_value))
+          invisible(out)
+        }
+      } else {
+        NULL
+      }
+    )
+
+    data.frame(
+      workload = case$workload,
+      case = case$case,
+      rhs_cols = case$rhs_cols,
+      phase = "factor_reuse_batches_resident_rhs",
+      runtime = backend_name,
+      elapsed = elapsed,
+      rel_error = rel_error,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  reuse_workspace_rows <- lapply(backend_names, function(backend_name) {
+    batch_solutions <- chol_solve_batches(factors[[backend_name]], case$rhs_batches)
+    rel_error <- max(vapply(
+      seq_along(batch_solutions),
+      function(idx) {
+        frob_norm(batch_solutions[[idx]] - ref_batch_solutions[[idx]]) / frob_norm(ref_batch_solutions[[idx]])
+      },
+      numeric(1)
+    ))
+
+    elapsed <- benchmark_elapsed(
+      function() {
+        out <- chol_solve_batches(factors[[backend_name]], case$rhs_batches)
+        invisible(out)
+      },
+      iterations = max(2L, iterations),
+      warmup = if (!identical(backend_name, "cpu")) {
+        function() invisible(chol_solve_batches(factors[[backend_name]], case$rhs_batches))
+      } else {
+        NULL
+      }
+    )
+
+    data.frame(
+      workload = case$workload,
+      case = case$case,
+      rhs_cols = case$rhs_cols,
+      phase = "factor_reuse_batches_packed",
+      runtime = backend_name,
+      elapsed = elapsed,
+      rel_error = rel_error,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  reuse_workspace_resident_rhs_rows <- lapply(backend_names, function(backend_name) {
+    rhs_values <- rhs_batch_inputs[[backend_name]]
+    batch_solutions <- chol_solve_batches(factors[[backend_name]], rhs_values)
+    rel_error <- max(vapply(
+      seq_along(batch_solutions),
+      function(idx) {
+        frob_norm(batch_solutions[[idx]] - ref_batch_solutions[[idx]]) / frob_norm(ref_batch_solutions[[idx]])
+      },
+      numeric(1)
+    ))
+
+    elapsed <- benchmark_elapsed(
+      function() {
+        out <- chol_solve_batches(factors[[backend_name]], rhs_values)
+        invisible(out)
+      },
+      iterations = max(2L, iterations),
+      warmup = if (!identical(backend_name, "cpu")) {
+        function() invisible(chol_solve_batches(factors[[backend_name]], rhs_values))
+      } else {
+        NULL
+      }
+    )
+
+    data.frame(
+      workload = case$workload,
+      case = case$case,
+      rhs_cols = case$rhs_cols,
+      phase = "factor_reuse_batches_packed_resident_rhs",
       runtime = backend_name,
       elapsed = elapsed,
       rel_error = rel_error,
@@ -224,7 +404,16 @@ benchmark_case <- function(case) {
     )
   })
 
-  do.call(rbind, c(factor_rows, solve_rows, reuse_rows, total_rows))
+  do.call(rbind, c(
+    factor_rows,
+    solve_rows,
+    solve_resident_rhs_rows,
+    reuse_rows,
+    reuse_resident_rhs_rows,
+    reuse_workspace_rows,
+    reuse_workspace_resident_rhs_rows,
+    total_rows
+  ))
 }
 
 cases <- list(
@@ -244,7 +433,11 @@ results$rel_error <- ifelse(
 cat("Notes:\n")
 cat("- factor benchmarks are cold builds on fresh adgeMatrix objects, so chol_factor() cache reuse is not counted.\n")
 cat("- batched_solve benchmarks reuse a precomputed factor and isolate the many-RHS triangular-solve path.\n")
+cat("- batched_solve_resident_rhs uses backend-native RHS inputs when available to expose solve throughput without repeat host uploads.\n")
 cat("- factor_reuse_batches benchmarks factor once, then solve a sequence of RHS batches to expose reusable-factor throughput.\n")
+cat("- factor_reuse_batches_resident_rhs keeps both factors and RHS batches backend-native when possible.\n")
+cat("- factor_reuse_batches_packed uses chol_solve_batches() to pack RHS batches into one wide solve.\n")
+cat("- factor_reuse_batches_packed_resident_rhs accepts backend-tagged RHS inputs but stages them into one packed solve.\n")
 cat("- ridge_spd uses crossprod(X) + lambda*I; kernel_spd uses an RBF kernel matrix plus diagonal jitter.\n")
 cat("- rel_error is the Cholesky reconstruction residual for factor rows and the relative solution error versus CPU solve for solve/reuse rows.\n\n")
 cat(sprintf("- backends on this run: %s\n\n", paste(backend_names, collapse = ", ")))

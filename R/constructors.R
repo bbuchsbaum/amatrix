@@ -13,6 +13,47 @@
   )
 }
 
+.amatrix_dense_slot_matrix <- function(x) {
+  stopifnot(inherits(x, "denseMatrix") || inherits(x, "adgeMatrix"))
+  out <- x@x
+  dim(out) <- as.integer(x@Dim)
+  dimnames(out) <- x@Dimnames
+  storage.mode(out) <- "double"
+  out
+}
+
+.amatrix_new_dense <- function(
+  data,
+  dim,
+  dimnames = NULL,
+  factors = list(),
+  preferred_backend = "cpu",
+  policy = amatrix_default_policy(),
+  precision = amatrix_default_precision(),
+  src_id = ""
+) {
+  if (!is.double(data)) {
+    storage.mode(data) <- "double"
+  }
+  if (is.null(dimnames)) {
+    dimnames <- vector("list", 2L)
+  }
+  object_id <- .amatrix_next_object_id()
+  new(
+    "adgeMatrix",
+    x = as.double(data),
+    Dim = as.integer(dim),
+    Dimnames = dimnames,
+    factors = factors,
+    preferred_backend = preferred_backend,
+    policy = policy,
+    precision = precision,
+    object_id = object_id,
+    src_id = src_id,
+    finalizer_env = .amatrix_make_finalizer_env(object_id)
+  )
+}
+
 .amatrix_dense_base <- function(x) {
   if (inherits(x, "dgeMatrix")) {
     return(x)
@@ -54,20 +95,42 @@ new_adgeMatrix <- function(
   precision = amatrix_default_precision(),
   src_id = ""
 ) {
+  if (inherits(x, "dgeMatrix")) {
+    return(.amatrix_new_dense(
+      data = x@x,
+      dim = x@Dim,
+      dimnames = x@Dimnames,
+      factors = x@factors,
+      preferred_backend = preferred_backend,
+      policy = policy,
+      precision = precision,
+      src_id = src_id
+    ))
+  }
+
+  if (is.matrix(x)) {
+    return(.amatrix_new_dense(
+      data = x,
+      dim = dim(x),
+      dimnames = base::dimnames(x),
+      factors = list(),
+      preferred_backend = preferred_backend,
+      policy = policy,
+      precision = precision,
+      src_id = src_id
+    ))
+  }
+
   base <- .amatrix_dense_base(x)
-  object_id <- .amatrix_next_object_id()
-  new(
-    "adgeMatrix",
-    x = base@x,
-    Dim = base@Dim,
-    Dimnames = base@Dimnames,
+  .amatrix_new_dense(
+    data = base@x,
+    dim = base@Dim,
+    dimnames = base@Dimnames,
     factors = base@factors,
     preferred_backend = preferred_backend,
     policy = policy,
     precision = precision,
-    object_id = object_id,
-    src_id = src_id,
-    finalizer_env = .amatrix_make_finalizer_env(object_id)
+    src_id = src_id
   )
 }
 

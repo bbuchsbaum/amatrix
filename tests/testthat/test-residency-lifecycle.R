@@ -46,6 +46,38 @@ test_that("GC drops resident binding from side table", {
   })
 })
 
+test_that("GC drops sparse resident binding for mlx-like backends", {
+  counter <- new.env(parent = emptyenv())
+  backend <- make_recording_backend(
+    counter,
+    supported_ops = "matmul",
+    cold_supported_ops = "matmul",
+    resident_supported_ops = character(),
+    supports_sparse_matmul = TRUE
+  )
+
+  skip_if(
+    !amatrix:::.amatrix_backend_residency_capable(backend),
+    "mock backend does not support residency"
+  )
+
+  with_registered_backend("mlx", backend, {
+    X_host <- Matrix::rsparsematrix(5, 4, density = 0.4)
+    rhs <- matrix(rnorm(12), nrow = 4)
+    X <- adgCMatrix(X_host, preferred_backend = "mlx", precision = "fast")
+
+    result <- X %*% rhs
+    expect_true(has_residency_entry(X))
+
+    rm(X, result)
+    gc(verbose = FALSE)
+    gc(verbose = FALSE)
+
+    expect_identical(counter$sparse_resident_store, 1L)
+    expect_identical(counter$sparse_resident_drop, 1L)
+  })
+})
+
 test_that("Serialization of resident object loses residency cleanly", {
   counter <- new.env(parent = emptyenv())
   backend <- make_recording_backend(counter)

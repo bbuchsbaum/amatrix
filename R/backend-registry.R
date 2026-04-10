@@ -9,6 +9,16 @@
       register_fun = "amatrix_mlx_register",
       enabled = function() TRUE
     ),
+    metal = list(
+      package = "amatrix.metal",
+      register_fun = "amatrix_metal_register",
+      enabled = function() isTRUE(getOption("amatrix.enable_metal", FALSE))
+    ),
+    opencl = list(
+      package = "amatrix.opencl",
+      register_fun = "amatrix_opencl_register",
+      enabled = function() isTRUE(getOption("amatrix.enable_opencl", FALSE))
+    ),
     arrayfire = list(
       package = "amatrix.arrayfire",
       register_fun = "amatrix_arrayfire_register",

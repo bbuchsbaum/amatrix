@@ -101,6 +101,25 @@ test_that("arrayfire availability can be enabled for routing tests", {
   expect_identical(sparse_plan$chosen, "cpu")
 })
 
+test_that("arrayfire uses a stricter gemv threshold and disables sparse routing by default", {
+  old_opts <- options(
+    amatrix.arrayfire.gemv_min_dim = 2048L,
+    amatrix.arrayfire.spmv_min_nnz = Inf,
+    amatrix.arrayfire.spmm_min_nnz = Inf
+  )
+  on.exit(options(old_opts), add = TRUE)
+
+  backend <- amatrix_arrayfire_backend()
+  dense <- amatrix::adgeMatrix(matrix(1, nrow = 1024, ncol = 1024),
+                               preferred_backend = "arrayfire", precision = "fast")
+  sparse <- amatrix::adgCMatrix(Matrix::rsparsematrix(64, 64, density = 0.5),
+                                preferred_backend = "arrayfire", precision = "fast")
+
+  expect_false(backend$supports("matmul", dense, y = matrix(1, nrow = 1024, ncol = 1)))
+  expect_false(backend$supports("matmul", sparse, y = matrix(1, nrow = 64, ncol = 1)))
+  expect_false(backend$supports("matmul", sparse, y = diag(64)))
+})
+
 test_that("bdc_svd gives accurate reconstruction for square and rectangular matrices", {
   old_backend <- amatrix_arrayfire_active_backend()
   amatrix_arrayfire_set_backend("cpu")

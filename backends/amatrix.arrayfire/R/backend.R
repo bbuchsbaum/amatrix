@@ -406,6 +406,7 @@ amatrix_arrayfire_qr_Q_resident <- function(x_key, q_out_key) {
 .amatrix_arrayfire_product_thresholds <- function() {
   list(
     matmul_min_dim = getOption("amatrix.arrayfire.matmul_min_dim", 512L),
+    gemv_min_dim = getOption("amatrix.arrayfire.gemv_min_dim", 2048L),
     crossprod_min_dim = getOption("amatrix.arrayfire.crossprod_min_dim", 2048L),
     tcrossprod_min_dim = getOption("amatrix.arrayfire.tcrossprod_min_dim", 2048L),
     ewise_min_dim = getOption("amatrix.arrayfire.ewise_min_dim", 4096L),
@@ -417,6 +418,23 @@ amatrix_arrayfire_qr_Q_resident <- function(x_key, q_out_key) {
 .amatrix_arrayfire_meets_threshold <- function(x, threshold) {
   dims <- dim(x)
   !is.null(dims) && length(dims) == 2L && max(dims) >= threshold
+}
+
+.amatrix_arrayfire_rhs_width <- function(y) {
+  if (is.null(y)) {
+    return(NA_integer_)
+  }
+
+  dims <- dim(y)
+  if (is.null(dims)) {
+    return(1L)
+  }
+
+  if (length(dims) == 1L) {
+    return(1L)
+  }
+
+  as.integer(dims[[2L]])
 }
 
 # ── WY-blocked Householder application ──────────────────────────────────────
@@ -852,9 +870,16 @@ amatrix_arrayfire_backend <- function() {
         # crossprod/tcrossprod without y: result is square dense — CPU sparse
         # BLAS (Matrix pkg) handles these well; no benefit to GPU round-trip.
         if (op %in% c("crossprod", "tcrossprod") && is.null(y)) return(FALSE)
-        # Only route to GPU when NNZ is large enough to justify the upload cost.
+        # Sparse routing stays disabled by default until it is calibrated with
+        # shape-aware thresholds.
         nnz <- length(x@x)
-        return(nnz >= getOption("amatrix.arrayfire.spmm_min_nnz", 10000L))
+        rhs_width <- .amatrix_arrayfire_rhs_width(y)
+        min_nnz <- if (!is.na(rhs_width) && rhs_width <= 1L) {
+          getOption("amatrix.arrayfire.spmv_min_nnz", Inf)
+        } else {
+          getOption("amatrix.arrayfire.spmm_min_nnz", Inf)
+        }
+        return(nnz >= min_nnz)
       }
 
       if (!is(x, "adgeMatrix") || !(op %in% capabilities)) {
@@ -875,7 +900,13 @@ amatrix_arrayfire_backend <- function() {
       }
 
       if (identical(op, "matmul")) {
-        return(.amatrix_arrayfire_meets_threshold(x, thresholds$matmul_min_dim))
+        rhs_width <- .amatrix_arrayfire_rhs_width(y)
+        threshold <- if (!is.na(rhs_width) && rhs_width <= 1L) {
+          thresholds$gemv_min_dim
+        } else {
+          thresholds$matmul_min_dim
+        }
+        return(.amatrix_arrayfire_meets_threshold(x, threshold))
       }
 
       if (identical(op, "crossprod")) {

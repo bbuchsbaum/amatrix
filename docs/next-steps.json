@@ -119,6 +119,42 @@
         "ArrayFire rsvd status is documented honestly",
         "No roadmap doc still treats ArrayFire rsvd as both 'not implemented' and 'shipped'"
       ]
+    },
+    {
+      "order": 8,
+      "status": "pending",
+      "title": "Harden opportunistic sparse GPU products before any broader sparse expansion",
+      "objective": "Treat sparse GPU support as a narrow benchmark-backed extension of the existing backend contract. The immediate goal is to harden sparse-dense multiply and planner thresholds, not to broaden the sparse promise or chase full sparse GPU parity.",
+      "scope": [
+        "Document the current sparse posture explicitly: CPU and Matrix remain the semantic baseline, while GPU sparse is opportunistic",
+        "Harden existing sparse-dense multiply paths across MLX and ArrayFire with focused parity and residency tests",
+        "Use the existing separate calibration paths for spmv and spmm to make planner thresholds credible on real sparse matrix families",
+        "Defer backend-native sparse-sparse multiply and sparse factorization work unless workload benchmarks force them"
+      ],
+      "acceptance_criteria": [
+        "SpMM has benchmark-backed crossover data and focused parity coverage",
+        "SpMV is only selected when its own calibration thresholds justify it",
+        "Sparse-sparse multiply remains correctness-first until a concrete workload proves a GPU path is worth the complexity",
+        "Docs, tests, and planner behavior all describe the same sparse GPU boundary"
+      ]
+    },
+    {
+      "order": 9,
+      "status": "pending",
+      "title": "Prototype a true Apple sparse GPU kernel path",
+      "objective": "Move the Apple sparse story from a CPU sparse bridge behind MLX naming to a benchmark-backed resident sparse GPU kernel for many-RHS sparse-dense products.",
+      "scope": [
+        "Add an optional resident-to-resident sparse-dense multiply seam such as spmm_resident_key while keeping the host-returning fallback",
+        "Prototype a direct Metal sparse kernel for resident CSR times resident dense RHS in fast precision",
+        "Benchmark only resident SpMM first and keep routing disabled by default unless the kernel beats CPU Matrix on real many-RHS cases",
+        "Defer SpMV-by-default, SpGEMM, and sparse factorizations until the resident SpMM path proves itself"
+      ],
+      "acceptance_criteria": [
+        "The backend contract documents a true sparse resident extension path",
+        "A prototype Apple sparse GPU kernel exists for resident SpMM",
+        "Benchmark evidence identifies a real crossover region or justifies keeping sparse on CPU by default",
+        "Sparse GPU routing policy is tied to measured wins rather than backend branding"
+      ]
     }
   ]
 }

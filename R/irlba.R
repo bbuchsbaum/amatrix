@@ -445,10 +445,10 @@ irlba_native <- function(A,
 
 .amatrix_block_lanczos_source_operator <- function(A) {
   if (!inherits(A, "adgeMatrix")) {
-    return(NULL)
+    return(.amatrix_block_lanczos_compile_operator(A, op = "matmul"))
   }
   if (!identical(A@preferred_backend, "mlx") || !identical(A@precision, "fast")) {
-    return(NULL)
+    return(.amatrix_block_lanczos_compile_operator(A, op = "matmul"))
   }
 
   backend <- tryCatch(
@@ -492,12 +492,31 @@ irlba_native <- function(A,
   x_mat
 }
 
-.amatrix_block_lanczos_right_operator <- function(A, source_operator = NULL) {
-  if (!inherits(A, "adgeMatrix")) {
+.amatrix_block_lanczos_compile_operator <- function(A, op) {
+  if (!inherits(A, "aMatrix")) {
     return(NULL)
   }
-  if (!identical(A@preferred_backend, "mlx") || !identical(A@precision, "fast")) {
+
+  backend_name <- tryCatch(
+    amatrix_resident_backend_for(A, op = op),
+    error = function(e) NULL
+  )
+  if (is.null(backend_name) || identical(backend_name, "cpu")) {
     return(NULL)
+  }
+
+  tryCatch(
+    amatrix_compile_product(A, op = op, backend = backend_name),
+    error = function(e) NULL
+  )
+}
+
+.amatrix_block_lanczos_right_operator <- function(A, source_operator = NULL) {
+  if (!inherits(A, "adgeMatrix")) {
+    return(.amatrix_block_lanczos_compile_operator(A, op = "crossprod"))
+  }
+  if (!identical(A@preferred_backend, "mlx") || !identical(A@precision, "fast")) {
+    return(.amatrix_block_lanczos_compile_operator(A, op = "crossprod"))
   }
 
   backend <- tryCatch(
@@ -550,6 +569,10 @@ irlba_native <- function(A,
 }
 
 .amatrix_block_lanczos_drop_source_operator <- function(operator) {
+  if (inherits(operator, "am_product_plan")) {
+    return(.amatrix_release_product_plan(operator))
+  }
+
   resident_key <- if (is.list(operator)) operator$resident_key else NULL
   if (is.null(operator) || !is.list(operator) || is.null(resident_key) || !nzchar(resident_key) ||
       !isTRUE(operator$temporary)) {
@@ -573,6 +596,10 @@ irlba_native <- function(A,
 }
 
 .amatrix_block_lanczos_drop_right_operator <- function(operator) {
+  if (inherits(operator, "am_product_plan")) {
+    return(.amatrix_release_product_plan(operator))
+  }
+
   resident_key <- if (is.list(operator)) operator$resident_key else NULL
   if (is.null(operator) || !is.list(operator) || is.null(resident_key) || !nzchar(resident_key)) {
     return(invisible(FALSE))
@@ -595,6 +622,9 @@ irlba_native <- function(A,
 }
 
 .amatrix_block_lanczos_right_product <- function(A, q_block, operator = NULL) {
+  if (inherits(operator, "am_product_plan")) {
+    return(operator(q_block, materialize = "matrix"))
+  }
   if (is.null(operator)) {
     return(as.matrix(crossprod(A, q_block)))
   }
@@ -655,6 +685,9 @@ irlba_native <- function(A,
 }
 
 .amatrix_block_lanczos_left_product <- function(A, q_block, operator = NULL, backend_name = NULL) {
+  if (inherits(operator, "am_product_plan")) {
+    return(operator(q_block, materialize = "matrix"))
+  }
   if (is.list(operator) && !is.null(operator$backend) && !is.null(operator$resident_key)) {
     backend_name <- operator$backend
   }

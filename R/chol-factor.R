@@ -122,7 +122,7 @@ chol_factor <- function(X) {
   }
 
   factor_arg <- .amatrix_prepare_resident_arg(R_obj, backend_name, promote_amatrix = FALSE)
-  rhs_arg <- .amatrix_prepare_resident_arg(B, backend_name, promote_amatrix = FALSE)
+  rhs_arg <- .amatrix_prepare_resident_arg(B, backend_name, promote_amatrix = TRUE)
   if (is.null(factor_arg) || is.null(rhs_arg)) {
     .amatrix_cleanup_temp_resident(list(rhs_arg), backend_name)
     return(NULL)
@@ -157,6 +157,44 @@ chol_factor <- function(X) {
   tryCatch(.amatrix_get_backend(factor@backend), error = function(e) NULL)
 }
 
+.amatrix_amchol_result_dimnames <- function(factor_obj, rhs_template, out_ncol) {
+  row_names <- NULL
+  col_names <- NULL
+
+  if (inherits(factor_obj, "aMatrix") && length(factor_obj@Dimnames) >= 1L) {
+    row_names <- factor_obj@Dimnames[[1L]]
+  }
+
+  if (inherits(rhs_template, "aMatrix") && length(rhs_template@Dimnames) >= 2L) {
+    col_names <- rhs_template@Dimnames[[2L]]
+  } else if (is.matrix(rhs_template)) {
+    col_names <- colnames(rhs_template)
+  }
+
+  if (!is.null(col_names) && length(col_names) != out_ncol) {
+    col_names <- NULL
+  }
+
+  list(row_names, col_names)
+}
+
+.amatrix_amchol_wrap_resident_result <- function(factor_obj, rhs_template, backend_name, resident_key, out_ncol) {
+  stopifnot(inherits(factor_obj, "aMatrix"))
+
+  template <- if (inherits(rhs_template, "adgeMatrix")) rhs_template else factor_obj
+  out_dim <- c(as.integer(nrow(factor_obj)), as.integer(out_ncol))
+
+  obj <- new_adgeMatrix_deferred(
+    dim = out_dim,
+    dimnames = .amatrix_amchol_result_dimnames(factor_obj, rhs_template, out_ncol),
+    preferred_backend = backend_name,
+    policy = template@policy,
+    precision = template@precision
+  )
+
+  .amatrix_bind_resident(obj, backend_name, resident_key)
+}
+
 .amatrix_amchol_resident_triangular_solve <- function(factor, B_mat, lower = FALSE, transpose = FALSE) {
   factor_obj <- factor@factor_obj
   if (!inherits(factor_obj, "aMatrix")) {
@@ -177,18 +215,131 @@ chol_factor <- function(X) {
   )
 }
 
-.amatrix_amchol_resident_solve <- function(factor, B_mat) {
-  z <- .amatrix_amchol_resident_triangular_solve(factor, B_mat, lower = FALSE, transpose = TRUE)
-  if (is.null(z)) {
+.amatrix_amchol_resident_solve <- function(factor, B_mat, rhs_template = B_mat) {
+  factor_obj <- factor@factor_obj
+  if (!inherits(factor_obj, "aMatrix")) {
     return(NULL)
   }
 
-  x <- .amatrix_amchol_resident_triangular_solve(factor, z, lower = FALSE, transpose = FALSE)
-  if (is.null(x)) {
+  backend_name <- .amatrix_live_resident_backend(factor_obj)
+  if (is.null(backend_name)) {
     return(NULL)
   }
 
-  x
+  backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
+  if (is.null(backend) || !is.function(backend$resident_materialize)) {
+    return(NULL)
+  }
+
+  factor_arg <- .amatrix_prepare_resident_arg(factor_obj, backend_name, promote_amatrix = FALSE)
+  rhs_arg <- .amatrix_prepare_resident_arg(B_mat, backend_name, promote_amatrix = TRUE)
+  if (is.null(factor_arg) || is.null(rhs_arg)) {
+    .amatrix_cleanup_temp_resident(list(rhs_arg), backend_name)
+    return(NULL)
+  }
+
+  x_key <- .amatrix_next_resident_key(backend_name)
+  result <- NULL
+  keep_result <- FALSE
+  return_resident <- inherits(rhs_template, "adgeMatrix") &&
+    identical(rhs_template@preferred_backend, backend_name)
+
+  on.exit({
+    .amatrix_cleanup_temp_resident(list(rhs_arg), backend_name)
+    if (!isTRUE(keep_result) && isTRUE(backend$resident_has(x_key))) {
+      try(backend$resident_drop(x_key), silent = TRUE)
+    }
+  }, add = TRUE)
+
+  if (is.function(backend$chol_solve_resident)) {
+    ok <- tryCatch({
+      backend$chol_solve_resident(
+        factor_arg$key,
+        rhs_arg$key,
+        x_key,
+        defer = TRUE
+      )
+      if (isTRUE(return_resident)) {
+        keep_result <- TRUE
+        result <- .amatrix_amchol_wrap_resident_result(
+          factor_obj,
+          rhs_template,
+          backend_name,
+          x_key,
+          out_ncol = if (is.null(dim(B_mat))) 1L else ncol(B_mat)
+        )
+      } else {
+        result <- backend$resident_materialize(x_key)
+      }
+      TRUE
+    }, error = function(e) FALSE)
+  } else {
+    if (!is.function(backend$solve_triangular_resident)) {
+      return(NULL)
+    }
+
+    z_key <- .amatrix_next_resident_key(backend_name)
+    on.exit({
+      if (isTRUE(backend$resident_has(z_key))) {
+        try(backend$resident_drop(z_key), silent = TRUE)
+      }
+    }, add = TRUE)
+
+    ok <- tryCatch({
+      backend$solve_triangular_resident(
+        factor_arg$key,
+        rhs_arg$key,
+        z_key,
+        lower = FALSE,
+        transpose = TRUE,
+        defer = TRUE
+      )
+      backend$solve_triangular_resident(
+        factor_arg$key,
+        z_key,
+        x_key,
+        lower = FALSE,
+        transpose = FALSE,
+        defer = TRUE
+      )
+      if (isTRUE(return_resident)) {
+        keep_result <- TRUE
+        result <- .amatrix_amchol_wrap_resident_result(
+          factor_obj,
+          rhs_template,
+          backend_name,
+          x_key,
+          out_ncol = if (is.null(dim(B_mat))) 1L else ncol(B_mat)
+        )
+      } else {
+        result <- backend$resident_materialize(x_key)
+      }
+      TRUE
+    }, error = function(e) FALSE)
+  }
+
+  if (!ok) {
+    return(NULL)
+  }
+
+  result
+}
+
+.amatrix_rhs_batches_to_list <- function(B, arg_name = "B") {
+  if (is.list(B)) {
+    return(B)
+  }
+
+  if (is.array(B) && length(dim(B)) == 3L) {
+    nb <- dim(B)[[3L]]
+    return(lapply(seq_len(nb), function(idx) {
+      out <- B[, , idx, drop = FALSE]
+      dim(out) <- dim(out)[1:2]
+      out
+    }))
+  }
+
+  stop(arg_name, " must be a list of RHS objects or a 3-D array [n, k, batch]", call. = FALSE)
 }
 
 .amatrix_triangular_rhs_arg <- function(B) {
@@ -248,6 +399,65 @@ chol_solve <- function(factor, B) {
 
   if (is.vector(B_in) && ncol(x) == 1L) x <- drop(x)
   x
+}
+
+#' Solve many right-hand-side batches with one Cholesky factor
+#'
+#' This is the same operation as repeatedly calling
+#' \code{chol_solve(factor, B[[i]])}, but it packs all RHS batches into one
+#' wide solve and then splits the result.  BLAS/GPU backends generally amortize
+#' launch and dispatch overhead much better on one wide RHS than on many small
+#' independent solves.
+#'
+#' @param factor An \code{amChol} object from \code{\link{chol_factor}}.
+#' @param B A list of RHS vectors/matrices, or a 3-D array \code{[n, k, batch]}.
+#' @return A list of solution vectors/matrices.
+#' @export
+chol_solve_batches <- function(factor, B) {
+  if (!inherits(factor, "amChol")) {
+    stop("factor must be an amChol object", call. = FALSE)
+  }
+
+  rhs_list <- .amatrix_rhs_batches_to_list(B, "B")
+  dims <- .amatrix_amchol_dim(factor)
+  if (length(rhs_list) == 0L) {
+    return(list())
+  }
+
+  rhs_mats <- vector("list", length(rhs_list))
+  rhs_vector <- logical(length(rhs_list))
+  rhs_ncols <- integer(length(rhs_list))
+
+  for (idx in seq_along(rhs_list)) {
+    rhs_vector[[idx]] <- is.vector(rhs_list[[idx]])
+    rhs_arg <- .amatrix_triangular_rhs_arg(rhs_list[[idx]])
+    if (nrow(rhs_arg) != dims[[1L]]) {
+      stop("all RHS batches must have nrow equal to the factor dimension", call. = FALSE)
+    }
+    rhs_mat <- as.matrix(.amatrix_host_arg(rhs_arg))
+    if (!is.double(rhs_mat)) {
+      storage.mode(rhs_mat) <- "double"
+    }
+    rhs_mats[[idx]] <- rhs_mat
+    rhs_ncols[[idx]] <- ncol(rhs_mat)
+  }
+
+  # Pack RHS batches into one wide solve.  BLAS/GPU triangular solves amortize
+  # launch and dispatch overhead much better on one n x sum(k_i) RHS than on
+  # many small independent calls.
+  rhs_packed <- do.call(cbind, rhs_mats)
+  solved <- chol_solve(factor, rhs_packed)
+  solved_mat <- as.matrix(.amatrix_host_arg(solved))
+
+  starts <- cumsum(c(1L, head(rhs_ncols, -1L)))
+  Map(function(start, width, was_vector) {
+    value <- solved_mat[, seq.int(start, length.out = width), drop = FALSE]
+    if (isTRUE(was_vector) && width == 1L) {
+      drop(value)
+    } else {
+      value
+    }
+  }, starts, rhs_ncols, rhs_vector)
 }
 
 chol_diag <- function(factor) {

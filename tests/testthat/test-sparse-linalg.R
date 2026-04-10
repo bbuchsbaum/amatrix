@@ -35,3 +35,21 @@ test_that("qr works on sparse tall matrix", {
   coef_ref <- qr.coef(qr(X_dn), b)
   expect_equal(as.numeric(coef_sp), coef_ref, tolerance = 1e-8)
 })
+
+test_that("qr.Q and qr.R work on wrapped sparse QR factors", {
+  skip_if_not_installed("Matrix")
+  set.seed(43)
+  n <- 30
+  p <- 12
+  X_dn <- matrix(rnorm(n * p), n, p)
+  X_sp <- new_adgCMatrix(Matrix::Matrix(X_dn, sparse = TRUE))
+
+  qr_fit <- qr(X_sp)
+  qr_ref <- qr(Matrix::Matrix(X_dn, sparse = TRUE))
+
+  q_fit <- qr.Q(qr_fit)
+  r_fit <- qr.R(qr_fit)
+
+  expect_equal(as.matrix(q_fit), as.matrix(qr.Q(qr_ref)), tolerance = 1e-8)
+  expect_equal(as.matrix(r_fit), as.matrix(qr.R(qr_ref)), tolerance = 1e-8)
+})

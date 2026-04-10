@@ -104,41 +104,35 @@ setMethod("show", "amSVD", function(object) {
 }
 
 .amatrix_svd_factor_subspace_backend <- function(X) {
-  if (!inherits(X, "adgeMatrix")) {
+  if (!inherits(X, "aMatrix")) {
     return(NULL)
   }
 
   requested <- unique(c(X@preferred_backend, X@policy, amatrix_default_policy()))
   requested <- requested[nzchar(requested) & !(requested %in% c("auto", "cpu"))]
 
-  for (backend_name in requested) {
-    has_matmul <- .amatrix_backend_supports_capability(
-      backend_name,
-      "matmul",
-      precision = X@precision
-    )
-    has_crossprod <- .amatrix_backend_supports_capability(
-      backend_name,
-      "crossprod",
-      precision = X@precision
-    )
-    if (has_matmul && has_crossprod) {
-      return(backend_name)
+  if (inherits(X, "adgeMatrix")) {
+    for (backend_name in requested) {
+      if (.amatrix_backend_supports_capability(backend_name, "rsvd", precision = X@precision)) {
+        return(backend_name)
+      }
     }
   }
 
-  has_mlx_matmul <- .amatrix_backend_supports_capability(
-    "mlx",
-    "matmul",
-    precision = X@precision
-  )
-  has_mlx_crossprod <- .amatrix_backend_supports_capability(
-    "mlx",
-    "crossprod",
-    precision = X@precision
-  )
-  if (length(requested) > 0L && has_mlx_matmul && has_mlx_crossprod) {
-    return("mlx")
+  candidates <- .amatrix_resident_backend_candidates(X, op = "matmul")
+  for (backend_name in candidates) {
+    backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
+    if (is.null(backend) ||
+        !isTRUE(backend$available()) ||
+        !.amatrix_backend_residency_capable(backend) ||
+        !(X@precision %in% unique(backend$precision_modes()))) {
+      next
+    }
+
+    if (.amatrix_backend_supports_resident_op(backend, "matmul", x = X) &&
+        .amatrix_backend_supports_resident_op(backend, "crossprod", x = X)) {
+      return(backend_name)
+    }
   }
 
   NULL
@@ -163,7 +157,7 @@ setMethod("show", "amSVD", function(object) {
 }
 
 .amatrix_svd_factor_should_use_subspace <- function(X, k, backend_name) {
-  if (is.null(backend_name) || !inherits(X, "adgeMatrix")) {
+  if (is.null(backend_name) || !inherits(X, c("adgeMatrix", "adgCMatrix"))) {
     return(FALSE)
   }
 
@@ -189,7 +183,16 @@ setMethod("show", "amSVD", function(object) {
 .amatrix_svd_factor_prepare_work_x <- function(X, target_backend = NULL) {
   work_x <- X
 
-  if (!inherits(work_x, "adgeMatrix")) {
+  if (inherits(work_x, "adgCMatrix")) {
+    if (!is.null(target_backend) && !identical(work_x@preferred_backend, target_backend)) {
+      work_x <- as_adgCMatrix(
+        amatrix_materialize_host(X),
+        preferred_backend = target_backend,
+        policy = X@policy,
+        precision = X@precision
+      )
+    }
+  } else if (!inherits(work_x, "adgeMatrix")) {
     work_x <- adgeMatrix(
       amatrix_materialize_host(X),
       preferred_backend = if (is.null(target_backend)) X@preferred_backend else target_backend,
@@ -206,6 +209,20 @@ setMethod("show", "amSVD", function(object) {
   }
 
   work_x
+}
+
+.amatrix_subspace_compile_operator <- function(work_x, op, target_backend = NULL) {
+  backend_name <- if (is.null(target_backend) || !nzchar(target_backend)) "auto" else target_backend
+  tryCatch(
+    amatrix_compile_product(
+      work_x,
+      op = op,
+      backend = backend_name,
+      precision = work_x@precision,
+      policy = work_x@policy
+    ),
+    error = function(e) NULL
+  )
 }
 
 .amatrix_subspace_rademacher <- function(n, r) {
@@ -254,6 +271,25 @@ setMethod("show", "amSVD", function(object) {
                                   target_backend = NULL,
                                   eps_rank = 1e-8) {
   work_x <- .amatrix_svd_factor_prepare_work_x(X, target_backend = target_backend)
+  left_plan <- .amatrix_subspace_compile_operator(work_x, op = "matmul", target_backend = target_backend)
+  right_plan <- .amatrix_subspace_compile_operator(work_x, op = "crossprod", target_backend = target_backend)
+  on.exit(.amatrix_release_product_plan(left_plan), add = TRUE)
+  on.exit(.amatrix_release_product_plan(right_plan), add = TRUE)
+
+  left_apply <- function(rhs) {
+    if (inherits(left_plan, "am_product_plan")) {
+      return(as.matrix(left_plan(rhs)))
+    }
+    as.matrix(work_x %*% rhs)
+  }
+
+  right_apply <- function(rhs) {
+    if (inherits(right_plan, "am_product_plan")) {
+      return(as.matrix(right_plan(rhs)))
+    }
+    as.matrix(crossprod(work_x, rhs))
+  }
+
   dims <- dim(work_x)
   n <- dims[[2L]]
   min_dim <- min(dims)
@@ -282,14 +318,14 @@ setMethod("show", "amSVD", function(object) {
 
   Omega <- .amatrix_subspace_rademacher(n = n, r = target_rank)
 
-  phase <- .amatrix_subspace_qr(work_x %*% Omega)
+  phase <- .amatrix_subspace_qr(left_apply(Omega))
   q_basis <- phase$q
   r_basis <- phase$r
 
   if (n_iter > 0L) {
     for (iter in seq_len(n_iter)) {
-      right_phase <- .amatrix_subspace_qr(crossprod(work_x, q_basis))
-      phase <- .amatrix_subspace_qr(work_x %*% right_phase$q)
+      right_phase <- .amatrix_subspace_qr(right_apply(q_basis))
+      phase <- .amatrix_subspace_qr(left_apply(right_phase$q))
       q_basis <- phase$q
       r_basis <- phase$r
     }
@@ -307,7 +343,7 @@ setMethod("show", "amSVD", function(object) {
     stop("subspace SVD did not discover a usable range space", call. = FALSE)
   }
 
-  t_mat <- as.matrix(crossprod(work_x, q_basis))
+  t_mat <- right_apply(q_basis)
   k_eff <- min(as.integer(k), rank_discovered)
   core_solver <- .amatrix_subspace_core_solver(
     k_eff = k_eff,

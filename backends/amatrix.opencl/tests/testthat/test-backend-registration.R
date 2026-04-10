@@ -47,11 +47,13 @@ test_that("opencl factor GPU support is opt-in and size-gated", {
 })
 
 test_that("opencl capability list is stable and explicit", {
+  backend <- amatrix_opencl_backend()
   expect_identical(
     amatrix_opencl_capabilities(),
     c("matmul", "crossprod", "tcrossprod", "ewise",
       "broadcast_ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "covariance")
   )
+  expect_true("sparse_spmm" %in% backend$features())
 })
 
 test_that("opencl registration exposes capabilities through core helpers", {
@@ -176,6 +178,47 @@ test_that("opencl bridge boundary is callable in scaffold mode", {
   expect_equal(backend$resident_materialize("q"), qr.Q(qr_ref), tolerance = 1e-12)
   expect_equal(backend$resident_materialize("sol"), solve(spd, rhs), tolerance = 1e-12)
   expect_equal(backend$resident_materialize("tri"), backsolve(chol(spd), rhs), tolerance = 1e-12)
+})
+
+test_that("opencl sparse routing is threshold-gated and host-backed", {
+  backend <- amatrix_opencl_backend()
+  sparse <- amatrix::adgCMatrix(
+    Matrix::rsparsematrix(64, 64, density = 0.05),
+    preferred_backend = "opencl",
+    precision = "fast"
+  )
+  rhs <- matrix(rnorm(64 * 8), nrow = 64, ncol = 8)
+
+  old <- options(
+    amatrix.opencl.available = TRUE,
+    amatrix.opencl.spmv_min_nnz = Inf,
+    amatrix.opencl.spmm_min_nnz = Inf
+  )
+  on.exit(options(old), add = TRUE)
+
+  expect_false(backend$supports("matmul", sparse, y = rhs))
+
+  options(amatrix.opencl.spmv_min_nnz = 1L, amatrix.opencl.spmm_min_nnz = 1L)
+
+  expect_true(backend$supports("matmul", sparse, y = rhs))
+  expect_true(backend$supports_resident("matmul", sparse, y = rhs))
+  expect_true(backend$supports("crossprod", sparse, y = rhs))
+  expect_true(backend$supports("tcrossprod", sparse, y = t(rhs)))
+
+  host_sparse <- as(amatrix::amatrix_materialize_host(sparse), "dgCMatrix")
+  expect_equal(backend$matmul(host_sparse, rhs), as.matrix(host_sparse %*% rhs), tolerance = 1e-12)
+
+  backend$sparse_resident_store("sp", host_sparse)
+  backend$resident_store("rhs", rhs)
+  on.exit({
+    backend$resident_drop("rhs")
+    backend$resident_drop("out")
+    backend$sparse_resident_drop("sp")
+  }, add = TRUE)
+
+  expect_true(backend$sparse_resident_has("sp"))
+  backend$spmm_resident_key("sp", "rhs", "out", trans_lhs = FALSE, defer = TRUE)
+  expect_equal(backend$resident_materialize("out"), as.matrix(host_sparse %*% rhs), tolerance = 1e-12)
 })
 
 test_that("opencl diagnostics remain safe without probe enablement", {

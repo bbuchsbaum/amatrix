@@ -13,6 +13,23 @@ amatrix_mlx_precision_modes <- function() {
   "fast"
 }
 
+.amatrix_mlx_rhs_width <- function(y) {
+  if (is.null(y)) {
+    return(NA_integer_)
+  }
+
+  dims <- dim(y)
+  if (is.null(dims)) {
+    return(1L)
+  }
+
+  if (length(dims) == 1L) {
+    return(1L)
+  }
+
+  as.integer(dims[[2L]])
+}
+
 amatrix_mlx_native_available <- function() {
   .Call("amatrix_mlx_native_available_bridge")
 }
@@ -35,6 +52,50 @@ amatrix_mlx_bridge_info <- function() {
   info$available <- amatrix_mlx_is_available()
   info$capabilities <- amatrix_mlx_capabilities()
   info
+}
+
+.amatrix_mlx_direct_file_entry <- function() {
+  any(startsWith(commandArgs(trailingOnly = FALSE), "--file="))
+}
+
+.amatrix_mlx_spectral_safe_mode <- function() {
+  option <- getOption("amatrix.mlx.safe_spectral", NULL)
+  if (!is.null(option)) {
+    return(isTRUE(option))
+  }
+
+  env <- Sys.getenv("AMATRIX_MLX_SAFE_SPECTRAL", unset = "")
+  if (nzchar(env)) {
+    return(tolower(env) %in% c("1", "true", "yes"))
+  }
+
+  isTRUE(.amatrix_mlx_direct_file_entry())
+}
+
+.amatrix_mlx_spectral_fallback <- function(x, method = c("svd", "rsvd"), nu = NULL, nv = NULL, k = NULL, n_oversamples = 10L, n_iter = 2L) {
+  method <- match.arg(method)
+  mat <- as.matrix(x)
+  if (!is.double(mat)) {
+    storage.mode(mat) <- "double"
+  }
+
+  if (identical(method, "svd")) {
+    return(base::svd(mat, nu = nu, nv = nv))
+  }
+
+  if (requireNamespace("irlba", quietly = TRUE)) {
+    res <- irlba::svdr(mat, k = as.integer(k), extra = as.integer(n_oversamples), it = as.integer(n_iter))
+    return(list(
+      u = res$u,
+      d = res$d,
+      v = res$v,
+      iter = if (is.null(res$iter)) NA_integer_ else res$iter,
+      mprod = if (is.null(res$mprod)) NA_integer_ else res$mprod
+    ))
+  }
+
+  res <- base::svd(mat, nu = as.integer(k), nv = as.integer(k))
+  list(u = res$u[, seq_len(k), drop = FALSE], d = res$d[seq_len(k)], v = res$v[, seq_len(k), drop = FALSE])
 }
 
 amatrix_mlx_matmul <- function(x, y) {
@@ -92,6 +153,17 @@ amatrix_mlx_spmm <- function(x_sp, y, trans_lhs = FALSE) {
         as.double(x_sp@x), as.integer(x_sp@p), as.integer(x_sp@i),
         as.integer(x_sp@Dim), y_mat, as.logical(trans_lhs),
         PACKAGE = "amatrix.mlx")
+}
+
+amatrix_mlx_spmm_resident_key <- function(sp_key, y_key, out_key, trans_lhs = FALSE) {
+  .Call(
+    "amatrix_mlx_spmm_resident_key_bridge",
+    as.character(sp_key),
+    as.character(y_key),
+    as.character(out_key),
+    as.logical(trans_lhs),
+    PACKAGE = "amatrix.mlx"
+  )
 }
 
 amatrix_mlx_ewise <- function(lhs, rhs = NULL, op) {
@@ -698,6 +770,9 @@ amatrix_mlx_ts_svd <- function(x, nu, nv) {
 amatrix_mlx_svd <- function(x, nu, nv) {
   x_mat <- as.matrix(x)
   if (!is.double(x_mat)) storage.mode(x_mat) <- "double"
+  if (.amatrix_mlx_spectral_safe_mode()) {
+    return(.amatrix_mlx_spectral_fallback(x_mat, method = "svd", nu = nu, nv = nv))
+  }
   m <- nrow(x_mat); n <- ncol(x_mat)
   # Route tall-skinny matrices (aspect ratio > 4, narrow dim ≤ 512) to ts_svd.
   # For m >> n, QR→SVD(R) reduces the SVD from O(mn²) to O(n³) on CPU plus
@@ -854,12 +929,108 @@ amatrix_mlx_ewise_resident <- function(lhs_key, rhs, op, out_key, defer = FALSE)
 }
 
 amatrix_mlx_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L) {
+  if (.amatrix_mlx_spectral_safe_mode()) {
+    return(.amatrix_mlx_spectral_fallback(
+      x,
+      method = "rsvd",
+      k = k,
+      n_oversamples = n_oversamples,
+      n_iter = n_iter
+    ))
+  }
+
+  engine <- getOption("amatrix.mlx.rsvd.engine", "resident")
+  if (!identical(engine, "native")) {
+    return(amatrix_mlx_rsvd_resident(
+      x,
+      k = k,
+      n_oversamples = n_oversamples,
+      n_iter = n_iter
+    ))
+  }
+
   mat <- if (is(x, "adgeMatrix")) as.matrix(x) else x
   .Call("amatrix_mlx_rsvd_bridge",
         mat,
         as.integer(k),
         as.integer(n_oversamples),
         as.integer(n_iter))
+}
+
+amatrix_mlx_rsvd_resident <- function(x, k, n_oversamples = 10L, n_iter = 2L) {
+  mat <- if (is(x, "adgeMatrix")) as.matrix(x) else as.matrix(x)
+  if (!is.double(mat)) {
+    storage.mode(mat) <- "double"
+  }
+
+  m <- nrow(mat)
+  n <- ncol(mat)
+  p <- min(as.integer(k) + as.integer(n_oversamples), m, n)
+  k_eff <- min(as.integer(k), p)
+
+  x_am <- if (is(x, "adgeMatrix") &&
+              identical(x@preferred_backend, "mlx") &&
+              identical(x@precision, "fast")) {
+    x
+  } else {
+    amatrix::adgeMatrix(mat, preferred_backend = "mlx", precision = "fast")
+  }
+
+  release_plan <- get(".amatrix_release_product_plan", envir = asNamespace("amatrix"), inherits = FALSE)
+  left_plan <- tryCatch(
+    amatrix::amatrix_compile_product(x_am, op = "matmul", backend = "mlx", precision = "fast"),
+    error = function(e) NULL
+  )
+  right_plan <- tryCatch(
+    amatrix::amatrix_compile_product(x_am, op = "crossprod", backend = "mlx", precision = "fast"),
+    error = function(e) NULL
+  )
+  on.exit(try(release_plan(left_plan), silent = TRUE), add = TRUE)
+  on.exit(try(release_plan(right_plan), silent = TRUE), add = TRUE)
+
+  left_apply <- function(rhs) {
+    if (inherits(left_plan, "am_product_plan")) {
+      return(as.matrix(left_plan(rhs)))
+    }
+    amatrix_mlx_matmul(mat, rhs)
+  }
+  right_apply <- function(rhs) {
+    if (inherits(right_plan, "am_product_plan")) {
+      return(as.matrix(right_plan(rhs)))
+    }
+    amatrix_mlx_crossprod(mat, y = rhs)
+  }
+
+  Omega <- matrix(stats::rnorm(n * p), nrow = n, ncol = p)
+  storage.mode(Omega) <- "double"
+  Q <- qr.Q(qr(left_apply(Omega)))
+  storage.mode(Q) <- "double"
+
+  if (n_iter > 0L) {
+    for (idx in seq_len(as.integer(n_iter))) {
+      Z <- right_apply(Q)
+      Q <- qr.Q(qr(Z))
+      storage.mode(Q) <- "double"
+      Y <- left_apply(Q)
+      Q <- qr.Q(qr(Y))
+      storage.mode(Q) <- "double"
+    }
+  }
+
+  # B = t(Q) %*% A, computed as t(A^T %*% Q) through the resident A^T product.
+  B <- t(right_apply(Q))
+  svd_B <- base::svd(B, nu = k_eff, nv = k_eff)
+  U_B <- svd_B$u[, seq_len(k_eff), drop = FALSE]
+  storage.mode(U_B) <- "double"
+  U <- amatrix_mlx_matmul(Q, U_B)
+
+  list(
+    u = U,
+    d = svd_B$d[seq_len(k_eff)],
+    v = svd_B$v[, seq_len(k_eff), drop = FALSE],
+    iter = as.integer(n_iter),
+    mprod = as.integer(2L * as.integer(n_iter) + 2L)
+  )
 }
 
 amatrix_mlx_eigh <- function(x) {
@@ -903,7 +1074,13 @@ amatrix_mlx_backend <- function() {
         if (!(op %in% c("matmul", "crossprod", "tcrossprod"))) return(FALSE)
         if (op %in% c("crossprod", "tcrossprod") && is.null(y)) return(FALSE)
         nnz <- length(x@x)
-        return(nnz >= getOption("amatrix.mlx.spmm_min_nnz", 10000L))
+        rhs_width <- .amatrix_mlx_rhs_width(y)
+        min_nnz <- if (!is.na(rhs_width) && rhs_width <= 1L) {
+          getOption("amatrix.mlx.spmv_min_nnz", Inf)
+        } else {
+          getOption("amatrix.mlx.spmm_min_nnz", Inf)
+        }
+        return(nnz >= min_nnz)
       }
 
       if (!is(x, "adgeMatrix") || !(op %in% capabilities)) {
@@ -1111,6 +1288,9 @@ amatrix_mlx_backend <- function() {
       .Call("amatrix_mlx_spmm_resident_bridge",
             as.character(sp_key), B_mat, as.logical(trans_lhs),
             PACKAGE = "amatrix.mlx")
+    },
+    spmm_resident_key = function(sp_key, y_key, out_key, trans_lhs = FALSE, defer = FALSE) {
+      amatrix_mlx_spmm_resident_key(sp_key, y_key, out_key, trans_lhs = trans_lhs)
     }
   )
 }

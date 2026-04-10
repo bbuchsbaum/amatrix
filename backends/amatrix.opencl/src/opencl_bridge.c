@@ -18,6 +18,7 @@
 #endif
 
 #define AMATRIX_OPENCL_MAX_RESIDENT 256
+#define AMATRIX_OPENCL_MAX_SPARSE_RESIDENT 256
 #define AMATRIX_OPENCL_REDUCE_WG 64
 #define AMATRIX_OPENCL_CHOL_BLOCK 32
 #define AMATRIX_OPENCL_CHOL_PANEL_MAX 64
@@ -34,6 +35,29 @@ typedef struct {
 #endif
 } amatrix_opencl_entry;
 
+typedef struct {
+  char key[64];
+  int in_use;
+  int nrow;
+  int ncol;
+  int nnz;
+  double *values;
+  double *csr_values;
+  int *p;
+  int *i;
+  int *csr_row_ptr;
+  int *csr_col_idx;
+#ifdef HAVE_OPENCL
+  cl_mem csr_row_ptr_buffer;
+  cl_mem csr_col_idx_buffer;
+  cl_mem csr_values_buffer;
+  cl_mem csc_col_ptr_buffer;
+  cl_mem csc_row_idx_buffer;
+  cl_mem csc_values_buffer;
+  int on_device;
+#endif
+} amatrix_opencl_sparse_entry;
+
 #ifdef HAVE_OPENCL
 typedef struct {
   cl_mem buffer;
@@ -42,6 +66,7 @@ typedef struct {
 #endif
 
 static amatrix_opencl_entry g_entries[AMATRIX_OPENCL_MAX_RESIDENT];
+static amatrix_opencl_sparse_entry g_sparse_entries[AMATRIX_OPENCL_MAX_SPARSE_RESIDENT];
 
 #ifdef HAVE_OPENCL
 static cl_platform_id g_platform = NULL;
@@ -60,6 +85,8 @@ static cl_kernel g_broadcast_sweep_kernel = NULL;
 static cl_kernel g_row_sum_kernel = NULL;
 static cl_kernel g_col_sum_kernel = NULL;
 static cl_kernel g_chol_panel_kernel = NULL;
+static cl_kernel g_spmm_csr_kernel = NULL;
+static cl_kernel g_spmm_csc_trans_kernel = NULL;
 static cl_program g_sym_fill_program = NULL;
 static cl_kernel g_sym_fill_kernel = NULL;
 static cl_kernel g_zero_strict_lower_kernel = NULL;
@@ -165,6 +192,32 @@ static amatrix_opencl_entry *amatrix_opencl_lookup_entry(const char *key) {
   return &g_entries[idx];
 }
 
+static int amatrix_opencl_find_sparse_entry(const char *key) {
+  for (int idx = 0; idx < AMATRIX_OPENCL_MAX_SPARSE_RESIDENT; ++idx) {
+    if (g_sparse_entries[idx].in_use && strcmp(g_sparse_entries[idx].key, key) == 0) {
+      return idx;
+    }
+  }
+  return -1;
+}
+
+static int amatrix_opencl_find_free_sparse_entry(void) {
+  for (int idx = 0; idx < AMATRIX_OPENCL_MAX_SPARSE_RESIDENT; ++idx) {
+    if (!g_sparse_entries[idx].in_use) {
+      return idx;
+    }
+  }
+  return -1;
+}
+
+static amatrix_opencl_sparse_entry *amatrix_opencl_lookup_sparse_entry(const char *key) {
+  int idx = amatrix_opencl_find_sparse_entry(key);
+  if (idx < 0) {
+    Rf_error("sparse resident key '%s' not found", key);
+  }
+  return &g_sparse_entries[idx];
+}
+
 static void amatrix_opencl_release_entry(amatrix_opencl_entry *entry) {
   if (entry == NULL) {
     return;
@@ -185,6 +238,69 @@ static void amatrix_opencl_release_entry(amatrix_opencl_entry *entry) {
 
   entry->nrow = 0;
   entry->ncol = 0;
+}
+
+static void amatrix_opencl_release_sparse_entry(amatrix_opencl_sparse_entry *entry) {
+  if (entry == NULL) {
+    return;
+  }
+
+  if (entry->values != NULL) {
+    free(entry->values);
+    entry->values = NULL;
+  }
+  if (entry->csr_values != NULL) {
+    free(entry->csr_values);
+    entry->csr_values = NULL;
+  }
+  if (entry->p != NULL) {
+    free(entry->p);
+    entry->p = NULL;
+  }
+  if (entry->i != NULL) {
+    free(entry->i);
+    entry->i = NULL;
+  }
+  if (entry->csr_row_ptr != NULL) {
+    free(entry->csr_row_ptr);
+    entry->csr_row_ptr = NULL;
+  }
+  if (entry->csr_col_idx != NULL) {
+    free(entry->csr_col_idx);
+    entry->csr_col_idx = NULL;
+  }
+
+#ifdef HAVE_OPENCL
+  if (entry->csr_row_ptr_buffer != NULL) {
+    clReleaseMemObject(entry->csr_row_ptr_buffer);
+    entry->csr_row_ptr_buffer = NULL;
+  }
+  if (entry->csr_col_idx_buffer != NULL) {
+    clReleaseMemObject(entry->csr_col_idx_buffer);
+    entry->csr_col_idx_buffer = NULL;
+  }
+  if (entry->csr_values_buffer != NULL) {
+    clReleaseMemObject(entry->csr_values_buffer);
+    entry->csr_values_buffer = NULL;
+  }
+  if (entry->csc_col_ptr_buffer != NULL) {
+    clReleaseMemObject(entry->csc_col_ptr_buffer);
+    entry->csc_col_ptr_buffer = NULL;
+  }
+  if (entry->csc_row_idx_buffer != NULL) {
+    clReleaseMemObject(entry->csc_row_idx_buffer);
+    entry->csc_row_idx_buffer = NULL;
+  }
+  if (entry->csc_values_buffer != NULL) {
+    clReleaseMemObject(entry->csc_values_buffer);
+    entry->csc_values_buffer = NULL;
+  }
+  entry->on_device = 0;
+#endif
+
+  entry->nrow = 0;
+  entry->ncol = 0;
+  entry->nnz = 0;
 }
 
 static void amatrix_opencl_commit_entry(
@@ -215,6 +331,19 @@ static void amatrix_opencl_commit_entry(
   entry->buffer = buffer;
   entry->on_device = on_device;
 #endif
+}
+
+static void amatrix_opencl_commit_sparse_entry(int idx, const char *key, amatrix_opencl_sparse_entry *value) {
+  amatrix_opencl_sparse_entry *entry = &g_sparse_entries[idx];
+
+  if (entry->in_use) {
+    amatrix_opencl_release_sparse_entry(entry);
+  }
+
+  *entry = *value;
+  entry->in_use = 1;
+  strncpy(entry->key, key, sizeof(entry->key) - 1);
+  entry->key[sizeof(entry->key) - 1] = '\0';
 }
 
 static int amatrix_opencl_resident_count(void) {
@@ -295,6 +424,14 @@ static void amatrix_opencl_runtime_clear(void) {
     clReleaseKernel(g_chol_panel_kernel);
     g_chol_panel_kernel = NULL;
   }
+  if (g_spmm_csr_kernel != NULL) {
+    clReleaseKernel(g_spmm_csr_kernel);
+    g_spmm_csr_kernel = NULL;
+  }
+  if (g_spmm_csc_trans_kernel != NULL) {
+    clReleaseKernel(g_spmm_csc_trans_kernel);
+    g_spmm_csc_trans_kernel = NULL;
+  }
   if (g_custom_program != NULL) {
     clReleaseProgram(g_custom_program);
     g_custom_program = NULL;
@@ -325,6 +462,36 @@ static void amatrix_opencl_runtime_clear(void) {
     free(g_chol_panel_workspace);
     g_chol_panel_workspace = NULL;
     g_chol_panel_workspace_len = 0;
+  }
+  for (int idx = 0; idx < AMATRIX_OPENCL_MAX_SPARSE_RESIDENT; ++idx) {
+    if (!g_sparse_entries[idx].in_use) {
+      continue;
+    }
+    if (g_sparse_entries[idx].csr_row_ptr_buffer != NULL) {
+      clReleaseMemObject(g_sparse_entries[idx].csr_row_ptr_buffer);
+      g_sparse_entries[idx].csr_row_ptr_buffer = NULL;
+    }
+    if (g_sparse_entries[idx].csr_col_idx_buffer != NULL) {
+      clReleaseMemObject(g_sparse_entries[idx].csr_col_idx_buffer);
+      g_sparse_entries[idx].csr_col_idx_buffer = NULL;
+    }
+    if (g_sparse_entries[idx].csr_values_buffer != NULL) {
+      clReleaseMemObject(g_sparse_entries[idx].csr_values_buffer);
+      g_sparse_entries[idx].csr_values_buffer = NULL;
+    }
+    if (g_sparse_entries[idx].csc_col_ptr_buffer != NULL) {
+      clReleaseMemObject(g_sparse_entries[idx].csc_col_ptr_buffer);
+      g_sparse_entries[idx].csc_col_ptr_buffer = NULL;
+    }
+    if (g_sparse_entries[idx].csc_row_idx_buffer != NULL) {
+      clReleaseMemObject(g_sparse_entries[idx].csc_row_idx_buffer);
+      g_sparse_entries[idx].csc_row_idx_buffer = NULL;
+    }
+    if (g_sparse_entries[idx].csc_values_buffer != NULL) {
+      clReleaseMemObject(g_sparse_entries[idx].csc_values_buffer);
+      g_sparse_entries[idx].csc_values_buffer = NULL;
+    }
+    g_sparse_entries[idx].on_device = 0;
   }
   if (g_queue != NULL) {
     clReleaseCommandQueue(g_queue);
@@ -423,6 +590,28 @@ static cl_mem amatrix_opencl_buffer_from_r(SEXP x) {
   cl_int err = CL_SUCCESS;
 
   amatrix_opencl_copy_r_to_f32(host, REAL(x), n);
+
+  buffer = clCreateBuffer(g_context, CL_MEM_READ_WRITE, bytes, NULL, &err);
+  if (err != CL_SUCCESS || buffer == NULL) {
+    return NULL;
+  }
+
+  err = clEnqueueWriteBuffer(g_queue, buffer, CL_TRUE, 0, bytes, host, 0, NULL, NULL);
+  if (err != CL_SUCCESS) {
+    clReleaseMemObject(buffer);
+    return NULL;
+  }
+
+  return buffer;
+}
+
+static cl_mem amatrix_opencl_buffer_from_host(const void *host, size_t bytes) {
+  cl_mem buffer = NULL;
+  cl_int err = CL_SUCCESS;
+
+  if (bytes == 0) {
+    return NULL;
+  }
 
   buffer = clCreateBuffer(g_context, CL_MEM_READ_WRITE, bytes, NULL, &err);
   if (err != CL_SUCCESS || buffer == NULL) {
@@ -1151,6 +1340,26 @@ static int amatrix_opencl_ensure_custom_kernels(void) {
     "    const int col = idx / block;\n"
     "    x[(offset + row) + (offset + col) * ld] = tile[idx];\n"
     "  }\n"
+    "}\n"
+    "__kernel void sparse_spmm_csr(__global const int* row_ptr, __global const int* col_idx, __global const float* values, __global const float* b, const int out_nrow, const int rhs_ncol, const int rhs_ld, __global float* out) {\n"
+    "  const int row = (int)get_global_id(0);\n"
+    "  const int col = (int)get_global_id(1);\n"
+    "  if (row >= out_nrow || col >= rhs_ncol) return;\n"
+    "  float acc = 0.0f;\n"
+    "  for (int idx = row_ptr[row]; idx < row_ptr[row + 1]; ++idx) {\n"
+    "    acc += values[idx] * b[col_idx[idx] + col * rhs_ld];\n"
+    "  }\n"
+    "  out[row + col * out_nrow] = acc;\n"
+    "}\n"
+    "__kernel void sparse_spmm_csc_trans(__global const int* col_ptr, __global const int* row_idx, __global const float* values, __global const float* b, const int out_nrow, const int rhs_ncol, const int rhs_ld, __global float* out) {\n"
+    "  const int xcol = (int)get_global_id(0);\n"
+    "  const int col = (int)get_global_id(1);\n"
+    "  if (xcol >= out_nrow || col >= rhs_ncol) return;\n"
+    "  float acc = 0.0f;\n"
+    "  for (int idx = col_ptr[xcol]; idx < col_ptr[xcol + 1]; ++idx) {\n"
+    "    acc += values[idx] * b[row_idx[idx] + col * rhs_ld];\n"
+    "  }\n"
+    "  out[xcol + col * out_nrow] = acc;\n"
     "}\n";
 
   if (g_custom_program != NULL) {
@@ -1161,7 +1370,9 @@ static int amatrix_opencl_ensure_custom_kernels(void) {
         g_broadcast_sweep_kernel != NULL &&
         g_row_sum_kernel != NULL &&
         g_col_sum_kernel != NULL &&
-        g_chol_panel_kernel != NULL) {
+        g_chol_panel_kernel != NULL &&
+        g_spmm_csr_kernel != NULL &&
+        g_spmm_csc_trans_kernel != NULL) {
       return 1;
     }
 
@@ -1177,6 +1388,30 @@ static int amatrix_opencl_ensure_custom_kernels(void) {
       }
     }
 
+    if (g_spmm_csr_kernel == NULL) {
+      cl_int err = CL_SUCCESS;
+      g_spmm_csr_kernel = clCreateKernel(g_custom_program, "sparse_spmm_csr", &err);
+      if (err != CL_SUCCESS || g_spmm_csr_kernel == NULL) {
+        if (g_spmm_csr_kernel != NULL) {
+          clReleaseKernel(g_spmm_csr_kernel);
+          g_spmm_csr_kernel = NULL;
+        }
+        return 0;
+      }
+    }
+
+    if (g_spmm_csc_trans_kernel == NULL) {
+      cl_int err = CL_SUCCESS;
+      g_spmm_csc_trans_kernel = clCreateKernel(g_custom_program, "sparse_spmm_csc_trans", &err);
+      if (err != CL_SUCCESS || g_spmm_csc_trans_kernel == NULL) {
+        if (g_spmm_csc_trans_kernel != NULL) {
+          clReleaseKernel(g_spmm_csc_trans_kernel);
+          g_spmm_csc_trans_kernel = NULL;
+        }
+        return 0;
+      }
+    }
+
     if (g_ewise_add_kernel != NULL &&
         g_ewise_sub_kernel != NULL &&
         g_ewise_div_kernel != NULL &&
@@ -1184,7 +1419,9 @@ static int amatrix_opencl_ensure_custom_kernels(void) {
         g_broadcast_sweep_kernel != NULL &&
         g_row_sum_kernel != NULL &&
         g_col_sum_kernel != NULL &&
-        g_chol_panel_kernel != NULL) {
+        g_chol_panel_kernel != NULL &&
+        g_spmm_csr_kernel != NULL &&
+        g_spmm_csc_trans_kernel != NULL) {
       return 1;
     }
 
@@ -1224,6 +1461,10 @@ static int amatrix_opencl_ensure_custom_kernels(void) {
     if (err != CL_SUCCESS || g_col_sum_kernel == NULL) return 0;
     g_chol_panel_kernel = clCreateKernel(g_custom_program, "chol_panel_upper", &err);
     if (err != CL_SUCCESS || g_chol_panel_kernel == NULL) return 0;
+    g_spmm_csr_kernel = clCreateKernel(g_custom_program, "sparse_spmm_csr", &err);
+    if (err != CL_SUCCESS || g_spmm_csr_kernel == NULL) return 0;
+    g_spmm_csc_trans_kernel = clCreateKernel(g_custom_program, "sparse_spmm_csc_trans", &err);
+    if (err != CL_SUCCESS || g_spmm_csc_trans_kernel == NULL) return 0;
   }
 
   return 1;
@@ -1234,6 +1475,69 @@ static int amatrix_opencl_run_opencl_kernel_1d(cl_kernel kernel, size_t global_s
   if (err != CL_SUCCESS) {
     return 0;
   }
+  return 1;
+}
+
+static int amatrix_opencl_run_opencl_kernel_2d(cl_kernel kernel, size_t global_x, size_t global_y) {
+  cl_int err = CL_SUCCESS;
+  size_t global[2];
+
+  global[0] = global_x;
+  global[1] = global_y;
+  err = clEnqueueNDRangeKernel(g_queue, kernel, 2, NULL, global, NULL, 0, NULL, NULL);
+  return err == CL_SUCCESS;
+}
+
+static int amatrix_opencl_run_sparse_spmm_device(
+  const amatrix_opencl_sparse_entry *sparse,
+  cl_mem rhs_buffer,
+  int rhs_nrow,
+  int rhs_ncol,
+  int trans_lhs,
+  cl_mem *out_buffer,
+  int *out_nrow,
+  int *out_ncol
+) {
+  cl_mem out = NULL;
+  cl_kernel kernel = NULL;
+  cl_int err = CL_SUCCESS;
+  int result_nrow = trans_lhs ? sparse->ncol : sparse->nrow;
+  int expected_rhs_nrow = trans_lhs ? sparse->nrow : sparse->ncol;
+  int rhs_ld = rhs_nrow;
+
+  if (!amatrix_opencl_ensure_custom_kernels() || rhs_buffer == NULL || sparse == NULL) {
+    return 0;
+  }
+  if (!sparse->on_device) {
+    return 0;
+  }
+  if (rhs_nrow != expected_rhs_nrow) {
+    return -1;
+  }
+
+  out = amatrix_opencl_alloc_buffer((size_t)result_nrow * (size_t)rhs_ncol);
+  if (out == NULL) {
+    return 0;
+  }
+
+  kernel = trans_lhs ? g_spmm_csc_trans_kernel : g_spmm_csr_kernel;
+  err = clSetKernelArg(kernel, 0, sizeof(cl_mem), trans_lhs ? (const void *)&sparse->csc_col_ptr_buffer : (const void *)&sparse->csr_row_ptr_buffer);
+  err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), trans_lhs ? (const void *)&sparse->csc_row_idx_buffer : (const void *)&sparse->csr_col_idx_buffer);
+  err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), trans_lhs ? (const void *)&sparse->csc_values_buffer : (const void *)&sparse->csr_values_buffer);
+  err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &rhs_buffer);
+  err |= clSetKernelArg(kernel, 4, sizeof(int), &result_nrow);
+  err |= clSetKernelArg(kernel, 5, sizeof(int), &rhs_ncol);
+  err |= clSetKernelArg(kernel, 6, sizeof(int), &rhs_ld);
+  err |= clSetKernelArg(kernel, 7, sizeof(cl_mem), &out);
+  if (err != CL_SUCCESS ||
+      !amatrix_opencl_run_opencl_kernel_2d(kernel, (size_t)result_nrow, (size_t)rhs_ncol)) {
+    clReleaseMemObject(out);
+    return 0;
+  }
+
+  *out_buffer = out;
+  *out_nrow = result_nrow;
+  *out_ncol = rhs_ncol;
   return 1;
 }
 
@@ -1662,6 +1966,237 @@ static int amatrix_opencl_run_syrk(
 }
 #endif
 
+static SEXP amatrix_opencl_sparse_spmm_host_impl(const amatrix_opencl_sparse_entry *entry, SEXP b, int trans_lhs) {
+  int b_nrow = amatrix_opencl_nrow(b);
+  int b_ncol = amatrix_opencl_ncol(b);
+  int out_nrow = trans_lhs ? entry->ncol : entry->nrow;
+  int expected_rhs_nrow = trans_lhs ? entry->nrow : entry->ncol;
+  const double *b_ptr = REAL(b);
+  SEXP out = PROTECT(Rf_allocMatrix(REALSXP, out_nrow, b_ncol));
+  double *out_ptr = REAL(out);
+
+  if (b_nrow != expected_rhs_nrow) {
+    UNPROTECT(1);
+    Rf_error("spmm: dimension mismatch");
+  }
+
+  memset(out_ptr, 0, (size_t)out_nrow * (size_t)b_ncol * sizeof(double));
+
+  if (!trans_lhs) {
+    for (int col = 0; col < b_ncol; ++col) {
+      const double *b_col = b_ptr + (size_t)b_nrow * (size_t)col;
+      double *out_col = out_ptr + (size_t)out_nrow * (size_t)col;
+      for (int xcol = 0; xcol < entry->ncol; ++xcol) {
+        double rhs = b_col[xcol];
+        if (rhs == 0.0) {
+          continue;
+        }
+        for (int sp = entry->p[xcol]; sp < entry->p[xcol + 1]; ++sp) {
+          out_col[entry->i[sp]] += entry->values[sp] * rhs;
+        }
+      }
+    }
+  } else {
+    for (int col = 0; col < b_ncol; ++col) {
+      const double *b_col = b_ptr + (size_t)b_nrow * (size_t)col;
+      double *out_col = out_ptr + (size_t)out_nrow * (size_t)col;
+      for (int xcol = 0; xcol < entry->ncol; ++xcol) {
+        double acc = 0.0;
+        for (int sp = entry->p[xcol]; sp < entry->p[xcol + 1]; ++sp) {
+          acc += entry->values[sp] * b_col[entry->i[sp]];
+        }
+        out_col[xcol] = acc;
+      }
+    }
+  }
+
+  UNPROTECT(1);
+  return out;
+}
+
+static int amatrix_opencl_store_sparse_entry(const char *key, amatrix_opencl_sparse_entry *value) {
+  int idx = amatrix_opencl_find_sparse_entry(key);
+  if (idx < 0) {
+    idx = amatrix_opencl_find_free_sparse_entry();
+  }
+  if (idx < 0) {
+    Rf_error("sparse resident registry is full");
+  }
+
+  amatrix_opencl_commit_sparse_entry(idx, key, value);
+  return 1;
+}
+
+static amatrix_opencl_sparse_entry *amatrix_opencl_sparse_entry_from_slots(
+  const char *key,
+  const double *values,
+  int nnz,
+  const int *p,
+  int np,
+  const int *i,
+  int nrow,
+  int ncol
+) {
+  amatrix_opencl_sparse_entry *entry = NULL;
+  int *next = NULL;
+
+  if (np != (ncol + 1)) {
+    Rf_error("sparse slots have incompatible column pointer length");
+  }
+
+  entry = (amatrix_opencl_sparse_entry *)calloc(1, sizeof(amatrix_opencl_sparse_entry));
+  if (entry == NULL) {
+    Rf_error("failed to allocate sparse entry");
+  }
+
+  strncpy(entry->key, key, sizeof(entry->key) - 1);
+  entry->key[sizeof(entry->key) - 1] = '\0';
+  entry->nrow = nrow;
+  entry->ncol = ncol;
+  entry->nnz = nnz;
+  entry->values = (double *)malloc((size_t)nnz * sizeof(double));
+  entry->csr_values = (double *)malloc((size_t)nnz * sizeof(double));
+  entry->p = (int *)malloc((size_t)np * sizeof(int));
+  entry->i = (int *)malloc((size_t)nnz * sizeof(int));
+  entry->csr_row_ptr = (int *)calloc((size_t)nrow + 1U, sizeof(int));
+  entry->csr_col_idx = (int *)malloc((size_t)nnz * sizeof(int));
+
+  if (entry->values == NULL || entry->csr_values == NULL || entry->p == NULL ||
+      entry->i == NULL || entry->csr_row_ptr == NULL || entry->csr_col_idx == NULL) {
+    amatrix_opencl_release_sparse_entry(entry);
+    free(entry);
+    Rf_error("failed to allocate sparse entry slots");
+  }
+
+  memcpy(entry->values, values, (size_t)nnz * sizeof(double));
+  memcpy(entry->p, p, (size_t)np * sizeof(int));
+  memcpy(entry->i, i, (size_t)nnz * sizeof(int));
+
+  for (int idx = 0; idx < nnz; ++idx) {
+    entry->csr_row_ptr[(size_t)i[idx] + 1U] += 1;
+  }
+  for (int row = 0; row < nrow; ++row) {
+    entry->csr_row_ptr[(size_t)row + 1U] += entry->csr_row_ptr[(size_t)row];
+  }
+
+  next = (int *)malloc((size_t)nrow * sizeof(int));
+  if (next == NULL) {
+    amatrix_opencl_release_sparse_entry(entry);
+    free(entry);
+    Rf_error("failed to allocate sparse row cursor");
+  }
+  memcpy(next, entry->csr_row_ptr, (size_t)nrow * sizeof(int));
+
+  for (int col = 0; col < ncol; ++col) {
+    for (int sp = p[col]; sp < p[col + 1]; ++sp) {
+      int row = i[sp];
+      int dest = next[row]++;
+      entry->csr_col_idx[dest] = col;
+      entry->csr_values[dest] = values[sp];
+    }
+  }
+
+  free(next);
+  return entry;
+}
+
+#ifdef HAVE_OPENCL
+static int amatrix_opencl_sparse_entry_upload_buffers(amatrix_opencl_sparse_entry *entry) {
+  float *csr_values_f32 = NULL;
+  float *csc_values_f32 = NULL;
+
+  if (entry == NULL) {
+    return 0;
+  }
+  if (!amatrix_opencl_try_init()) {
+    return 0;
+  }
+  if (entry->on_device &&
+      entry->csr_row_ptr_buffer != NULL &&
+      entry->csr_col_idx_buffer != NULL &&
+      entry->csr_values_buffer != NULL &&
+      entry->csc_col_ptr_buffer != NULL &&
+      entry->csc_row_idx_buffer != NULL &&
+      entry->csc_values_buffer != NULL) {
+    return 1;
+  }
+
+  if (entry->csr_row_ptr_buffer != NULL) {
+    clReleaseMemObject(entry->csr_row_ptr_buffer);
+    entry->csr_row_ptr_buffer = NULL;
+  }
+  if (entry->csr_col_idx_buffer != NULL) {
+    clReleaseMemObject(entry->csr_col_idx_buffer);
+    entry->csr_col_idx_buffer = NULL;
+  }
+  if (entry->csr_values_buffer != NULL) {
+    clReleaseMemObject(entry->csr_values_buffer);
+    entry->csr_values_buffer = NULL;
+  }
+  if (entry->csc_col_ptr_buffer != NULL) {
+    clReleaseMemObject(entry->csc_col_ptr_buffer);
+    entry->csc_col_ptr_buffer = NULL;
+  }
+  if (entry->csc_row_idx_buffer != NULL) {
+    clReleaseMemObject(entry->csc_row_idx_buffer);
+    entry->csc_row_idx_buffer = NULL;
+  }
+  if (entry->csc_values_buffer != NULL) {
+    clReleaseMemObject(entry->csc_values_buffer);
+    entry->csc_values_buffer = NULL;
+  }
+
+  csr_values_f32 = (float *)malloc((size_t)entry->nnz * sizeof(float));
+  csc_values_f32 = (float *)malloc((size_t)entry->nnz * sizeof(float));
+  if (csr_values_f32 == NULL || csc_values_f32 == NULL) {
+    free(csr_values_f32);
+    free(csc_values_f32);
+    return 0;
+  }
+
+  amatrix_opencl_copy_r_to_f32(csr_values_f32, entry->csr_values, (size_t)entry->nnz);
+  amatrix_opencl_copy_r_to_f32(csc_values_f32, entry->values, (size_t)entry->nnz);
+
+  entry->csr_row_ptr_buffer = amatrix_opencl_buffer_from_host(
+    entry->csr_row_ptr,
+    ((size_t)entry->nrow + 1U) * sizeof(int)
+  );
+  entry->csr_col_idx_buffer = amatrix_opencl_buffer_from_host(
+    entry->csr_col_idx,
+    (size_t)entry->nnz * sizeof(int)
+  );
+  entry->csr_values_buffer = amatrix_opencl_buffer_from_host(
+    csr_values_f32,
+    (size_t)entry->nnz * sizeof(float)
+  );
+  entry->csc_col_ptr_buffer = amatrix_opencl_buffer_from_host(
+    entry->p,
+    ((size_t)entry->ncol + 1U) * sizeof(int)
+  );
+  entry->csc_row_idx_buffer = amatrix_opencl_buffer_from_host(
+    entry->i,
+    (size_t)entry->nnz * sizeof(int)
+  );
+  entry->csc_values_buffer = amatrix_opencl_buffer_from_host(
+    csc_values_f32,
+    (size_t)entry->nnz * sizeof(float)
+  );
+
+  free(csr_values_f32);
+  free(csc_values_f32);
+
+  entry->on_device =
+    entry->csr_row_ptr_buffer != NULL &&
+    entry->csr_col_idx_buffer != NULL &&
+    entry->csr_values_buffer != NULL &&
+    entry->csc_col_ptr_buffer != NULL &&
+    entry->csc_row_idx_buffer != NULL &&
+    entry->csc_values_buffer != NULL;
+
+  return entry->on_device;
+}
+#endif
+
 static int amatrix_opencl_store_device_buffer(const char *key, cl_mem buffer, int nrow, int ncol) {
   int idx = amatrix_opencl_find_entry(key);
   if (idx < 0) {
@@ -1997,6 +2532,245 @@ SEXP amatrix_opencl_diagnostics_bridge(void) {
   SET_VECTOR_ELT(out, 7, ScalarInteger(amatrix_opencl_host_resident_count()));
   UNPROTECT(1);
   return out;
+}
+
+SEXP amatrix_opencl_sparse_store_bridge(SEXP key, SEXP values, SEXP p, SEXP i, SEXP dim) {
+  amatrix_opencl_sparse_entry *entry = NULL;
+  const char *key_c = NULL;
+
+  if (TYPEOF(key) != STRSXP || XLENGTH(key) != 1) {
+    Rf_error("sparse_store: key must be a scalar character");
+  }
+  if (TYPEOF(values) != REALSXP || TYPEOF(p) != INTSXP || TYPEOF(i) != INTSXP ||
+      TYPEOF(dim) != INTSXP || XLENGTH(dim) != 2) {
+    Rf_error("sparse_store: invalid sparse slots");
+  }
+
+  key_c = CHAR(asChar(key));
+  entry = amatrix_opencl_sparse_entry_from_slots(
+    key_c,
+    REAL(values),
+    (int)XLENGTH(values),
+    INTEGER(p),
+    (int)XLENGTH(p),
+    INTEGER(i),
+    INTEGER(dim)[0],
+    INTEGER(dim)[1]
+  );
+
+#ifdef HAVE_OPENCL
+  if (amatrix_opencl_try_init()) {
+    amatrix_opencl_sparse_entry_upload_buffers(entry);
+  }
+#endif
+
+  amatrix_opencl_store_sparse_entry(key_c, entry);
+  free(entry);
+  return ScalarLogical(1);
+}
+
+SEXP amatrix_opencl_sparse_has_bridge(SEXP key) {
+  if (TYPEOF(key) != STRSXP || XLENGTH(key) != 1) {
+    return ScalarLogical(0);
+  }
+  return ScalarLogical(amatrix_opencl_find_sparse_entry(CHAR(asChar(key))) >= 0);
+}
+
+SEXP amatrix_opencl_sparse_drop_bridge(SEXP key) {
+  int idx = -1;
+
+  if (TYPEOF(key) != STRSXP || XLENGTH(key) != 1) {
+    return ScalarLogical(1);
+  }
+
+  idx = amatrix_opencl_find_sparse_entry(CHAR(asChar(key)));
+  if (idx >= 0) {
+    amatrix_opencl_release_sparse_entry(&g_sparse_entries[idx]);
+    g_sparse_entries[idx].in_use = 0;
+    g_sparse_entries[idx].key[0] = '\0';
+  }
+  return ScalarLogical(1);
+}
+
+SEXP amatrix_opencl_spmm_bridge(SEXP values, SEXP p, SEXP i, SEXP dim, SEXP b, SEXP trans_lhs) {
+  amatrix_opencl_sparse_entry *entry = NULL;
+  SEXP out = R_NilValue;
+  int trans = asLogical(trans_lhs);
+
+  amatrix_opencl_require_matrix(b, "b");
+  if (TYPEOF(values) != REALSXP || TYPEOF(p) != INTSXP || TYPEOF(i) != INTSXP ||
+      TYPEOF(dim) != INTSXP || XLENGTH(dim) != 2) {
+    Rf_error("spmm: invalid sparse slots");
+  }
+
+  entry = amatrix_opencl_sparse_entry_from_slots(
+    "bridge",
+    REAL(values),
+    (int)XLENGTH(values),
+    INTEGER(p),
+    (int)XLENGTH(p),
+    INTEGER(i),
+    INTEGER(dim)[0],
+    INTEGER(dim)[1]
+  );
+
+#ifdef HAVE_OPENCL
+  if (amatrix_opencl_try_init() && amatrix_opencl_sparse_entry_upload_buffers(entry)) {
+    cl_mem rhs_buffer = amatrix_opencl_buffer_from_r(b);
+    cl_mem out_buffer = NULL;
+    int out_nrow = 0;
+    int out_ncol = 0;
+    int ok = 0;
+
+    if (rhs_buffer != NULL) {
+      ok = amatrix_opencl_run_sparse_spmm_device(
+        entry,
+        rhs_buffer,
+        amatrix_opencl_nrow(b),
+        amatrix_opencl_ncol(b),
+        trans,
+        &out_buffer,
+        &out_nrow,
+        &out_ncol
+      );
+    }
+
+    if (rhs_buffer != NULL) {
+      clReleaseMemObject(rhs_buffer);
+    }
+
+    if (ok > 0) {
+      out = PROTECT(amatrix_opencl_matrix_from_buffer(out_buffer, out_nrow, out_ncol));
+      clReleaseMemObject(out_buffer);
+      amatrix_opencl_release_sparse_entry(entry);
+      free(entry);
+      UNPROTECT(1);
+      return out;
+    }
+
+    if (out_buffer != NULL) {
+      clReleaseMemObject(out_buffer);
+    }
+  }
+#endif
+
+  out = PROTECT(amatrix_opencl_sparse_spmm_host_impl(entry, b, trans));
+  amatrix_opencl_release_sparse_entry(entry);
+  free(entry);
+  UNPROTECT(1);
+  return out;
+}
+
+SEXP amatrix_opencl_spmm_resident_bridge(SEXP key, SEXP b, SEXP trans_lhs) {
+  amatrix_opencl_sparse_entry *entry = NULL;
+  int trans = asLogical(trans_lhs);
+
+  if (TYPEOF(key) != STRSXP || XLENGTH(key) != 1) {
+    Rf_error("spmm_resident: sparse key must be a scalar character");
+  }
+  amatrix_opencl_require_matrix(b, "b");
+  entry = amatrix_opencl_lookup_sparse_entry(CHAR(asChar(key)));
+
+#ifdef HAVE_OPENCL
+  if (amatrix_opencl_try_init() && amatrix_opencl_sparse_entry_upload_buffers(entry)) {
+    cl_mem rhs_buffer = amatrix_opencl_buffer_from_r(b);
+    cl_mem out_buffer = NULL;
+    int out_nrow = 0;
+    int out_ncol = 0;
+    int ok = 0;
+
+    if (rhs_buffer != NULL) {
+      ok = amatrix_opencl_run_sparse_spmm_device(
+        entry,
+        rhs_buffer,
+        amatrix_opencl_nrow(b),
+        amatrix_opencl_ncol(b),
+        trans,
+        &out_buffer,
+        &out_nrow,
+        &out_ncol
+      );
+    }
+
+    if (rhs_buffer != NULL) {
+      clReleaseMemObject(rhs_buffer);
+    }
+
+    if (ok > 0) {
+      SEXP out = PROTECT(amatrix_opencl_matrix_from_buffer(out_buffer, out_nrow, out_ncol));
+      clReleaseMemObject(out_buffer);
+      UNPROTECT(1);
+      return out;
+    }
+
+    if (out_buffer != NULL) {
+      clReleaseMemObject(out_buffer);
+    }
+  }
+#endif
+
+  return amatrix_opencl_sparse_spmm_host_impl(entry, b, trans);
+}
+
+SEXP amatrix_opencl_spmm_resident_key_bridge(SEXP sp_key, SEXP y_key, SEXP out_key, SEXP trans_lhs, SEXP defer) {
+  amatrix_opencl_sparse_entry *sparse = NULL;
+  amatrix_opencl_entry *dense = NULL;
+  int trans = asLogical(trans_lhs);
+  int should_defer = asLogical(defer);
+
+  if (TYPEOF(sp_key) != STRSXP || XLENGTH(sp_key) != 1 ||
+      TYPEOF(y_key) != STRSXP || XLENGTH(y_key) != 1 ||
+      TYPEOF(out_key) != STRSXP || XLENGTH(out_key) != 1) {
+    Rf_error("spmm_resident_key: invalid arguments");
+  }
+
+  sparse = amatrix_opencl_lookup_sparse_entry(CHAR(asChar(sp_key)));
+  dense = amatrix_opencl_lookup_entry(CHAR(asChar(y_key)));
+
+#ifdef HAVE_OPENCL
+  if (amatrix_opencl_try_init() &&
+      dense->on_device &&
+      dense->buffer != NULL &&
+      amatrix_opencl_sparse_entry_upload_buffers(sparse)) {
+    cl_mem out_buffer = NULL;
+    int out_nrow = 0;
+    int out_ncol = 0;
+    int ok = amatrix_opencl_run_sparse_spmm_device(
+      sparse,
+      dense->buffer,
+      dense->nrow,
+      dense->ncol,
+      trans,
+      &out_buffer,
+      &out_nrow,
+      &out_ncol
+    );
+
+    if (ok > 0) {
+      amatrix_opencl_store_device_buffer(CHAR(asChar(out_key)), out_buffer, out_nrow, out_ncol);
+      if (should_defer) {
+        return R_NilValue;
+      }
+      return amatrix_opencl_get_entry_materialized(CHAR(asChar(out_key)));
+    }
+
+    if (out_buffer != NULL) {
+      clReleaseMemObject(out_buffer);
+    }
+  }
+#endif
+
+  {
+    SEXP rhs = PROTECT(amatrix_opencl_get_entry_materialized(CHAR(asChar(y_key))));
+    SEXP host_out = PROTECT(amatrix_opencl_sparse_spmm_host_impl(sparse, rhs, trans));
+    amatrix_opencl_store_host_entry(CHAR(asChar(out_key)), host_out);
+    if (should_defer) {
+      UNPROTECT(2);
+      return R_NilValue;
+    }
+    UNPROTECT(2);
+    return host_out;
+  }
 }
 
 SEXP amatrix_opencl_matmul_bridge(SEXP x, SEXP y) {
@@ -2409,6 +3183,62 @@ SEXP amatrix_opencl_solve_triangular_resident_bridge(SEXP factor_key, SEXP rhs_k
   }
 #endif
   Rf_error("OpenCL resident triangular solve is unavailable");
+  return R_NilValue;
+}
+
+SEXP amatrix_opencl_chol_solve_resident_bridge(SEXP factor_key, SEXP rhs_key, SEXP out_key) {
+#ifdef HAVE_CLBLAST
+  if (amatrix_opencl_try_init()) {
+    amatrix_opencl_entry *factor_entry = amatrix_opencl_lookup_entry(CHAR(asChar(factor_key)));
+    amatrix_opencl_entry *rhs_entry = amatrix_opencl_lookup_entry(CHAR(asChar(rhs_key)));
+    cl_mem out_buffer = NULL;
+
+    if (factor_entry == NULL) {
+      Rf_error("resident factor key '%s' was not found", CHAR(asChar(factor_key)));
+    }
+    if (rhs_entry == NULL) {
+      Rf_error("resident rhs key '%s' was not found", CHAR(asChar(rhs_key)));
+    }
+    if (!factor_entry->on_device || factor_entry->buffer == NULL) {
+      Rf_error("resident factor key '%s' is not device-backed", CHAR(asChar(factor_key)));
+    }
+    if (!rhs_entry->on_device || rhs_entry->buffer == NULL) {
+      Rf_error("resident rhs key '%s' is not device-backed", CHAR(asChar(rhs_key)));
+    }
+    if (factor_entry->nrow != factor_entry->ncol) {
+      Rf_error("chol_solve requires a square factor");
+    }
+    if (rhs_entry->nrow != factor_entry->nrow) {
+      Rf_error("chol_solve rhs has incompatible dimensions");
+    }
+
+    if (!amatrix_opencl_copy_buffer(rhs_entry->buffer, (size_t)rhs_entry->nrow * (size_t)rhs_entry->ncol, &out_buffer) ||
+        !amatrix_opencl_run_trsm_left(
+          factor_entry->buffer, 0, (size_t)factor_entry->nrow, 0, 1,
+          out_buffer, 0, (size_t)rhs_entry->nrow,
+          factor_entry->nrow, rhs_entry->ncol
+        ) ||
+        !amatrix_opencl_run_trsm_left(
+          factor_entry->buffer, 0, (size_t)factor_entry->nrow, 0, 0,
+          out_buffer, 0, (size_t)rhs_entry->nrow,
+          factor_entry->nrow, rhs_entry->ncol
+        )) {
+      if (out_buffer != NULL) {
+        clReleaseMemObject(out_buffer);
+      }
+      Rf_error("OpenCL resident chol_solve failed");
+    }
+
+    amatrix_opencl_store_device_buffer(
+      CHAR(asChar(out_key)),
+      out_buffer,
+      rhs_entry->nrow,
+      rhs_entry->ncol
+    );
+    return R_NilValue;
+  }
+#endif
+  Rf_error("OpenCL resident chol_solve is unavailable");
   return R_NilValue;
 }
 
