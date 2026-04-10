@@ -75,14 +75,24 @@ setOldClass(c("amQR", "amDenseQR"))
   qr_q_key <- qr_obj[["q_key", exact = TRUE]]
 
   if (!is.null(qr_payload)) {
+    qr_base <- if (inherits(qr_obj, "qr")) {
+      qr_obj
+    } else if (inherits(qr_payload, "qr")) {
+      qr_payload
+    } else {
+      qr_obj
+    }
     representation <- "base_qr"
-    rank <- as.integer(.amatrix_qr_or(qr_rank, qr_payload$rank))
+    rank <- as.integer(.amatrix_qr_or(qr_rank, qr_base$rank))
     q_materialized <- FALSE
     r_materialized <- FALSE
     thin <- TRUE
-    pivot <- qr_pivot
+    pivot <- .amatrix_qr_or(qr_pivot, qr_base$pivot)
     pivoted <- !is.null(pivot) && !identical(as.integer(pivot), seq_along(pivot))
-    state <- .amatrix_qr_state(factor = qr_obj, factor_source = "native")
+    state <- .amatrix_qr_state(
+      factor = .amatrix_qr_or(qr_factor, qr_base),
+      factor_source = .amatrix_qr_or(qr_factor_source, "native")
+    )
   } else if (identical(qr_representation, "mlx_compact_qr")) {
     representation <- "mlx_compact_qr"
     rank <- as.integer(.amatrix_qr_or(qr_rank, .amatrix_qr_or(qr_factor$rank, if (!is.null(source_dim)) min(source_dim) else NA_integer_)))

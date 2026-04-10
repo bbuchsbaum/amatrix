@@ -166,7 +166,7 @@
 
   n <- nrow(x_mat)
   p <- ncol(x_mat)
-  n >= getOption("amatrix.opencl.qr_min_n", 512L) &&
+  n >= getOption("amatrix.opencl.qr_min_n", 4096L) &&
     p >= getOption("amatrix.opencl.qr_min_p", 16L) &&
     p <= getOption("amatrix.opencl.qr_max_p", 256L) &&
     n >= (4L * p)
@@ -459,14 +459,8 @@ amatrix_opencl_qr <- function(x, ...) {
   }
 
   qr_host <- base::qr(x_host, ...)
-  q_key <- .amatrix_opencl_temp_key("qr-q")
-  amatrix_opencl_resident_store(q_key, qr.Q(qr_host, complete = FALSE))
   list(
-    representation = "explicit_qr",
-    q_key = q_key,
-    r = qr.R(qr_host, complete = FALSE),
-    rank = qr_host$rank,
-    pivot = qr_host$pivot,
+    qr = qr_host,
     factor = qr_host,
     factor_source = "native",
     backend_ops = "opencl"

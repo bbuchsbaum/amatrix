@@ -215,6 +215,12 @@ test_that("OpenCL tall-skinny QR uses resident Q helpers and matches base QR coe
   with_optional_backend_available(spec, {
     register_backend(overwrite = TRUE)
 
+    old <- options(
+      amatrix.opencl.factor_gpu = TRUE,
+      amatrix.opencl.qr_min_n = 1L
+    )
+    on.exit(options(old), add = TRUE)
+
     set.seed(20260409L)
     X_host <- matrix(rnorm(2000 * 32), nrow = 2000, ncol = 32)
     Y_host <- matrix(rnorm(2000 * 4), nrow = 2000, ncol = 4)
