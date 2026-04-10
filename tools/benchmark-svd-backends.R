@@ -8,6 +8,8 @@ parse_args <- function(args) {
     worker = "--worker" %in% args,
     mlx_native_spectral = "--mlx-native-spectral" %in% args ||
       identical(Sys.getenv("AMATRIX_MLX_NATIVE_SPECTRAL", unset = ""), "1"),
+    mlx_native_inline = "--mlx-native-inline" %in% args ||
+      identical(Sys.getenv("AMATRIX_MLX_NATIVE_INLINE", unset = ""), "1"),
     plan = NULL,
     out = NULL,
     entry_id = NULL,
@@ -366,6 +368,57 @@ run_mlx_single_cell <- function(case, algorithm, reps = 3L, native_spectral = FA
   )
 }
 
+benchmark_mlx_inline_rsvd <- function(case, reps = 3L) {
+  activate_worker_backend("mlx")
+  old_options <- options(
+    amatrix.mlx.available = TRUE,
+    amatrix.mlx.safe_spectral = FALSE,
+    amatrix.mlx.rsvd.engine = "resident"
+  )
+  old_safe <- Sys.getenv("AMATRIX_MLX_SAFE_SPECTRAL", unset = NA_character_)
+  old_native <- Sys.getenv("AMATRIX_MLX_NATIVE_SPECTRAL", unset = NA_character_)
+  on.exit(options(old_options), add = TRUE)
+  on.exit({
+    if (is.na(old_safe)) Sys.unsetenv("AMATRIX_MLX_SAFE_SPECTRAL") else Sys.setenv(AMATRIX_MLX_SAFE_SPECTRAL = old_safe)
+    if (is.na(old_native)) Sys.unsetenv("AMATRIX_MLX_NATIVE_SPECTRAL") else Sys.setenv(AMATRIX_MLX_NATIVE_SPECTRAL = old_native)
+  }, add = TRUE)
+  Sys.unsetenv("AMATRIX_MLX_SAFE_SPECTRAL")
+  Sys.setenv(AMATRIX_MLX_NATIVE_SPECTRAL = "1")
+
+  tryCatch({
+    host <- make_host_case(case)
+    ref_sv <- base::svd(host, nu = case$k, nv = case$k)$d[seq_len(case$k)]
+    x <- adgeMatrix(host, preferred_backend = "mlx", precision = "fast")
+    bench <- benchmark_elapsed(
+      function() rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter),
+      reps = reps,
+      warmup = function() invisible(rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter))
+    )
+
+    new_row(
+      case = case$id,
+      algorithm = "rsvd",
+      backend = "mlx",
+      precision = "fast",
+      elapsed = bench$elapsed,
+      rel_sv_err = relative_sv_error(bench$result$d[seq_len(case$k)], ref_sv),
+      iter = as.integer(bench$result$iter %||% NA_integer_),
+      mprod = as.integer(bench$result$mprod %||% NA_integer_),
+      selected_backend = "mlx",
+      reason = "native inline resident rsvd"
+    )
+  }, error = function(e) {
+    new_row(
+      case = case$id,
+      algorithm = "rsvd",
+      backend = "mlx",
+      precision = "fast",
+      status = "error",
+      reason = conditionMessage(e)
+    )
+  })
+}
+
 crash_rows <- function(case, backend_spec, message_text) {
   rbind(
     new_row(
@@ -428,8 +481,15 @@ master_main <- function(args = parse_args(commandArgs(trailingOnly = TRUE))) {
   for (entry in entries) {
     message(sprintf("  %s", entry$id))
     if (identical(entry$backend$name, "mlx")) {
-      rows[[length(rows) + 1L]] <- run_mlx_single_cell(entry$case, "svd", reps = 3L, native_spectral = args$mlx_native_spectral)
-      rows[[length(rows) + 1L]] <- run_mlx_single_cell(entry$case, "rsvd", reps = 3L, native_spectral = args$mlx_native_spectral)
+      # Exact MLX SVD is CPU-stream only and remains on the safe path. Native
+      # MLX spectral probing is useful for RSVD, where the resident algorithm is
+      # dominated by GPU matmul/crossprod.
+      rows[[length(rows) + 1L]] <- run_mlx_single_cell(entry$case, "svd", reps = 3L, native_spectral = FALSE)
+      rows[[length(rows) + 1L]] <- if (isTRUE(args$mlx_native_spectral) && isTRUE(args$mlx_native_inline)) {
+        benchmark_mlx_inline_rsvd(entry$case, reps = 3L)
+      } else {
+        run_mlx_single_cell(entry$case, "rsvd", reps = 3L, native_spectral = args$mlx_native_spectral)
+      }
       next
     }
 
@@ -545,7 +605,9 @@ print_svd_benchmark <- function(output_dir) {
   cat("Notes:\n")
   cat("- `svd` benchmarks exact singular-value decomposition through the public amatrix surface.\n")
   cat("- `rsvd` benchmarks the standalone truncated randomized SVD surface.\n")
-  cat("- MLX spectral cells use safe CPU fallback by default; set `AMATRIX_MLX_NATIVE_SPECTRAL=1` or pass `--mlx-native-spectral` to probe native MLX spectral paths under row-level crash isolation.\n")
+  cat("- MLX exact SVD stays on the safe CPU fallback path because `mlx_linalg_svd` is CPU-stream only in the current bridge.\n")
+  cat("- MLX RSVD uses safe CPU fallback by default; set `AMATRIX_MLX_NATIVE_SPECTRAL=1` or pass `--mlx-native-spectral` to crash-probe native RSVD in isolated workers.\n")
+  cat("- For actual native MLX RSVD timings in the top-level process, add `AMATRIX_MLX_NATIVE_INLINE=1` or `--mlx-native-inline`; this is intentionally opt-in because it does not protect the master process from native aborts.\n")
   cat("- `selected_backend` records the backend actually used by the path; `unsupported` and `crash` rows make backend gaps explicit.\n")
   cat("- `dispatch_state` labels accelerated rows separately from CPU fallbacks.\n")
   cat("- `rel_sv_err` is measured against leading singular values from `base::svd()` on the same host matrix.\n\n")
