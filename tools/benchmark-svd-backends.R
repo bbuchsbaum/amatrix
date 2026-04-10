@@ -43,12 +43,6 @@ available_svd_backends <- function() {
     if (is.null(spec)) {
       next
     }
-    if (!is.null(spec$env)) {
-      do.call(Sys.setenv, as.list(spec$env))
-    }
-    if (!is.null(spec$options)) {
-      options(as.list(spec$options))
-    }
     ns <- ensure_optional_backend_namespace(spec$package, repo_dir = spec$repo_dir)
     if (is.null(ns)) {
       next
@@ -82,6 +76,20 @@ initialize_svd_benchmark_context <- local({
     invisible(TRUE)
   }
 })
+
+benchmark_worker_capture <- function(command, args) {
+  old_safe_main <- Sys.getenv("AMATRIX_SVD_BENCH_SAFE_MAIN", unset = NA_character_)
+  Sys.unsetenv("AMATRIX_SVD_BENCH_SAFE_MAIN")
+  on.exit({
+    if (is.na(old_safe_main)) {
+      Sys.unsetenv("AMATRIX_SVD_BENCH_SAFE_MAIN")
+    } else {
+      Sys.setenv(AMATRIX_SVD_BENCH_SAFE_MAIN = old_safe_main)
+    }
+  }, add = TRUE)
+
+  benchmark_system2_capture(command, args)
+}
 
 activate_worker_backend <- function(backend_name) {
   if (identical(backend_name, "cpu")) {
@@ -358,7 +366,7 @@ run_mlx_single_cell <- function(case, algorithm, reps = 3L, native_spectral = FA
   out_path <- tempfile(sprintf("%s-%s-mlx-", case$id, algorithm), fileext = ".rds")
   on.exit(unlink(out_path), add = TRUE)
 
-  launch <- benchmark_system2_capture(
+  launch <- benchmark_worker_capture(
     file.path(R.home("bin"), "Rscript"),
     c("-e", mlx_single_cell_expr(case, algorithm, out_path, reps = reps, native_spectral = native_spectral))
   )
@@ -452,7 +460,7 @@ master_main <- function(args = parse_args(commandArgs(trailingOnly = TRUE))) {
     }
 
     out_path <- tempfile(sprintf("%s-", entry$id), fileext = ".rds")
-    launch <- benchmark_system2_capture(
+    launch <- benchmark_worker_capture(
       file.path(R.home("bin"), "Rscript"),
       benchmark_rscript_source_args(
         script_path,
@@ -584,43 +592,21 @@ relaunch_safe_master_if_needed <- function(args) {
   raw_args <- commandArgs(trailingOnly = FALSE)
   direct_file_arg <- grep("^--file=", raw_args, value = TRUE)
   direct_file_entry <- length(direct_file_arg) > 0L
-  safe_main <- identical(Sys.getenv("AMATRIX_SVD_BENCH_SAFE_MAIN", unset = ""), "true")
 
-  if (!direct_file_entry || isTRUE(args$worker) || safe_main) {
+  if (!direct_file_entry || isTRUE(args$worker)) {
     return(invisible(FALSE))
   }
 
   script_path <- normalizePath(sub("^--file=", "", direct_file_arg[[1L]]), winslash = "/", mustWork = TRUE)
   repo_root <- normalizePath(dirname(dirname(script_path)), winslash = "/", mustWork = TRUE)
-  expr <- sprintf(
-    "Sys.setenv(AMATRIX_SVD_BENCH_SAFE_MAIN = \"true\"); setwd(%s); source(%s, local = globalenv())",
+  message("Direct file invocation is disabled for this benchmark harness because Apple GPU backends can mis-probe in file-mode Rscript workers.")
+  message("Use source-mode invocation instead:")
+  message(sprintf(
+    "  Rscript -e 'setwd(%s); source(%s, local = globalenv())'",
     r_string_literal(repo_root),
     r_string_literal(script_path)
-  )
-  trailing_args <- commandArgs(trailingOnly = TRUE)
-  if (length(trailing_args) > 0L && identical(trailing_args[[1L]], "--args")) {
-    trailing_args <- trailing_args[-1L]
-  }
-  relaunch_args <- c("-e", expr, if (length(trailing_args) > 0L) c("--args", trailing_args))
-  quoted_args <- vapply(relaunch_args, shQuote, character(1), USE.NAMES = FALSE)
-  warned_status <- NULL
-  relaunch_output <- withCallingHandlers(
-    system2(file.path(R.home("bin"), "Rscript"), quoted_args, stdout = TRUE, stderr = TRUE),
-    warning = function(w) {
-      warned_status <<- attr(w, "status") %||% warned_status
-      invokeRestart("muffleWarning")
-    }
-  )
-  launch <- list(output = relaunch_output, status = attr(relaunch_output, "status") %||% warned_status %||% 0L)
-
-  if (length(launch$output) > 0L) {
-    cat(paste(launch$output, collapse = "\n"), sep = "\n")
-    if (!grepl("\n$", paste(launch$output, collapse = "\n"))) {
-      cat("\n")
-    }
-  }
-
-  quit(save = "no", status = launch$status)
+  ))
+  quit(save = "no", status = 2L)
 }
 
 args <- parse_args(commandArgs(trailingOnly = TRUE))
