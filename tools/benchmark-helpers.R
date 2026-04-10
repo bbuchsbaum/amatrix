@@ -113,16 +113,16 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
 }
 
 .benchmark_enable_backend <- function(spec) {
-  ns <- ensure_optional_backend_namespace(spec$package, repo_dir = spec$repo_dir)
-  if (is.null(ns)) {
-    return(FALSE)
-  }
-
   if (!is.null(spec$env)) {
     do.call(Sys.setenv, as.list(spec$env))
   }
   if (!is.null(spec$options)) {
     options(as.list(spec$options))
+  }
+
+  ns <- ensure_optional_backend_namespace(spec$package, repo_dir = spec$repo_dir)
+  if (is.null(ns)) {
+    return(FALSE)
   }
 
   try(get(spec$register_fun, envir = ns)(overwrite = TRUE), silent = TRUE)

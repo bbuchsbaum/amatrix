@@ -315,6 +315,25 @@ optional_backend_specs <- function() {
   )
 }
 
+.optional_backend_repo_dir <- function(repo_dir) {
+  if (is.null(repo_dir)) {
+    return(NULL)
+  }
+
+  candidates <- unique(c(
+    repo_dir,
+    file.path(getwd(), repo_dir),
+    file.path(getwd(), "..", repo_dir),
+    file.path(getwd(), "..", "..", repo_dir)
+  ))
+  candidates <- normalizePath(candidates, winslash = "/", mustWork = FALSE)
+  matches <- candidates[file.exists(file.path(candidates, "DESCRIPTION"))]
+  if (length(matches) == 0L) {
+    return(NULL)
+  }
+  matches[[1L]]
+}
+
 skip_if_backend_package_missing <- function(spec) {
   if (is.null(optional_backend_namespace(spec$package))) {
     testthat::skip(sprintf("Optional backend package '%s' is not installed", spec$package))
@@ -325,11 +344,11 @@ optional_backend_namespace <- function(package) {
   specs <- optional_backend_specs()
   spec_idx <- match(package, vapply(specs, `[[`, character(1), "package"))
   spec <- if (is.na(spec_idx)) NULL else specs[[spec_idx]]
-  if (!is.null(spec) &&
-      !is.null(spec$repo_dir) &&
-      dir.exists(spec$repo_dir) &&
+  repo_dir <- if (is.null(spec)) NULL else .optional_backend_repo_dir(spec$repo_dir)
+  if (!is.null(repo_dir) &&
+      dir.exists(repo_dir) &&
       requireNamespace("pkgload", quietly = TRUE)) {
-    pkgload::load_all(spec$repo_dir, quiet = TRUE, helpers = FALSE, export_all = FALSE)
+    pkgload::load_all(repo_dir, quiet = TRUE, helpers = FALSE, export_all = FALSE)
     if (package %in% loadedNamespaces()) {
       return(asNamespace(package))
     }

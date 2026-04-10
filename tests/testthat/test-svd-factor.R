@@ -516,7 +516,7 @@ test_that("svd_factor auto chooses OpenCL subspace for fast moderate-rank factor
     expect_identical(fac@method, "subspace")
     expect_identical(fac@backend, "opencl")
     expect_identical(fac@precision, "fast")
-    expect_true(fac@engine %in% c("gram", "qr", "svd_core"))
+    expect_true(fac@engine %in% c("backend_rsvd", "gram", "qr", "svd_core"))
     expect_lt(max(rel_sv[seq_len(20L)]), 0.05)
   })
 })
@@ -611,6 +611,33 @@ test_that("svd_factor exact supports OpenCL parity on dense inputs", {
     expect_equal(fac@d, ref$d[seq_len(12L)], tolerance = 1e-8)
     expect_equal(base::crossprod(fac@u), diag(12L), tolerance = 1e-8)
     expect_equal(base::crossprod(fac@v), diag(12L), tolerance = 1e-8)
+  })
+})
+
+test_that("standalone rsvd uses OpenCL backend on low-rank dense inputs", {
+  spec <- .opencl_svd_spec()
+  skip_if_backend_package_missing(spec)
+
+  register_backend <- .register_optional_backend(spec)
+
+  with_optional_backend_available(spec, {
+    register_backend(overwrite = TRUE)
+
+    set.seed(20260414L)
+    u <- qr.Q(qr(matrix(rnorm(128L * 6L), 128L, 6L)))
+    v <- qr.Q(qr(matrix(rnorm(64L * 6L), 64L, 6L)))
+    d <- seq(from = 30, to = 5, length.out = 6L)
+    x_host <- u %*% diag(d, nrow = 6L, ncol = 6L) %*% t(v)
+    X <- adgeMatrix(x_host, preferred_backend = "opencl", precision = "fast")
+
+    expect_identical(amatrix:::.amatrix_svd_factor_rsvd_backend(X), "opencl")
+
+    set.seed(20260414L)
+    fit <- rsvd(X, k = 6L, n_oversamples = 4L, n_iter = 1L)
+
+    expect_identical(fit$iter, 1L)
+    expect_identical(fit$mprod, 4L)
+    expect_equal(fit$d, d, tolerance = 1e-4)
   })
 })
 

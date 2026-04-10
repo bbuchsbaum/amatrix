@@ -21,8 +21,9 @@ Two distinct issues were observed:
 
 ## Current Working Assumption
 
-Single-operation MLX spectral calls in a fresh safe-mode process are the most
-reliable path right now.
+Single-operation MLX spectral calls in a fresh top-level `Rscript -e` process
+are the most reliable path right now. Nested subprocesses launched from the
+general SVD harness are still unsafe for native MLX spectral work.
 
 Observed on this machine:
 
@@ -30,13 +31,25 @@ Observed on this machine:
 - one-shot MLX `rsvd()` in `Rscript -e`: works
 - combined benchmark-worker session for MLX spectral timing: can abort with
   `NSException`
+- sourcing the full SVD harness before native MLX resident initialization can
+  also abort with `NSException`
+- the standalone native RSVD runner at
+  [tools/benchmark-mlx-native-rsvd.R](/Users/bbuchsbaum/code/amatrix/tools/benchmark-mlx-native-rsvd.R)
+  avoids that initialization shape and records usable native MLX RSVD timings
 
 ## Harness Policy
 
 The SVD backend harness should therefore:
 
 - avoid direct `Rscript file.R` MLX workers
-- run each MLX spectral cell in its own fresh `Rscript -e` process
+- keep exact MLX `svd` on safe CPU fallback because `mlx_linalg_svd` is
+  CPU-stream-only in the current MLX bridge
+- keep safe CPU fallback as the default for MLX `rsvd` inside the general SVD
+  harness
+- use `--mlx-native-spectral` only as a crash-probe mode for isolated MLX RSVD
+  workers
+- use `Rscript -e 'setwd("..."); source("tools/benchmark-mlx-native-rsvd.R")'`
+  for actual native MLX RSVD timing
 - keep crash isolation at the row level so failed MLX cells become incident
   rows instead of taking down the full benchmark run
 
