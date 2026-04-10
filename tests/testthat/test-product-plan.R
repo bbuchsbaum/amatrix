@@ -88,6 +88,42 @@ test_that("amatrix_compile_product aligns raw inputs to explicit fast-only backe
   )
 })
 
+test_that("matrix product plans use direct host fallback when resident predicate rejects a call", {
+  skip_if_not_installed("Matrix")
+
+  counter <- new.env(parent = emptyenv())
+  backend <- make_recording_backend(
+    counter,
+    supported_ops = character(),
+    cold_supported_ops = character(),
+    resident_supported_ops = character(),
+    supports_sparse_ops = "matmul",
+    supports_sparse_resident = TRUE
+  )
+  backend$supports_resident <- function(op, x, y = NULL) {
+    !is.null(y) && NCOL(y) > 1L
+  }
+
+  with_registered_backend("product_plan_width_gate", backend, {
+    S_host <- Matrix::rsparsematrix(24, 10, density = 0.15)
+    b1 <- matrix(rnorm(10), nrow = 10, ncol = 1)
+    b2 <- matrix(rnorm(10 * 2), nrow = 10, ncol = 2)
+
+    plan <- amatrix_compile_product(
+      adgCMatrix(S_host, preferred_backend = "product_plan_width_gate", precision = "strict"),
+      op = "matmul",
+      backend = "product_plan_width_gate"
+    )
+
+    out1 <- plan(b1, materialize = "matrix")
+    out2 <- plan(b2, materialize = "matrix")
+
+    expect_equal(out1, as.matrix(S_host %*% b1), tolerance = 1e-10)
+    expect_equal(out2, as.matrix(S_host %*% b2), tolerance = 1e-10)
+    expect_identical(counter$spmm_resident, 1L)
+  })
+})
+
 test_that("amatrix_compile_product reuses a dense lhs for repeated sparse-right matmul", {
   skip_if_not_installed("Matrix")
 

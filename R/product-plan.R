@@ -47,7 +47,30 @@
   invisible(FALSE)
 }
 
-.amatrix_product_plan_matrix_result <- function(lhs_bound, y, op, backend_name) {
+.amatrix_product_plan_sparse_host_matrix <- function(lhs_bound, y, op, lhs_host = NULL) {
+  if (!inherits(lhs_bound, "adgCMatrix")) {
+    return(NULL)
+  }
+
+  rhs <- if (is.numeric(y) && is.null(dim(y))) matrix(y, ncol = 1L) else .amatrix_host_arg(y)
+  rhs_mat <- if (is.matrix(rhs)) rhs else as.matrix(rhs)
+  if (!is.double(rhs_mat)) {
+    storage.mode(rhs_mat) <- "double"
+  }
+
+  if (is.null(lhs_host)) {
+    lhs_host <- amatrix_materialize_host(lhs_bound)
+  }
+  value <- switch(
+    op,
+    matmul = lhs_host %*% rhs_mat,
+    crossprod = Matrix::crossprod(lhs_host, rhs_mat),
+    tcrossprod = Matrix::tcrossprod(lhs_host, rhs_mat)
+  )
+  as.matrix(value)
+}
+
+.amatrix_product_plan_matrix_result <- function(lhs_bound, y, op, backend_name, lhs_host = NULL) {
   if (is.null(backend_name) || identical(backend_name, "cpu") || !inherits(lhs_bound, "aMatrix")) {
     return(NULL)
   }
@@ -57,7 +80,7 @@
     return(NULL)
   }
   if (!.amatrix_backend_supports_resident_op(backend, op, x = lhs_bound, y = y)) {
-    return(NULL)
+    return(.amatrix_product_plan_sparse_host_matrix(lhs_bound, y, op, lhs_host = lhs_host))
   }
 
   if (inherits(lhs_bound, "adgCMatrix") && is.function(backend$spmm_resident)) {
@@ -182,6 +205,11 @@ amatrix_compile_product <- function(
   } else {
     lhs
   }
+  lhs_host_cache <- if (inherits(lhs_bound, "adgCMatrix")) {
+    amatrix_materialize_host(lhs_bound)
+  } else {
+    NULL
+  }
   live_backend_after <- .amatrix_live_resident_backend(lhs_bound)
   owned_resident <- !is.null(backend_name) &&
     !identical(backend_name, "cpu") &&
@@ -191,7 +219,13 @@ amatrix_compile_product <- function(
   plan_fun <- function(y, materialize = c("amatrix", "matrix")) {
     materialize <- match.arg(materialize)
     if (identical(materialize, "matrix")) {
-      matrix_value <- .amatrix_product_plan_matrix_result(lhs_bound, y, op, backend_name)
+      matrix_value <- .amatrix_product_plan_matrix_result(
+        lhs_bound,
+        y,
+        op,
+        backend_name,
+        lhs_host = lhs_host_cache
+      )
       if (!is.null(matrix_value)) {
         return(matrix_value)
       }
