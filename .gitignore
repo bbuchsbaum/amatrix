@@ -6,3 +6,9 @@
 
 # Machine-local benchmark baseline (regenerate with: Rscript tools/benchmark-regression.R --update)
 tools/baseline.csv
+
+# Compiled build artifacts
+src/*.o
+src/*.so
+backends/*/src/*.o
+backends/*/src/*.so
