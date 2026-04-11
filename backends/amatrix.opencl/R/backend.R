@@ -30,6 +30,23 @@
   x_mat
 }
 
+.amatrix_opencl_resident_source_key <- function(x, prefix = "tmp") {
+  if (inherits(x, "aMatrix")) {
+    live_backend <- tryCatch(amatrix:::.amatrix_live_resident_backend(x), error = function(e) NULL)
+    if (identical(live_backend, "opencl")) {
+      resident_key <- tryCatch(amatrix:::.amatrix_resident_key(x, backend = "opencl"), error = function(e) NULL)
+      if (is.character(resident_key) && length(resident_key) == 1L &&
+          isTRUE(amatrix_opencl_resident_has(resident_key))) {
+        return(list(key = resident_key, owned = FALSE))
+      }
+    }
+  }
+
+  resident_key <- .amatrix_opencl_temp_key(prefix)
+  amatrix_opencl_resident_store(resident_key, .amatrix_opencl_dense_host(x))
+  list(key = resident_key, owned = TRUE)
+}
+
 .amatrix_opencl_sparse_host <- function(x) {
   methods::as(x, "dgCMatrix")
 }
@@ -713,11 +730,17 @@ amatrix_opencl_ts_svd <- function(x, nu, nv) {
   q_host <- qr.Q(qr(mat), complete = FALSE)
   storage.mode(q_host) <- "double"
 
+  x_ref <- .amatrix_opencl_resident_source_key(x, prefix = "svd-x")
+  if (isTRUE(x_ref$owned)) {
+    on.exit(.amatrix_opencl_drop_if_present(x_ref$key), add = TRUE)
+  }
+
   q_key <- .amatrix_opencl_temp_key("svd-q")
   on.exit(.amatrix_opencl_drop_if_present(q_key), add = TRUE)
   amatrix_opencl_resident_store(q_key, q_host)
 
-  b_core <- amatrix_opencl_crossprod_resident_host(q_key, mat)
+  b_core <- amatrix_opencl_crossprod_resident_host(x_ref$key, q_host)
+  b_core <- base::t(b_core)
   sv_core <- base::svd(b_core, nu = nu_eff, nv = nv_eff)
 
   u_out <- if (nu_eff > 0L) {
@@ -742,9 +765,11 @@ amatrix_opencl_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L) {
   p <- min(as.integer(k) + as.integer(n_oversamples), m, n)
   k_eff <- min(as.integer(k), p)
 
-  x_key <- .amatrix_opencl_temp_key("rsvd-x")
-  on.exit(.amatrix_opencl_drop_if_present(x_key), add = TRUE)
-  amatrix_opencl_resident_store(x_key, mat)
+  x_ref <- .amatrix_opencl_resident_source_key(x, prefix = "rsvd-x")
+  x_key <- x_ref$key
+  if (isTRUE(x_ref$owned)) {
+    on.exit(.amatrix_opencl_drop_if_present(x_key), add = TRUE)
+  }
 
   left_apply <- function(rhs) {
     amatrix_opencl_matmul_resident_host(x_key, rhs)

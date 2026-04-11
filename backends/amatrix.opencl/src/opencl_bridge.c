@@ -32,6 +32,7 @@ typedef struct {
 #ifdef HAVE_OPENCL
   cl_mem buffer;
   cl_event ready_event;
+  cl_mem status_buffer;
   int on_device;
 #endif
 } amatrix_opencl_entry;
@@ -234,6 +235,10 @@ static void amatrix_opencl_release_entry(amatrix_opencl_entry *entry) {
     clReleaseEvent(entry->ready_event);
     entry->ready_event = NULL;
   }
+  if (entry->status_buffer != NULL) {
+    clReleaseMemObject(entry->status_buffer);
+    entry->status_buffer = NULL;
+  }
   if (entry->buffer != NULL) {
     clReleaseMemObject(entry->buffer);
   }
@@ -317,7 +322,8 @@ static void amatrix_opencl_commit_entry(
 #ifdef HAVE_OPENCL
   , cl_mem buffer,
   int on_device,
-  cl_event ready_event
+  cl_event ready_event,
+  cl_mem status_buffer
 #endif
 ) {
   amatrix_opencl_entry *entry = &g_entries[idx];
@@ -336,6 +342,7 @@ static void amatrix_opencl_commit_entry(
 #ifdef HAVE_OPENCL
   entry->buffer = buffer;
   entry->ready_event = ready_event;
+  entry->status_buffer = status_buffer;
   entry->on_device = on_device;
 #endif
 }
@@ -648,6 +655,58 @@ static void amatrix_opencl_replace_event(cl_event *slot, cl_event next_event) {
   *slot = next_event;
 }
 
+static void amatrix_opencl_validate_entry_ready(amatrix_opencl_entry *entry) {
+  if (entry == NULL || !entry->on_device) {
+    return;
+  }
+
+  if (entry->status_buffer != NULL) {
+    cl_int status_value = 1;
+    cl_event wait_events[1];
+    cl_uint wait_count = 0;
+    const cl_event *wait_list = NULL;
+    cl_int err;
+
+    if (entry->ready_event != NULL) {
+      wait_events[0] = entry->ready_event;
+      wait_count = 1;
+      wait_list = wait_events;
+    }
+
+    err = clEnqueueReadBuffer(
+      g_queue,
+      entry->status_buffer,
+      CL_TRUE,
+      0,
+      sizeof(cl_int),
+      &status_value,
+      wait_count,
+      wait_list,
+      NULL
+    );
+    if (err != CL_SUCCESS) {
+      Rf_error("failed to validate OpenCL deferred factorization (OpenCL error %d)", (int)err);
+    }
+
+    clReleaseMemObject(entry->status_buffer);
+    entry->status_buffer = NULL;
+
+    if (status_value != 1) {
+      Rf_error("OpenCL Cholesky factorization failed validation");
+    }
+  } else if (entry->ready_event != NULL) {
+    cl_int err = clWaitForEvents(1, &entry->ready_event);
+    if (err != CL_SUCCESS) {
+      Rf_error("failed to synchronize OpenCL resident entry (OpenCL error %d)", (int)err);
+    }
+  }
+
+  if (entry->ready_event != NULL) {
+    clReleaseEvent(entry->ready_event);
+    entry->ready_event = NULL;
+  }
+}
+
 static SEXP amatrix_opencl_matrix_from_buffer_ready(cl_mem buffer, int nrow, int ncol, cl_event ready_event) {
   size_t n = (size_t)nrow * (size_t)ncol;
   size_t bytes = n * sizeof(float);
@@ -767,6 +826,7 @@ static SEXP amatrix_opencl_get_entry_vector(const char *key) {
     if (!amatrix_opencl_try_init()) {
       Rf_error("OpenCL runtime is not available for resident key '%s'", key);
     }
+    amatrix_opencl_validate_entry_ready(entry);
     return amatrix_opencl_vector_from_buffer_ready(entry->buffer, length, entry->ready_event);
   }
 #endif
@@ -1172,25 +1232,43 @@ static cl_mem amatrix_opencl_identity_buffer(int n) {
   return buffer;
 }
 
-static int amatrix_opencl_run_chol_upper_inplace_event(cl_mem buffer, int n, cl_event *ready_event) {
+static int amatrix_opencl_run_chol_upper_inplace_event(cl_mem buffer, int n, cl_event *ready_event, cl_mem *status_out) {
   int block_size = amatrix_opencl_chol_block_size();
   cl_mem status_buffer = NULL;
   cl_int status_value = 1;
+  cl_event last_event = NULL;
+  int defer_status = ready_event != NULL && status_out != NULL;
+
+  if (ready_event != NULL) {
+    *ready_event = NULL;
+  }
+  if (status_out != NULL) {
+    *status_out = NULL;
+  }
 
   if (n <= 0) {
-    if (ready_event != NULL) {
-      *ready_event = NULL;
-    }
     return 1;
   }
 
   if (amatrix_opencl_ensure_custom_kernels() && g_chol_panel_kernel != NULL) {
-    if (!amatrix_opencl_workspace_ensure(&g_status_workspace, 1)) {
-      return 0;
+    if (defer_status) {
+      cl_int err = CL_SUCCESS;
+      status_buffer = clCreateBuffer(g_context, CL_MEM_READ_WRITE, sizeof(cl_int), NULL, &err);
+      if (err != CL_SUCCESS || status_buffer == NULL) {
+        return 0;
+      }
+    } else {
+      if (!amatrix_opencl_workspace_ensure(&g_status_workspace, 1)) {
+        return 0;
+      }
+      status_buffer = g_status_workspace.buffer;
     }
-    status_buffer = g_status_workspace.buffer;
+
     if (status_buffer == NULL ||
         clEnqueueWriteBuffer(g_queue, status_buffer, CL_FALSE, 0, sizeof(cl_int), &status_value, 0, NULL, NULL) != CL_SUCCESS) {
+      if (defer_status && status_buffer != NULL) {
+        clReleaseMemObject(status_buffer);
+      }
       return 0;
     }
   }
@@ -1201,8 +1279,16 @@ static int amatrix_opencl_run_chol_upper_inplace_event(cl_mem buffer, int n, cl_
       block = block_size;
     }
 
-    if (!amatrix_opencl_run_chol_panel_upper_inplace_event(buffer, status_buffer, n, offset, block, NULL)) {
-      return 0;
+    {
+      cl_event op_event = NULL;
+      if (!amatrix_opencl_run_chol_panel_upper_inplace_event(buffer, status_buffer, n, offset, block, &op_event)) {
+        amatrix_opencl_replace_event(&last_event, NULL);
+        if (defer_status && status_buffer != NULL) {
+          clReleaseMemObject(status_buffer);
+        }
+        return 0;
+      }
+      amatrix_opencl_replace_event(&last_event, op_event);
     }
 
     if (offset + block < n) {
@@ -1211,38 +1297,77 @@ static int amatrix_opencl_run_chol_upper_inplace_event(cl_mem buffer, int n, cl_
       size_t row_offset = (size_t)offset + (size_t)(offset + block) * (size_t)n;
       size_t trail_offset = (size_t)(offset + block) + (size_t)(offset + block) * (size_t)n;
 
-      if (!amatrix_opencl_run_trsm_left_event(
-            buffer, diag_offset, (size_t)n, 0, 1,
-            buffer, row_offset, (size_t)n,
-            block, trailing,
-            NULL
-          )) {
-        return 0;
+      {
+        cl_event op_event = NULL;
+        if (!amatrix_opencl_run_trsm_left_event(
+              buffer, diag_offset, (size_t)n, 0, 1,
+              buffer, row_offset, (size_t)n,
+              block, trailing,
+              &op_event
+            )) {
+          amatrix_opencl_replace_event(&last_event, NULL);
+          if (defer_status && status_buffer != NULL) {
+            clReleaseMemObject(status_buffer);
+          }
+          return 0;
+        }
+        amatrix_opencl_replace_event(&last_event, op_event);
       }
 
-      if (!amatrix_opencl_run_syrk_update_upper_event(
-            buffer, row_offset, (size_t)n,
-            buffer, trail_offset, (size_t)n,
-            trailing, block,
-            NULL
-          )) {
-        return 0;
+      {
+        cl_event op_event = NULL;
+        if (!amatrix_opencl_run_syrk_update_upper_event(
+              buffer, row_offset, (size_t)n,
+              buffer, trail_offset, (size_t)n,
+              trailing, block,
+              &op_event
+            )) {
+          amatrix_opencl_replace_event(&last_event, NULL);
+          if (defer_status && status_buffer != NULL) {
+            clReleaseMemObject(status_buffer);
+          }
+          return 0;
+        }
+        amatrix_opencl_replace_event(&last_event, op_event);
       }
     }
   }
 
-  if (!amatrix_opencl_zero_strict_lower_buffer_event(buffer, n, NULL)) {
-    return 0;
+  {
+    cl_event op_event = NULL;
+    if (!amatrix_opencl_zero_strict_lower_buffer_event(buffer, n, &op_event)) {
+      amatrix_opencl_replace_event(&last_event, NULL);
+      if (defer_status && status_buffer != NULL) {
+        clReleaseMemObject(status_buffer);
+      }
+      return 0;
+    }
+    amatrix_opencl_replace_event(&last_event, op_event);
   }
 
-  if (status_buffer != NULL &&
-      (clEnqueueReadBuffer(g_queue, status_buffer, CL_TRUE, 0, sizeof(cl_int), &status_value, 0, NULL, NULL) != CL_SUCCESS ||
-       status_value != 1)) {
-    return 0;
+  if (status_buffer != NULL && !defer_status) {
+    cl_event wait_events[1];
+    cl_uint wait_count = 0;
+    const cl_event *wait_list = NULL;
+
+    if (last_event != NULL) {
+      wait_events[0] = last_event;
+      wait_count = 1;
+      wait_list = wait_events;
+    }
+
+    if (clEnqueueReadBuffer(g_queue, status_buffer, CL_TRUE, 0, sizeof(cl_int), &status_value, wait_count, wait_list, NULL) != CL_SUCCESS ||
+        status_value != 1) {
+      amatrix_opencl_replace_event(&last_event, NULL);
+      return 0;
+    }
   }
 
-  if (ready_event != NULL) {
-    *ready_event = NULL;
+  if (defer_status) {
+    *status_out = status_buffer;
+    *ready_event = last_event;
+  } else {
+    amatrix_opencl_replace_event(&last_event, NULL);
   }
   return 1;
 }
@@ -1268,7 +1393,7 @@ static int amatrix_opencl_run_chol_solve_event(
   if (!amatrix_opencl_copy_buffer_into_event(factor_buffer, a_buffer, factor_elements, NULL)) {
     return 0;
   }
-  if (!amatrix_opencl_run_chol_upper_inplace_event(factor_buffer, n, NULL)) {
+  if (!amatrix_opencl_run_chol_upper_inplace_event(factor_buffer, n, NULL, NULL)) {
     return 0;
   }
 
@@ -2287,7 +2412,7 @@ static int amatrix_opencl_sparse_entry_upload_buffers(amatrix_opencl_sparse_entr
 }
 #endif
 
-static int amatrix_opencl_store_device_buffer_ready(const char *key, cl_mem buffer, int nrow, int ncol, cl_event ready_event) {
+static int amatrix_opencl_store_device_buffer_ready(const char *key, cl_mem buffer, int nrow, int ncol, cl_event ready_event, cl_mem status_buffer) {
   int idx = amatrix_opencl_find_entry(key);
   if (idx < 0) {
     idx = amatrix_opencl_find_free_entry();
@@ -2300,16 +2425,19 @@ static int amatrix_opencl_store_device_buffer_ready(const char *key, cl_mem buff
     if (ready_event != NULL) {
       clReleaseEvent(ready_event);
     }
+    if (status_buffer != NULL) {
+      clReleaseMemObject(status_buffer);
+    }
 #endif
     Rf_error("resident registry is full");
   }
 
-  amatrix_opencl_commit_entry(idx, key, nrow, ncol, NULL, buffer, 1, ready_event);
+  amatrix_opencl_commit_entry(idx, key, nrow, ncol, NULL, buffer, 1, ready_event, status_buffer);
   return 1;
 }
 
 static int amatrix_opencl_store_device_buffer(const char *key, cl_mem buffer, int nrow, int ncol) {
-  return amatrix_opencl_store_device_buffer_ready(key, buffer, nrow, ncol, NULL);
+  return amatrix_opencl_store_device_buffer_ready(key, buffer, nrow, ncol, NULL, NULL);
 }
 #endif
 
@@ -2329,7 +2457,7 @@ static void amatrix_opencl_store_host_entry(const char *key, SEXP value) {
 
   amatrix_opencl_commit_entry(idx, key, amatrix_opencl_nrow(value), amatrix_opencl_ncol(value), copy
 #ifdef HAVE_OPENCL
-    , NULL, 0, NULL
+    , NULL, 0, NULL, NULL
 #endif
   );
   UNPROTECT(1);
@@ -2351,7 +2479,7 @@ static void amatrix_opencl_store_host_vector_entry(const char *key, SEXP value) 
 
   amatrix_opencl_commit_entry(idx, key, (int)XLENGTH(value), 1, copy
 #ifdef HAVE_OPENCL
-    , NULL, 0, NULL
+    , NULL, 0, NULL, NULL
 #endif
   );
   UNPROTECT(1);
@@ -2375,7 +2503,7 @@ static void amatrix_opencl_store_entry(const char *key, SEXP value) {
       Rf_error("resident registry is full");
     }
 
-    amatrix_opencl_commit_entry(idx, key, amatrix_opencl_nrow(value), amatrix_opencl_ncol(value), NULL, buffer, 1, NULL);
+    amatrix_opencl_commit_entry(idx, key, amatrix_opencl_nrow(value), amatrix_opencl_ncol(value), NULL, buffer, 1, NULL, NULL);
     return;
   }
 #endif
@@ -2397,6 +2525,7 @@ static SEXP amatrix_opencl_get_entry_materialized(const char *key) {
     if (!amatrix_opencl_try_init()) {
       Rf_error("OpenCL runtime is not available for resident key '%s'", key);
     }
+    amatrix_opencl_validate_entry_ready(entry);
     return amatrix_opencl_matrix_from_buffer_ready(entry->buffer, entry->nrow, entry->ncol, entry->ready_event);
   }
 #endif
@@ -3169,6 +3298,7 @@ SEXP amatrix_opencl_chol_resident_bridge(SEXP x_key, SEXP out_key) {
     amatrix_opencl_entry *x_entry = amatrix_opencl_lookup_entry(CHAR(asChar(x_key)));
     cl_mem out_buffer = NULL;
     cl_event ready_event = NULL;
+    cl_mem status_buffer = NULL;
 
     if (x_entry == NULL) {
       Rf_error("resident key '%s' was not found", CHAR(asChar(x_key)));
@@ -3181,15 +3311,18 @@ SEXP amatrix_opencl_chol_resident_bridge(SEXP x_key, SEXP out_key) {
     }
 
     if (!amatrix_opencl_copy_buffer_event(x_entry->buffer, (size_t)x_entry->nrow * (size_t)x_entry->ncol, &out_buffer, NULL) ||
-        !amatrix_opencl_run_chol_upper_inplace_event(out_buffer, x_entry->nrow, &ready_event)) {
+        !amatrix_opencl_run_chol_upper_inplace_event(out_buffer, x_entry->nrow, &ready_event, &status_buffer)) {
       if (out_buffer != NULL) {
         clReleaseMemObject(out_buffer);
       }
       amatrix_opencl_replace_event(&ready_event, NULL);
+      if (status_buffer != NULL) {
+        clReleaseMemObject(status_buffer);
+      }
       Rf_error("OpenCL resident chol failed");
     }
 
-    amatrix_opencl_store_device_buffer_ready(CHAR(asChar(out_key)), out_buffer, x_entry->nrow, x_entry->ncol, ready_event);
+    amatrix_opencl_store_device_buffer_ready(CHAR(asChar(out_key)), out_buffer, x_entry->nrow, x_entry->ncol, ready_event, status_buffer);
     return R_NilValue;
   }
 #endif
@@ -3242,7 +3375,7 @@ SEXP amatrix_opencl_solve_resident_bridge(SEXP a_key, SEXP b_key, SEXP out_key) 
       Rf_error("OpenCL resident solve failed");
     }
 
-    amatrix_opencl_store_device_buffer_ready(CHAR(asChar(out_key)), out_buffer, a_entry->nrow, out_ncol, ready_event);
+    amatrix_opencl_store_device_buffer_ready(CHAR(asChar(out_key)), out_buffer, a_entry->nrow, out_ncol, ready_event, NULL);
     return R_NilValue;
   }
 #endif
@@ -3296,7 +3429,7 @@ SEXP amatrix_opencl_solve_triangular_resident_bridge(SEXP factor_key, SEXP rhs_k
       Rf_error("OpenCL resident triangular solve failed");
     }
 
-    amatrix_opencl_store_device_buffer_ready(CHAR(asChar(out_key)), out_buffer, rhs_entry->nrow, rhs_entry->ncol, ready_event);
+    amatrix_opencl_store_device_buffer_ready(CHAR(asChar(out_key)), out_buffer, rhs_entry->nrow, rhs_entry->ncol, ready_event, NULL);
     return R_NilValue;
   }
 #endif
@@ -3359,7 +3492,8 @@ SEXP amatrix_opencl_chol_solve_resident_bridge(SEXP factor_key, SEXP rhs_key, SE
       out_buffer,
       rhs_entry->nrow,
       rhs_entry->ncol,
-      solve2_event
+      solve2_event,
+      NULL
     );
     return R_NilValue;
   }

@@ -145,10 +145,21 @@ test_that("opencl bridge boundary is callable in scaffold mode", {
   on.exit(options(amatrix.opencl.exact_svd_gpu = old_exact_svd_gpu), add = TRUE)
   tall <- matrix(stats::rnorm(96L * 12L), nrow = 96L, ncol = 12L)
   tall_fit <- backend$svd(tall, nu = 12L, nv = 12L)
+  tall_am <- amatrix::amatrix_bind_resident(
+    amatrix::adgeMatrix(tall, preferred_backend = "opencl", precision = "fast"),
+    backend = "opencl"
+  )
+  tall_resident_fit <- backend$svd(tall_am, nu = 12L, nv = 12L)
   tall_ref <- base::svd(tall, nu = 12L, nv = 12L)
   expect_equal(tall_fit$d, tall_ref$d, tolerance = 1e-10)
+  expect_equal(tall_resident_fit$d, tall_ref$d, tolerance = 1e-10)
   expect_equal(
     tall_fit$u %*% diag(tall_fit$d, nrow = length(tall_fit$d)) %*% t(tall_fit$v),
+    tall,
+    tolerance = 1e-10
+  )
+  expect_equal(
+    tall_resident_fit$u %*% diag(tall_resident_fit$d, nrow = length(tall_resident_fit$d)) %*% t(tall_resident_fit$v),
     tall,
     tolerance = 1e-10
   )
