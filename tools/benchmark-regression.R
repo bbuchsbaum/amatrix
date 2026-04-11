@@ -201,6 +201,9 @@ new_result_row <- function(...) {
     size_label = NA_character_,
     variant = NA_character_,
     requested_backend = NA_character_,
+    dispatch_probe_op = NA_character_,
+    requested_supported = NA,
+    requested_support_reason = NA_character_,
     dispatch_backend = NA_character_,
     dispatch_path = NA_character_,
     status = "ok",
@@ -335,12 +338,57 @@ drop_svd_factor_cache <- function(x, k, n_oversamples, n_iter) {
   invisible(TRUE)
 }
 
-compute_dispatch_info <- function(x, op, y = NULL) {
+compute_dispatch_info <- function(x, op, y = NULL, requested_backend = NULL) {
   plan <- tryCatch(amatrix_backend_plan(x, op, y = y), error = function(e) NULL)
   if (is.null(plan)) {
-    return(list(dispatch_backend = NA_character_, dispatch_path = NA_character_))
+    return(list(
+      dispatch_probe_op = op,
+      requested_supported = NA,
+      requested_support_reason = "dispatch plan unavailable",
+      dispatch_backend = NA_character_,
+      dispatch_path = NA_character_
+    ))
   }
-  list(dispatch_backend = plan$chosen %||% NA_character_, dispatch_path = plan$chosen_path %||% NA_character_)
+
+  requested_backend <- requested_backend %||% x@preferred_backend %||% NA_character_
+  requested_candidate <- NULL
+  if (!is.na(requested_backend)) {
+    candidate_idx <- match(requested_backend, vapply(plan$candidates, `[[`, character(1), "name"))
+    if (!is.na(candidate_idx)) {
+      requested_candidate <- plan$candidates[[candidate_idx]]
+    }
+  }
+
+  requested_supported <- NA
+  requested_support_reason <- NA_character_
+  if (!is.null(requested_candidate)) {
+    requested_supported <- isTRUE(requested_candidate$supported)
+    requested_support_reason <- if (!isTRUE(requested_candidate$registered)) {
+      "backend not registered"
+    } else if (!isTRUE(requested_candidate$available)) {
+      "backend unavailable"
+    } else if (!isTRUE(requested_candidate$precision_compatible)) {
+      "precision incompatible"
+    } else if (isTRUE(requested_candidate$supported_resident)) {
+      "resident supported"
+    } else if (isTRUE(requested_candidate$supported_cold) && !isTRUE(requested_candidate$calibration_ok)) {
+      "calibration rejected"
+    } else if (isTRUE(requested_candidate$supported_cold)) {
+      "cold supported"
+    } else if (isTRUE(requested_candidate$resident_active)) {
+      "resident op unsupported"
+    } else {
+      "op unsupported"
+    }
+  }
+
+  list(
+    dispatch_probe_op = op,
+    requested_supported = requested_supported,
+    requested_support_reason = requested_support_reason,
+    dispatch_backend = plan$chosen %||% NA_character_,
+    dispatch_path = plan$chosen_path %||% NA_character_
+  )
 }
 
 run_dense_case <- function(requested_backend, op, size_label, variant) {
@@ -366,7 +414,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
 
   if (identical(op, "sinkhorn")) {
     probe_x <- make_dense_operand(sink_host, requested_backend)
-    dispatch <- compute_dispatch_info(probe_x, "matmul")
+    dispatch <- compute_dispatch_info(probe_x, "matmul", requested_backend = requested_backend)
     release_residency(probe_x)
   } else {
     probe_x <- make_dense_operand(if (op %in% c("chol", "solve_rhs", "eigen_sym")) SPD else X, requested_backend)
@@ -386,14 +434,40 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
       solve_rhs = "solve",
       eigen_sym = "eigen",
       many_lm = "matmul",
-      rsvd = "svd",
+      rsvd = "rsvd",
       sinkhorn = "matmul"
     )
-    dispatch <- compute_dispatch_info(probe_x, dispatch_op, y = probe_y)
+    dispatch <- compute_dispatch_info(probe_x, dispatch_op, y = probe_y, requested_backend = requested_backend)
     release_residency(probe_x)
     if (inherits(probe_y, "aMatrix")) {
       release_residency(probe_y)
     }
+  }
+
+  result_meta <- list(
+    suite = "dense",
+    op = op,
+    size_label = size_label,
+    variant = variant,
+    requested_backend = requested_backend,
+    dispatch_probe_op = dispatch$dispatch_probe_op,
+    requested_supported = dispatch$requested_supported,
+    requested_support_reason = dispatch$requested_support_reason,
+    dispatch_backend = dispatch$dispatch_backend,
+    dispatch_path = dispatch$dispatch_path,
+    nrow = if (identical(op, "sinkhorn")) size$sink_n else if (identical(op, "eigen_sym")) size$p else size$n,
+    ncol = if (identical(op, "sinkhorn")) size$sink_n else size$p,
+    rhs_width = switch(op, matmul = ncol(B_host), solve_rhs = ncol(SPD_rhs), many_lm = ncol(Y), sinkhorn = size$sink_n, 0L)
+  )
+
+  if (!identical(requested_backend, "cpu") && identical(dispatch$requested_supported, FALSE)) {
+    return(do.call(
+      new_result_row,
+      c(
+        result_meta,
+        list(status = "unsupported", error_message = dispatch$requested_support_reason %||% "requested backend unsupported")
+      )
+    ))
   }
 
   reps <- 7L
@@ -458,16 +532,19 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
   median_ms <- benchmark_time_ms(runner, reps = reps)
 
   new_result_row(
-    suite = "dense",
-    op = op,
-    size_label = size_label,
-    variant = variant,
-    requested_backend = requested_backend,
-    dispatch_backend = dispatch$dispatch_backend,
-    dispatch_path = dispatch$dispatch_path,
-    nrow = if (identical(op, "sinkhorn")) size$sink_n else if (identical(op, "eigen_sym")) size$p else size$n,
-    ncol = if (identical(op, "sinkhorn")) size$sink_n else size$p,
-    rhs_width = switch(op, matmul = ncol(B_host), solve_rhs = ncol(SPD_rhs), many_lm = ncol(Y), sinkhorn = size$sink_n, 0L),
+    suite = result_meta$suite,
+    op = result_meta$op,
+    size_label = result_meta$size_label,
+    variant = result_meta$variant,
+    requested_backend = result_meta$requested_backend,
+    dispatch_probe_op = result_meta$dispatch_probe_op,
+    requested_supported = result_meta$requested_supported,
+    requested_support_reason = result_meta$requested_support_reason,
+    dispatch_backend = result_meta$dispatch_backend,
+    dispatch_path = result_meta$dispatch_path,
+    nrow = result_meta$nrow,
+    ncol = result_meta$ncol,
+    rhs_width = result_meta$rhs_width,
     nnz = 0L,
     density = 0,
     density_bucket = "dense",
@@ -509,9 +586,18 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
       probe_y <- amatrix::amatrix_bind_resident(probe_y, backend = requested_backend)
     }
 
-    dispatch <- compute_dispatch_info(probe_x, "matmul", y = probe_y)
+    dispatch <- compute_dispatch_info(probe_x, "matmul", y = probe_y, requested_backend = requested_backend)
     release_residency(probe_x)
     release_residency(probe_y)
+
+    if (!identical(requested_backend, "cpu") && identical(dispatch$requested_supported, FALSE)) {
+      return(list(
+        dispatch = dispatch,
+        reps = NA_integer_,
+        median_ms = NA_real_,
+        unsupported = TRUE
+      ))
+    }
 
     reps <- 5L
     runner <- switch(
@@ -552,6 +638,29 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
   })
 
   dispatch <- sparse_result$dispatch
+  if (isTRUE(sparse_result$unsupported)) {
+    density_value <- amatrix:::.amatrix_sparse_density(case$X_host)
+    return(new_result_row(
+      suite = "sparse",
+      op = op,
+      size_label = size_label,
+      variant = variant,
+      requested_backend = requested_backend,
+      dispatch_probe_op = dispatch$dispatch_probe_op,
+      requested_supported = dispatch$requested_supported,
+      requested_support_reason = dispatch$requested_support_reason,
+      dispatch_backend = dispatch$dispatch_backend,
+      dispatch_path = dispatch$dispatch_path,
+      nrow = size$nrow,
+      ncol = size$ncol,
+      rhs_width = rhs_width,
+      nnz = length(case$X_host@x),
+      density = density_value,
+      density_bucket = amatrix:::.amatrix_sparse_density_bucket(density_value),
+      status = "unsupported",
+      error_message = dispatch$requested_support_reason %||% "requested backend unsupported"
+    ))
+  }
   reps <- sparse_result$reps
   median_ms <- sparse_result$median_ms
   density_value <- amatrix:::.amatrix_sparse_density(case$X_host)
@@ -562,6 +671,9 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
     size_label = size_label,
     variant = variant,
     requested_backend = requested_backend,
+    dispatch_probe_op = dispatch$dispatch_probe_op,
+    requested_supported = dispatch$requested_supported,
+    requested_support_reason = dispatch$requested_support_reason,
     dispatch_backend = dispatch$dispatch_backend,
     dispatch_path = dispatch$dispatch_path,
     nrow = size$nrow,
