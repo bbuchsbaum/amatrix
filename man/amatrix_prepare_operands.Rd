@@ -1,0 +1,35 @@
+\name{amatrix_prepare_operands}
+\alias{amatrix_prepare_operands}
+\title{Prepare Operands for a Repeated Matrix Product}
+\usage{
+amatrix_prepare_operands(
+  x,
+  y,
+  op = c("matmul", "crossprod", "tcrossprod"),
+  backend = "auto",
+  precision = amatrix_default_precision(),
+  policy = amatrix_default_policy()
+)
+}
+\arguments{
+  \item{x}{Left operand.}
+
+  \item{y}{Right operand.}
+
+  \item{op}{Product primitive: \code{"matmul"}, \code{"crossprod"}, or
+  \code{"tcrossprod"}.}
+
+  \item{backend}{Backend name or \code{"auto"}.}
+
+  \item{precision}{Precision to use when wrapping base matrices.}
+
+  \item{policy}{Policy to use when wrapping base matrices.}
+}
+\value{
+A list with elements \code{x}, \code{y}, and \code{backend}.
+}
+\description{
+Converts inputs to \code{amatrix} wrappers when needed, chooses a
+residency-capable accelerator backend in automatic mode, and binds the
+operands so repeated products reuse the resident fast path.
+}

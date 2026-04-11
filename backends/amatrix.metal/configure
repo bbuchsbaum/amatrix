@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -eu
+
+src_dir="src"
+makevars="${src_dir}/Makevars"
+
+metal_cppflags=""
+metal_libs=""
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  sdk_path="$(xcrun --show-sdk-path 2>/dev/null || true)"
+  framework_dir=""
+
+  if [ -n "${sdk_path}" ] && [ -d "${sdk_path}/System/Library/Frameworks/Metal.framework" ]; then
+    framework_dir="${sdk_path}/System/Library/Frameworks"
+  elif [ -d "/System/Library/Frameworks/Metal.framework" ]; then
+    framework_dir="/System/Library/Frameworks"
+  fi
+
+  if [ -n "${framework_dir}" ]; then
+    metal_cppflags="-DHAVE_METAL -F${framework_dir}"
+    metal_libs="-F${framework_dir} -framework Foundation -framework Metal"
+    echo "configure: building with Metal framework from ${framework_dir}"
+  else
+    echo "configure: Metal framework not detected, building mock bridge"
+  fi
+else
+  echo "configure: non-Darwin platform, building mock bridge"
+fi
+
+cppflags_esc="$(printf '%s' "${metal_cppflags}" | sed 's/[\/&]/\\&/g')"
+libs_esc="$(printf '%s' "${metal_libs}" | sed 's/[\/&]/\\&/g')"
+
+sed \
+  -e "s|@METAL_CPPFLAGS@|${cppflags_esc}|g" \
+  -e "s|@METAL_LIBS@|${libs_esc}|g" \
+  "${src_dir}/Makevars.in" > "${makevars}"
+
+exit 0

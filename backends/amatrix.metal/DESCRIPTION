@@ -1,0 +1,22 @@
+Package: amatrix.metal
+Type: Package
+Title: Metal Backend Scaffold for amatrix
+Version: 0.0.0.9000
+Authors@R: person("Ben", "Buchsbaum", email = "bbuchsbaum@example.com", role = c("aut", "cre"))
+Description: Apple Metal backend package for amatrix. Registers an optional
+    sparse-first backend contract implementation and provides a direct
+    Objective-C++ bridge for sparse matrix times dense matrix products on
+    macOS when Metal is available at build time.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.3)
+Imports:
+    amatrix,
+    methods,
+    Matrix
+Suggests:
+    testthat (>= 3.0.0)
+SystemRequirements: Apple Metal and Foundation frameworks (optional; macOS only)
+NeedsCompilation: yes
+Config/testthat/edition: 3

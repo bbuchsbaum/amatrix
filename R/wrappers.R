@@ -597,7 +597,11 @@
     return(NULL)
   }
 
-  lhs <- if (inherits(e1, "adgeMatrix")) .amatrix_prepare_resident_arg(e1, backend_name, promote_amatrix = FALSE) else .amatrix_prepare_resident_arg(e2, backend_name, promote_amatrix = FALSE)
+  lhs <- if (inherits(e1, "adgeMatrix")) {
+    .amatrix_prepare_resident_arg(e1, backend_name, promote_amatrix = TRUE)
+  } else {
+    .amatrix_prepare_resident_arg(e2, backend_name, promote_amatrix = TRUE)
+  }
   if (is.null(lhs)) {
     return(NULL)
   }
@@ -606,7 +610,7 @@
   rhs_payload <- rhs_arg
 
   if (inherits(rhs_arg, "adgeMatrix") || .amatrix_is_dense_matrix_like(rhs_arg)) {
-    rhs <- .amatrix_prepare_resident_arg(rhs_arg, backend_name, promote_amatrix = FALSE)
+    rhs <- .amatrix_prepare_resident_arg(rhs_arg, backend_name, promote_amatrix = TRUE)
     if (is.null(rhs)) {
       .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       return(NULL)

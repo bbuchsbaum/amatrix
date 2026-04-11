@@ -1,0 +1,1 @@
+Sys.setenv(AMATRIX_METAL_PROBE_GPU = "1")
