@@ -843,16 +843,22 @@ ridge_fit <- function(
   XtX <- cache_value$xtx
   XtY <- am_crossprod(X_arg, Y_arg)
   has_intercept_col <- isTRUE(intercept) || .amatrix_has_explicit_intercept_column(X_arg)
-  penalty <- .amatrix_penalty_matrix(
-    X_arg,
-    lambda,
-    penalize_intercept = penalize_intercept,
-    has_intercept = has_intercept_col
-  )
-  penalized_xtx <- ewise("+", XtX, penalty)
   if (.amatrix_plan_prefers_cpu_solve(XtX, XtY)) {
+    penalized_xtx <- .amatrix_ridge_penalized_xtx(
+      XtX,
+      lambda,
+      penalize_intercept = penalize_intercept,
+      has_intercept = has_intercept_col
+    )
     coefficients <- .amatrix_host_solve_rewrap(penalized_xtx, XtY, template = X_arg)
   } else {
+    penalty <- .amatrix_penalty_matrix(
+      X_arg,
+      lambda,
+      penalize_intercept = penalize_intercept,
+      has_intercept = has_intercept_col
+    )
+    penalized_xtx <- ewise("+", XtX, penalty)
     coefficients <- .amatrix_spd_solve_rewrap(penalized_xtx, XtY, template = X_arg)
   }
   outputs <- .amatrix_model_outputs(

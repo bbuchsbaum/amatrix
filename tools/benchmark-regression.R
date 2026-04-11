@@ -735,6 +735,58 @@ safe_case <- function(fun, cell_info) {
   )
 }
 
+format_backend_diagnostics <- function(backend_name, include_arrayfire = .benchmark_arrayfire_requested()) {
+  parts <- c(sprintf("requested_backend=%s", backend_name))
+
+  spec <- .benchmark_optional_backend_specs(include_arrayfire = include_arrayfire)[[backend_name]]
+  if (!is.null(spec)) {
+    if (!is.null(spec$env)) {
+      env_parts <- vapply(
+        names(spec$env),
+        function(name) sprintf("%s=%s", name, Sys.getenv(name, unset = "<unset>")),
+        character(1)
+      )
+      parts <- c(parts, env_parts)
+    }
+    if (!is.null(spec$options)) {
+      option_parts <- vapply(
+        names(spec$options),
+        function(name) sprintf("%s=%s", name, as.character(getOption(name))),
+        character(1)
+      )
+      parts <- c(parts, option_parts)
+    }
+  }
+
+  backend <- tryCatch(amatrix:::.amatrix_get_backend(backend_name), error = function(e) NULL)
+  parts <- c(parts, sprintf("registered=%s", !is.null(backend)))
+  if (!is.null(backend)) {
+    available <- tryCatch(isTRUE(backend$available()), error = function(e) NA)
+    parts <- c(parts, sprintf("backend_available=%s", as.character(available)))
+  }
+
+  if (identical(backend_name, "opencl")) {
+    ns <- tryCatch(
+      ensure_optional_backend_namespace("amatrix.opencl", repo_dir = "backends/amatrix.opencl"),
+      error = function(e) NULL
+    )
+    if (!is.null(ns)) {
+      info <- tryCatch(get("amatrix_opencl_bridge_info", envir = ns, inherits = FALSE)(), error = function(e) NULL)
+      if (is.list(info)) {
+        bridge_keys <- intersect(c("compiled", "clblast", "native", "probe_enabled", "engine", "available"), names(info))
+        bridge_parts <- vapply(
+          bridge_keys,
+          function(name) sprintf("bridge_%s=%s", name, as.character(info[[name]])),
+          character(1)
+        )
+        parts <- c(parts, bridge_parts)
+      }
+    }
+  }
+
+  paste(parts, collapse = ", ")
+}
+
 group_plan <- function(backends, suites = c("dense", "sparse")) {
   out <- list()
 
@@ -830,7 +882,11 @@ run_group <- function(group) {
   if (is.null(backend) || !isTRUE(backend$available())) {
     rows <- expand_group_rows(group)
     rows$status <- "unavailable"
-    rows$error_message <- sprintf("backend '%s' is not available", backend_name)
+    rows$error_message <- sprintf(
+      "backend '%s' is not available [%s]",
+      backend_name,
+      format_backend_diagnostics(backend_name)
+    )
     return(rows)
   }
 
@@ -1090,7 +1146,6 @@ run_worker <- function(args) {
   groups <- readRDS(args$plan)
   group <- Filter(function(x) identical(x$group_id, args$group_id), groups)[[1L]]
   prime_requested_backend(group$requested_backend, include_arrayfire = args$include_arrayfire)
-  canonical_backend_specs(include_arrayfire = args$include_arrayfire)
   result <- run_group(group)
   saveRDS(result, args$out)
   invisible(NULL)

@@ -87,7 +87,7 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
           (entry$supported_cold || entry$supported_resident) && entry$calibration_ok
         )
         if (entry$supported) {
-          entry$chosen_path <- if (isTRUE(entry$supported_cold)) "cold" else "resident"
+          entry$chosen_path <- if (isTRUE(entry$supported_resident)) "resident" else "cold"
         }
       }
     }

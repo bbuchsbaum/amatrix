@@ -183,6 +183,20 @@
     n >= (4L * p)
 }
 
+.amatrix_opencl_ts_svd_max_n <- function() {
+  as.integer(getOption("amatrix.opencl.ts_svd_max_n", 512L))
+}
+
+.amatrix_opencl_exact_svd_gpu_enabled <- function() {
+  isTRUE(getOption("amatrix.opencl.exact_svd_gpu", FALSE))
+}
+
+.amatrix_opencl_use_ts_svd <- function(nrow, ncol) {
+  .amatrix_opencl_exact_svd_gpu_enabled() &&
+    nrow > (4L * ncol) &&
+    ncol <= .amatrix_opencl_ts_svd_max_n()
+}
+
 .amatrix_opencl_device_linalg_available <- function(force = FALSE) {
   .amatrix_opencl_factor_gpu_enabled() &&
     isTRUE(amatrix_opencl_native_available(force = force)) &&
@@ -668,7 +682,57 @@ amatrix_opencl_svd <- function(x, nu, nv, LINPACK = FALSE, ...) {
     stop("LINPACK is not supported", call. = FALSE)
   }
 
-  base::svd(.amatrix_opencl_dense_host(x), nu = nu, nv = nv, ...)
+  x_mat <- .amatrix_opencl_dense_host(x)
+  m <- nrow(x_mat)
+  n <- ncol(x_mat)
+
+  if (.amatrix_opencl_use_ts_svd(m, n)) {
+    return(amatrix_opencl_ts_svd(x_mat, nu = nu, nv = nv))
+  }
+
+  if (.amatrix_opencl_use_ts_svd(n, m)) {
+    sv_t <- amatrix_opencl_ts_svd(base::t(x_mat), nu = nv, nv = nu)
+    return(list(
+      u = sv_t$v,
+      d = sv_t$d,
+      v = sv_t$u
+    ))
+  }
+
+  base::svd(x_mat, nu = nu, nv = nv, ...)
+}
+
+amatrix_opencl_ts_svd <- function(x, nu, nv) {
+  mat <- .amatrix_opencl_dense_host(x)
+  m <- nrow(mat)
+  n <- ncol(mat)
+  k <- min(m, n)
+  nu_eff <- min(as.integer(nu), k)
+  nv_eff <- min(as.integer(nv), k)
+
+  q_host <- qr.Q(qr(mat), complete = FALSE)
+  storage.mode(q_host) <- "double"
+
+  q_key <- .amatrix_opencl_temp_key("svd-q")
+  on.exit(.amatrix_opencl_drop_if_present(q_key), add = TRUE)
+  amatrix_opencl_resident_store(q_key, q_host)
+
+  b_core <- amatrix_opencl_crossprod_resident_host(q_key, mat)
+  sv_core <- base::svd(b_core, nu = nu_eff, nv = nv_eff)
+
+  u_out <- if (nu_eff > 0L) {
+    u_core <- sv_core$u[, seq_len(nu_eff), drop = FALSE]
+    storage.mode(u_core) <- "double"
+    amatrix_opencl_matmul_resident_host(q_key, u_core)
+  } else {
+    matrix(0, nrow = m, ncol = 0L)
+  }
+
+  list(
+    u = u_out,
+    d = sv_core$d,
+    v = sv_core$v
+  )
 }
 
 amatrix_opencl_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L) {
