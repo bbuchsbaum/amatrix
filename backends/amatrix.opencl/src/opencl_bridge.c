@@ -20,7 +20,7 @@
 #define AMATRIX_OPENCL_MAX_RESIDENT 256
 #define AMATRIX_OPENCL_MAX_SPARSE_RESIDENT 256
 #define AMATRIX_OPENCL_REDUCE_WG 64
-#define AMATRIX_OPENCL_CHOL_BLOCK 32
+#define AMATRIX_OPENCL_CHOL_BLOCK 64
 #define AMATRIX_OPENCL_CHOL_PANEL_MAX 64
 
 typedef struct {
@@ -31,6 +31,7 @@ typedef struct {
   SEXP host_value;
 #ifdef HAVE_OPENCL
   cl_mem buffer;
+  cl_event ready_event;
   int on_device;
 #endif
 } amatrix_opencl_entry;
@@ -229,6 +230,10 @@ static void amatrix_opencl_release_entry(amatrix_opencl_entry *entry) {
   entry->host_value = NULL;
 
 #ifdef HAVE_OPENCL
+  if (entry->ready_event != NULL) {
+    clReleaseEvent(entry->ready_event);
+    entry->ready_event = NULL;
+  }
   if (entry->buffer != NULL) {
     clReleaseMemObject(entry->buffer);
   }
@@ -311,7 +316,8 @@ static void amatrix_opencl_commit_entry(
   SEXP host_value
 #ifdef HAVE_OPENCL
   , cl_mem buffer,
-  int on_device
+  int on_device,
+  cl_event ready_event
 #endif
 ) {
   amatrix_opencl_entry *entry = &g_entries[idx];
@@ -329,6 +335,7 @@ static void amatrix_opencl_commit_entry(
 
 #ifdef HAVE_OPENCL
   entry->buffer = buffer;
+  entry->ready_event = ready_event;
   entry->on_device = on_device;
 #endif
 }
@@ -627,19 +634,45 @@ static cl_mem amatrix_opencl_buffer_from_host(const void *host, size_t bytes) {
   return buffer;
 }
 
-static SEXP amatrix_opencl_matrix_from_buffer(cl_mem buffer, int nrow, int ncol) {
+static void amatrix_opencl_replace_event(cl_event *slot, cl_event next_event) {
+  if (slot == NULL) {
+    if (next_event != NULL) {
+      clReleaseEvent(next_event);
+    }
+    return;
+  }
+
+  if (*slot != NULL) {
+    clReleaseEvent(*slot);
+  }
+  *slot = next_event;
+}
+
+static SEXP amatrix_opencl_matrix_from_buffer_ready(cl_mem buffer, int nrow, int ncol, cl_event ready_event) {
   size_t n = (size_t)nrow * (size_t)ncol;
   size_t bytes = n * sizeof(float);
   float *host = (float *)R_alloc(n, sizeof(float));
-  cl_int err = clEnqueueReadBuffer(g_queue, buffer, CL_TRUE, 0, bytes, host, 0, NULL, NULL);
+  cl_event wait_events[1];
+  cl_uint wait_count = 0;
+  const cl_event *wait_list = NULL;
+  if (ready_event != NULL) {
+    wait_events[0] = ready_event;
+    wait_count = 1;
+    wait_list = wait_events;
+  }
+  cl_int err = clEnqueueReadBuffer(g_queue, buffer, CL_TRUE, 0, bytes, host, wait_count, wait_list, NULL);
   if (err != CL_SUCCESS) {
-    Rf_error("failed to read OpenCL resident buffer");
+    Rf_error("failed to read OpenCL resident buffer (OpenCL error %d)", (int)err);
   }
 
   SEXP out = PROTECT(Rf_allocMatrix(REALSXP, nrow, ncol));
   amatrix_opencl_copy_f32_to_r(REAL(out), host, n);
   UNPROTECT(1);
   return out;
+}
+
+static SEXP amatrix_opencl_matrix_from_buffer(cl_mem buffer, int nrow, int ncol) {
+  return amatrix_opencl_matrix_from_buffer_ready(buffer, nrow, ncol, NULL);
 }
 
 static cl_mem amatrix_opencl_buffer_from_vector(SEXP x, int *length_out) {
@@ -673,19 +706,31 @@ static cl_mem amatrix_opencl_buffer_from_vector(SEXP x, int *length_out) {
   return buffer;
 }
 
-static SEXP amatrix_opencl_vector_from_buffer(cl_mem buffer, int length) {
+static SEXP amatrix_opencl_vector_from_buffer_ready(cl_mem buffer, int length, cl_event ready_event) {
   size_t n = (size_t)length;
   size_t bytes = n * sizeof(float);
   float *host = (float *)R_alloc(n, sizeof(float));
-  cl_int err = clEnqueueReadBuffer(g_queue, buffer, CL_TRUE, 0, bytes, host, 0, NULL, NULL);
+  cl_event wait_events[1];
+  cl_uint wait_count = 0;
+  const cl_event *wait_list = NULL;
+  if (ready_event != NULL) {
+    wait_events[0] = ready_event;
+    wait_count = 1;
+    wait_list = wait_events;
+  }
+  cl_int err = clEnqueueReadBuffer(g_queue, buffer, CL_TRUE, 0, bytes, host, wait_count, wait_list, NULL);
   if (err != CL_SUCCESS) {
-    Rf_error("failed to read OpenCL vector buffer");
+    Rf_error("failed to read OpenCL vector buffer (OpenCL error %d)", (int)err);
   }
 
   SEXP out = PROTECT(Rf_allocVector(REALSXP, length));
   amatrix_opencl_copy_f32_to_r(REAL(out), host, n);
   UNPROTECT(1);
   return out;
+}
+
+static SEXP amatrix_opencl_vector_from_buffer(cl_mem buffer, int length) {
+  return amatrix_opencl_vector_from_buffer_ready(buffer, length, NULL);
 }
 
 static int amatrix_opencl_entry_vector_length(const amatrix_opencl_entry *entry) {
@@ -722,7 +767,7 @@ static SEXP amatrix_opencl_get_entry_vector(const char *key) {
     if (!amatrix_opencl_try_init()) {
       Rf_error("OpenCL runtime is not available for resident key '%s'", key);
     }
-    return amatrix_opencl_vector_from_buffer(entry->buffer, length);
+    return amatrix_opencl_vector_from_buffer_ready(entry->buffer, length, entry->ready_event);
   }
 #endif
 
@@ -804,8 +849,8 @@ static cl_mem amatrix_opencl_alloc_buffer(size_t elements) {
   return buffer;
 }
 
-static int amatrix_opencl_copy_buffer_into(cl_mem dest, cl_mem source, size_t elements) {
-  cl_int err = clEnqueueCopyBuffer(g_queue, source, dest, 0, 0, elements * sizeof(float), 0, NULL, NULL);
+static int amatrix_opencl_copy_buffer_into_event(cl_mem dest, cl_mem source, size_t elements, cl_event *ready_event) {
+  cl_int err = clEnqueueCopyBuffer(g_queue, source, dest, 0, 0, elements * sizeof(float), 0, NULL, ready_event);
   return err == CL_SUCCESS;
 }
 
@@ -835,14 +880,14 @@ static int amatrix_opencl_workspace_ensure(amatrix_opencl_workspace *workspace, 
   return 1;
 }
 
-static int amatrix_opencl_copy_buffer(cl_mem source, size_t elements, cl_mem *out_buffer) {
+static int amatrix_opencl_copy_buffer_event(cl_mem source, size_t elements, cl_mem *out_buffer, cl_event *ready_event) {
   cl_int err = CL_SUCCESS;
   cl_mem out = amatrix_opencl_alloc_buffer(elements);
   if (out == NULL) {
     return 0;
   }
 
-  err = clEnqueueCopyBuffer(g_queue, source, out, 0, 0, elements * sizeof(float), 0, NULL, NULL);
+  err = clEnqueueCopyBuffer(g_queue, source, out, 0, 0, elements * sizeof(float), 0, NULL, ready_event);
   if (err != CL_SUCCESS) {
     clReleaseMemObject(out);
     return 0;
@@ -955,9 +1000,9 @@ static int amatrix_opencl_write_block(
   return err == CL_SUCCESS;
 }
 
-static int amatrix_opencl_zero_strict_lower_buffer(cl_mem buffer, int n);
+static int amatrix_opencl_zero_strict_lower_buffer_event(cl_mem buffer, int n, cl_event *ready_event);
 static int amatrix_opencl_ensure_custom_kernels(void);
-static int amatrix_opencl_run_chol_panel_upper_inplace(cl_mem buffer, cl_mem status_buffer, int ld, int offset, int block);
+static int amatrix_opencl_run_chol_panel_upper_inplace_event(cl_mem buffer, cl_mem status_buffer, int ld, int offset, int block, cl_event *ready_event);
 
 static int amatrix_opencl_host_chol_upper(float *block, int n) {
   for (int j = 0; j < n; ++j) {
@@ -990,7 +1035,7 @@ static int amatrix_opencl_host_chol_upper(float *block, int n) {
   return 1;
 }
 
-static int amatrix_opencl_run_trsm_left(
+static int amatrix_opencl_run_trsm_left_event(
   cl_mem a_buffer,
   size_t a_offset,
   size_t a_ld,
@@ -1000,8 +1045,13 @@ static int amatrix_opencl_run_trsm_left(
   size_t b_offset,
   size_t b_ld,
   int m,
-  int n
+  int n,
+  cl_event *ready_event
 ) {
+  if (ready_event != NULL) {
+    *ready_event = NULL;
+  }
+
   CLBlastStatusCode status = CLBlastStrsm(
     CLBlastLayoutColMajor,
     CLBlastSideLeft,
@@ -1018,41 +1068,49 @@ static int amatrix_opencl_run_trsm_left(
     b_offset,
     b_ld,
     &g_queue,
-    NULL
+    ready_event
   );
 
   return status == CLBlastSuccess;
 }
 
-static int amatrix_opencl_run_triangular_solve(
+static int amatrix_opencl_run_triangular_solve_event(
   cl_mem factor_buffer,
   int n,
   int lower,
   int transpose,
   cl_mem rhs_buffer,
   int nrhs,
-  cl_mem *out_buffer
+  cl_mem *out_buffer,
+  cl_event *ready_event
 ) {
   cl_mem result_buffer = NULL;
+  cl_event trsm_event = NULL;
 
-  if (!amatrix_opencl_copy_buffer(rhs_buffer, (size_t)n * (size_t)nrhs, &result_buffer)) {
+  if (!amatrix_opencl_copy_buffer_event(rhs_buffer, (size_t)n * (size_t)nrhs, &result_buffer, NULL)) {
     return 0;
   }
 
-  if (!amatrix_opencl_run_trsm_left(
+  if (!amatrix_opencl_run_trsm_left_event(
         factor_buffer, 0, (size_t)n, lower, transpose,
         result_buffer, 0, (size_t)n,
-        n, nrhs
+        n, nrhs,
+        &trsm_event
       )) {
     clReleaseMemObject(result_buffer);
     return 0;
   }
 
   *out_buffer = result_buffer;
+  if (ready_event != NULL) {
+    *ready_event = trsm_event;
+  } else {
+    amatrix_opencl_replace_event(&trsm_event, NULL);
+  }
   return 1;
 }
 
-static int amatrix_opencl_run_syrk_update_upper(
+static int amatrix_opencl_run_syrk_update_upper_event(
   cl_mem a_buffer,
   size_t a_offset,
   size_t a_ld,
@@ -1060,8 +1118,13 @@ static int amatrix_opencl_run_syrk_update_upper(
   size_t c_offset,
   size_t c_ld,
   int n,
-  int k
+  int k,
+  cl_event *ready_event
 ) {
+  if (ready_event != NULL) {
+    *ready_event = NULL;
+  }
+
   CLBlastStatusCode status = CLBlastSsyrk(
     CLBlastLayoutColMajor,
     CLBlastTriangleUpper,
@@ -1077,7 +1140,7 @@ static int amatrix_opencl_run_syrk_update_upper(
     c_offset,
     c_ld,
     &g_queue,
-    NULL
+    ready_event
   );
 
   return status == CLBlastSuccess;
@@ -1109,12 +1172,15 @@ static cl_mem amatrix_opencl_identity_buffer(int n) {
   return buffer;
 }
 
-static int amatrix_opencl_run_chol_upper_inplace(cl_mem buffer, int n) {
+static int amatrix_opencl_run_chol_upper_inplace_event(cl_mem buffer, int n, cl_event *ready_event) {
   int block_size = amatrix_opencl_chol_block_size();
   cl_mem status_buffer = NULL;
   cl_int status_value = 1;
 
   if (n <= 0) {
+    if (ready_event != NULL) {
+      *ready_event = NULL;
+    }
     return 1;
   }
 
@@ -1135,7 +1201,7 @@ static int amatrix_opencl_run_chol_upper_inplace(cl_mem buffer, int n) {
       block = block_size;
     }
 
-    if (!amatrix_opencl_run_chol_panel_upper_inplace(buffer, status_buffer, n, offset, block)) {
+    if (!amatrix_opencl_run_chol_panel_upper_inplace_event(buffer, status_buffer, n, offset, block, NULL)) {
       return 0;
     }
 
@@ -1145,25 +1211,27 @@ static int amatrix_opencl_run_chol_upper_inplace(cl_mem buffer, int n) {
       size_t row_offset = (size_t)offset + (size_t)(offset + block) * (size_t)n;
       size_t trail_offset = (size_t)(offset + block) + (size_t)(offset + block) * (size_t)n;
 
-      if (!amatrix_opencl_run_trsm_left(
+      if (!amatrix_opencl_run_trsm_left_event(
             buffer, diag_offset, (size_t)n, 0, 1,
             buffer, row_offset, (size_t)n,
-            block, trailing
+            block, trailing,
+            NULL
           )) {
         return 0;
       }
 
-      if (!amatrix_opencl_run_syrk_update_upper(
+      if (!amatrix_opencl_run_syrk_update_upper_event(
             buffer, row_offset, (size_t)n,
             buffer, trail_offset, (size_t)n,
-            trailing, block
+            trailing, block,
+            NULL
           )) {
         return 0;
       }
     }
   }
 
-  if (!amatrix_opencl_zero_strict_lower_buffer(buffer, n)) {
+  if (!amatrix_opencl_zero_strict_lower_buffer_event(buffer, n, NULL)) {
     return 0;
   }
 
@@ -1173,35 +1241,41 @@ static int amatrix_opencl_run_chol_upper_inplace(cl_mem buffer, int n) {
     return 0;
   }
 
+  if (ready_event != NULL) {
+    *ready_event = NULL;
+  }
   return 1;
 }
 
-static int amatrix_opencl_run_chol_solve(
+static int amatrix_opencl_run_chol_solve_event(
   cl_mem a_buffer,
   int n,
   cl_mem b_buffer,
   int nrhs,
-  cl_mem *out_buffer
+  cl_mem *out_buffer,
+  cl_event *ready_event
 ) {
   cl_mem factor_buffer = NULL;
   cl_mem result_buffer = NULL;
+  cl_event solve1_event = NULL;
+  cl_event solve2_event = NULL;
   size_t factor_elements = (size_t)n * (size_t)n;
 
   if (!amatrix_opencl_workspace_ensure(&g_factor_workspace, factor_elements)) {
     return 0;
   }
   factor_buffer = g_factor_workspace.buffer;
-  if (!amatrix_opencl_copy_buffer_into(factor_buffer, a_buffer, factor_elements)) {
+  if (!amatrix_opencl_copy_buffer_into_event(factor_buffer, a_buffer, factor_elements, NULL)) {
     return 0;
   }
-  if (!amatrix_opencl_run_chol_upper_inplace(factor_buffer, n)) {
+  if (!amatrix_opencl_run_chol_upper_inplace_event(factor_buffer, n, NULL)) {
     return 0;
   }
 
   if (b_buffer == NULL) {
     result_buffer = amatrix_opencl_identity_buffer(n);
     nrhs = n;
-  } else if (!amatrix_opencl_copy_buffer(b_buffer, (size_t)n * (size_t)nrhs, &result_buffer)) {
+  } else if (!amatrix_opencl_copy_buffer_event(b_buffer, (size_t)n * (size_t)nrhs, &result_buffer, NULL)) {
     return 0;
   }
 
@@ -1209,21 +1283,31 @@ static int amatrix_opencl_run_chol_solve(
     return 0;
   }
 
-  if (!amatrix_opencl_run_trsm_left(
+  if (!amatrix_opencl_run_trsm_left_event(
         factor_buffer, 0, (size_t)n, 0, 1,
         result_buffer, 0, (size_t)n,
-        n, nrhs
+        n, nrhs,
+        &solve1_event
       ) ||
-      !amatrix_opencl_run_trsm_left(
+      !amatrix_opencl_run_trsm_left_event(
         factor_buffer, 0, (size_t)n, 0, 0,
         result_buffer, 0, (size_t)n,
-        n, nrhs
+        n, nrhs,
+        &solve2_event
       )) {
     clReleaseMemObject(result_buffer);
+    amatrix_opencl_replace_event(&solve1_event, NULL);
+    amatrix_opencl_replace_event(&solve2_event, NULL);
     return 0;
   }
 
+  amatrix_opencl_replace_event(&solve1_event, NULL);
   *out_buffer = result_buffer;
+  if (ready_event != NULL) {
+    *ready_event = solve2_event;
+  } else {
+    amatrix_opencl_replace_event(&solve2_event, NULL);
+  }
   return 1;
 }
 
@@ -1541,7 +1625,7 @@ static int amatrix_opencl_run_sparse_spmm_device(
   return 1;
 }
 
-static int amatrix_opencl_run_chol_panel_upper_inplace(cl_mem buffer, cl_mem status_buffer, int ld, int offset, int block) {
+static int amatrix_opencl_run_chol_panel_upper_inplace_event(cl_mem buffer, cl_mem status_buffer, int ld, int offset, int block, cl_event *ready_event) {
   cl_int err = CL_SUCCESS;
   size_t global_size = (size_t)block;
   size_t local_size = (size_t)block;
@@ -1558,7 +1642,13 @@ static int amatrix_opencl_run_chol_panel_upper_inplace(cl_mem buffer, cl_mem sta
     if (!amatrix_opencl_host_chol_upper(panel, block)) {
       return 0;
     }
-    return amatrix_opencl_write_block(buffer, ld, offset, offset, block, block, panel);
+    if (!amatrix_opencl_write_block(buffer, ld, offset, offset, block, block, panel)) {
+      return 0;
+    }
+    if (ready_event != NULL) {
+      *ready_event = NULL;
+    }
+    return 1;
   }
 
   err = clSetKernelArg(g_chol_panel_kernel, 0, sizeof(cl_mem), &buffer);
@@ -1567,7 +1657,7 @@ static int amatrix_opencl_run_chol_panel_upper_inplace(cl_mem buffer, cl_mem sta
   err |= clSetKernelArg(g_chol_panel_kernel, 3, sizeof(int), &block);
   err |= clSetKernelArg(g_chol_panel_kernel, 4, sizeof(cl_mem), &status_buffer);
   if (err != CL_SUCCESS ||
-      clEnqueueNDRangeKernel(g_queue, g_chol_panel_kernel, 1, NULL, &global_size, &local_size, 0, NULL, NULL) != CL_SUCCESS) {
+      clEnqueueNDRangeKernel(g_queue, g_chol_panel_kernel, 1, NULL, &global_size, &local_size, 0, NULL, ready_event) != CL_SUCCESS) {
     return 0;
   }
 
@@ -1842,7 +1932,7 @@ static int amatrix_opencl_sym_fill_buffer(cl_mem buffer, int n, int upper_to_low
   return 1;
 }
 
-static int amatrix_opencl_zero_strict_lower_buffer(cl_mem buffer, int n) {
+static int amatrix_opencl_zero_strict_lower_buffer_event(cl_mem buffer, int n, cl_event *ready_event) {
   cl_int err = CL_SUCCESS;
   size_t global[2];
 
@@ -1858,7 +1948,7 @@ static int amatrix_opencl_zero_strict_lower_buffer(cl_mem buffer, int n) {
 
   global[0] = (size_t)n;
   global[1] = (size_t)n;
-  err = clEnqueueNDRangeKernel(g_queue, g_zero_strict_lower_kernel, 2, NULL, global, NULL, 0, NULL, NULL);
+  err = clEnqueueNDRangeKernel(g_queue, g_zero_strict_lower_kernel, 2, NULL, global, NULL, 0, NULL, ready_event);
   if (err != CL_SUCCESS) {
     return 0;
   }
@@ -2197,7 +2287,7 @@ static int amatrix_opencl_sparse_entry_upload_buffers(amatrix_opencl_sparse_entr
 }
 #endif
 
-static int amatrix_opencl_store_device_buffer(const char *key, cl_mem buffer, int nrow, int ncol) {
+static int amatrix_opencl_store_device_buffer_ready(const char *key, cl_mem buffer, int nrow, int ncol, cl_event ready_event) {
   int idx = amatrix_opencl_find_entry(key);
   if (idx < 0) {
     idx = amatrix_opencl_find_free_entry();
@@ -2207,12 +2297,19 @@ static int amatrix_opencl_store_device_buffer(const char *key, cl_mem buffer, in
     if (buffer != NULL) {
       clReleaseMemObject(buffer);
     }
+    if (ready_event != NULL) {
+      clReleaseEvent(ready_event);
+    }
 #endif
     Rf_error("resident registry is full");
   }
 
-  amatrix_opencl_commit_entry(idx, key, nrow, ncol, NULL, buffer, 1);
+  amatrix_opencl_commit_entry(idx, key, nrow, ncol, NULL, buffer, 1, ready_event);
   return 1;
+}
+
+static int amatrix_opencl_store_device_buffer(const char *key, cl_mem buffer, int nrow, int ncol) {
+  return amatrix_opencl_store_device_buffer_ready(key, buffer, nrow, ncol, NULL);
 }
 #endif
 
@@ -2232,7 +2329,7 @@ static void amatrix_opencl_store_host_entry(const char *key, SEXP value) {
 
   amatrix_opencl_commit_entry(idx, key, amatrix_opencl_nrow(value), amatrix_opencl_ncol(value), copy
 #ifdef HAVE_OPENCL
-    , NULL, 0
+    , NULL, 0, NULL
 #endif
   );
   UNPROTECT(1);
@@ -2254,7 +2351,7 @@ static void amatrix_opencl_store_host_vector_entry(const char *key, SEXP value) 
 
   amatrix_opencl_commit_entry(idx, key, (int)XLENGTH(value), 1, copy
 #ifdef HAVE_OPENCL
-    , NULL, 0
+    , NULL, 0, NULL
 #endif
   );
   UNPROTECT(1);
@@ -2278,7 +2375,7 @@ static void amatrix_opencl_store_entry(const char *key, SEXP value) {
       Rf_error("resident registry is full");
     }
 
-    amatrix_opencl_commit_entry(idx, key, amatrix_opencl_nrow(value), amatrix_opencl_ncol(value), NULL, buffer, 1);
+    amatrix_opencl_commit_entry(idx, key, amatrix_opencl_nrow(value), amatrix_opencl_ncol(value), NULL, buffer, 1, NULL);
     return;
   }
 #endif
@@ -2300,7 +2397,7 @@ static SEXP amatrix_opencl_get_entry_materialized(const char *key) {
     if (!amatrix_opencl_try_init()) {
       Rf_error("OpenCL runtime is not available for resident key '%s'", key);
     }
-    return amatrix_opencl_matrix_from_buffer(entry->buffer, entry->nrow, entry->ncol);
+    return amatrix_opencl_matrix_from_buffer_ready(entry->buffer, entry->nrow, entry->ncol, entry->ready_event);
   }
 #endif
 
@@ -3038,6 +3135,19 @@ SEXP amatrix_opencl_resident_has_bridge(SEXP key) {
   return ScalarLogical(amatrix_opencl_find_entry(CHAR(asChar(key))) >= 0);
 }
 
+SEXP amatrix_opencl_resident_dim_bridge(SEXP key) {
+  int idx = amatrix_opencl_find_entry(CHAR(asChar(key)));
+  if (idx < 0) {
+    Rf_error("resident key '%s' was not found", CHAR(asChar(key)));
+  }
+
+  SEXP out = PROTECT(Rf_allocVector(INTSXP, 2));
+  INTEGER(out)[0] = g_entries[idx].nrow;
+  INTEGER(out)[1] = g_entries[idx].ncol;
+  UNPROTECT(1);
+  return out;
+}
+
 SEXP amatrix_opencl_resident_drop_bridge(SEXP key) {
   int idx = amatrix_opencl_find_entry(CHAR(asChar(key)));
   if (idx >= 0) {
@@ -3058,6 +3168,7 @@ SEXP amatrix_opencl_chol_resident_bridge(SEXP x_key, SEXP out_key) {
   if (amatrix_opencl_try_init()) {
     amatrix_opencl_entry *x_entry = amatrix_opencl_lookup_entry(CHAR(asChar(x_key)));
     cl_mem out_buffer = NULL;
+    cl_event ready_event = NULL;
 
     if (x_entry == NULL) {
       Rf_error("resident key '%s' was not found", CHAR(asChar(x_key)));
@@ -3069,15 +3180,16 @@ SEXP amatrix_opencl_chol_resident_bridge(SEXP x_key, SEXP out_key) {
       Rf_error("chol requires a square matrix");
     }
 
-    if (!amatrix_opencl_copy_buffer(x_entry->buffer, (size_t)x_entry->nrow * (size_t)x_entry->ncol, &out_buffer) ||
-        !amatrix_opencl_run_chol_upper_inplace(out_buffer, x_entry->nrow)) {
+    if (!amatrix_opencl_copy_buffer_event(x_entry->buffer, (size_t)x_entry->nrow * (size_t)x_entry->ncol, &out_buffer, NULL) ||
+        !amatrix_opencl_run_chol_upper_inplace_event(out_buffer, x_entry->nrow, &ready_event)) {
       if (out_buffer != NULL) {
         clReleaseMemObject(out_buffer);
       }
+      amatrix_opencl_replace_event(&ready_event, NULL);
       Rf_error("OpenCL resident chol failed");
     }
 
-    amatrix_opencl_store_device_buffer(CHAR(asChar(out_key)), out_buffer, x_entry->nrow, x_entry->ncol);
+    amatrix_opencl_store_device_buffer_ready(CHAR(asChar(out_key)), out_buffer, x_entry->nrow, x_entry->ncol, ready_event);
     return R_NilValue;
   }
 #endif
@@ -3091,6 +3203,7 @@ SEXP amatrix_opencl_solve_resident_bridge(SEXP a_key, SEXP b_key, SEXP out_key) 
     amatrix_opencl_entry *a_entry = amatrix_opencl_lookup_entry(CHAR(asChar(a_key)));
     amatrix_opencl_entry *b_entry = Rf_isNull(b_key) ? NULL : amatrix_opencl_lookup_entry(CHAR(asChar(b_key)));
     cl_mem out_buffer = NULL;
+    cl_event ready_event = NULL;
     int out_ncol = 0;
 
     if (a_entry == NULL) {
@@ -3114,20 +3227,22 @@ SEXP amatrix_opencl_solve_resident_bridge(SEXP a_key, SEXP b_key, SEXP out_key) 
       out_ncol = b_entry->ncol;
     }
 
-    if (!amatrix_opencl_run_chol_solve(
+    if (!amatrix_opencl_run_chol_solve_event(
           a_entry->buffer,
           a_entry->nrow,
           b_entry == NULL ? NULL : b_entry->buffer,
           b_entry == NULL ? a_entry->ncol : b_entry->ncol,
-          &out_buffer
+          &out_buffer,
+          &ready_event
         )) {
       if (out_buffer != NULL) {
         clReleaseMemObject(out_buffer);
       }
+      amatrix_opencl_replace_event(&ready_event, NULL);
       Rf_error("OpenCL resident solve failed");
     }
 
-    amatrix_opencl_store_device_buffer(CHAR(asChar(out_key)), out_buffer, a_entry->nrow, out_ncol);
+    amatrix_opencl_store_device_buffer_ready(CHAR(asChar(out_key)), out_buffer, a_entry->nrow, out_ncol, ready_event);
     return R_NilValue;
   }
 #endif
@@ -3141,6 +3256,7 @@ SEXP amatrix_opencl_solve_triangular_resident_bridge(SEXP factor_key, SEXP rhs_k
     amatrix_opencl_entry *factor_entry = amatrix_opencl_lookup_entry(CHAR(asChar(factor_key)));
     amatrix_opencl_entry *rhs_entry = amatrix_opencl_lookup_entry(CHAR(asChar(rhs_key)));
     cl_mem out_buffer = NULL;
+    cl_event ready_event = NULL;
     int lower_flag = asLogical(lower);
     int transpose_flag = asLogical(transpose);
 
@@ -3163,22 +3279,24 @@ SEXP amatrix_opencl_solve_triangular_resident_bridge(SEXP factor_key, SEXP rhs_k
       Rf_error("triangular solve rhs has incompatible dimensions");
     }
 
-    if (!amatrix_opencl_run_triangular_solve(
+    if (!amatrix_opencl_run_triangular_solve_event(
           factor_entry->buffer,
           factor_entry->nrow,
           lower_flag,
           transpose_flag,
           rhs_entry->buffer,
           rhs_entry->ncol,
-          &out_buffer
+          &out_buffer,
+          &ready_event
         )) {
       if (out_buffer != NULL) {
         clReleaseMemObject(out_buffer);
       }
+      amatrix_opencl_replace_event(&ready_event, NULL);
       Rf_error("OpenCL resident triangular solve failed");
     }
 
-    amatrix_opencl_store_device_buffer(CHAR(asChar(out_key)), out_buffer, rhs_entry->nrow, rhs_entry->ncol);
+    amatrix_opencl_store_device_buffer_ready(CHAR(asChar(out_key)), out_buffer, rhs_entry->nrow, rhs_entry->ncol, ready_event);
     return R_NilValue;
   }
 #endif
@@ -3192,6 +3310,8 @@ SEXP amatrix_opencl_chol_solve_resident_bridge(SEXP factor_key, SEXP rhs_key, SE
     amatrix_opencl_entry *factor_entry = amatrix_opencl_lookup_entry(CHAR(asChar(factor_key)));
     amatrix_opencl_entry *rhs_entry = amatrix_opencl_lookup_entry(CHAR(asChar(rhs_key)));
     cl_mem out_buffer = NULL;
+    cl_event solve1_event = NULL;
+    cl_event solve2_event = NULL;
 
     if (factor_entry == NULL) {
       Rf_error("resident factor key '%s' was not found", CHAR(asChar(factor_key)));
@@ -3212,28 +3332,34 @@ SEXP amatrix_opencl_chol_solve_resident_bridge(SEXP factor_key, SEXP rhs_key, SE
       Rf_error("chol_solve rhs has incompatible dimensions");
     }
 
-    if (!amatrix_opencl_copy_buffer(rhs_entry->buffer, (size_t)rhs_entry->nrow * (size_t)rhs_entry->ncol, &out_buffer) ||
-        !amatrix_opencl_run_trsm_left(
+    if (!amatrix_opencl_copy_buffer_event(rhs_entry->buffer, (size_t)rhs_entry->nrow * (size_t)rhs_entry->ncol, &out_buffer, NULL) ||
+        !amatrix_opencl_run_trsm_left_event(
           factor_entry->buffer, 0, (size_t)factor_entry->nrow, 0, 1,
           out_buffer, 0, (size_t)rhs_entry->nrow,
-          factor_entry->nrow, rhs_entry->ncol
+          factor_entry->nrow, rhs_entry->ncol,
+          &solve1_event
         ) ||
-        !amatrix_opencl_run_trsm_left(
+        !amatrix_opencl_run_trsm_left_event(
           factor_entry->buffer, 0, (size_t)factor_entry->nrow, 0, 0,
           out_buffer, 0, (size_t)rhs_entry->nrow,
-          factor_entry->nrow, rhs_entry->ncol
+          factor_entry->nrow, rhs_entry->ncol,
+          &solve2_event
         )) {
       if (out_buffer != NULL) {
         clReleaseMemObject(out_buffer);
       }
+      amatrix_opencl_replace_event(&solve1_event, NULL);
+      amatrix_opencl_replace_event(&solve2_event, NULL);
       Rf_error("OpenCL resident chol_solve failed");
     }
+    amatrix_opencl_replace_event(&solve1_event, NULL);
 
-    amatrix_opencl_store_device_buffer(
+    amatrix_opencl_store_device_buffer_ready(
       CHAR(asChar(out_key)),
       out_buffer,
       rhs_entry->nrow,
-      rhs_entry->ncol
+      rhs_entry->ncol,
+      solve2_event
     );
     return R_NilValue;
   }

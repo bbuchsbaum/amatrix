@@ -250,7 +250,8 @@ test_that("fast OpenCL chol_factor retains resident factor for repeated solves",
 
     old <- options(
       amatrix.opencl.factor_gpu = TRUE,
-      amatrix.opencl.factor_min_dim = 1L
+      amatrix.opencl.factor_min_dim = 1L,
+      amatrix.opencl.trsm_min_work = 1
     )
     on.exit(options(old), add = TRUE)
 

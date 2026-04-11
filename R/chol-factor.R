@@ -206,6 +206,15 @@ chol_factor <- function(X) {
     return(NULL)
   }
 
+  backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
+  if (is.null(backend)) {
+    return(NULL)
+  }
+  if (is.function(backend$prefer_solve_triangular_resident) &&
+      !isTRUE(backend$prefer_solve_triangular_resident(factor_obj, B_mat, lower = lower, transpose = transpose))) {
+    return(NULL)
+  }
+
   .amatrix_resident_triangular_solve(
     factor_obj,
     B_mat,
@@ -228,6 +237,10 @@ chol_factor <- function(X) {
 
   backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
   if (is.null(backend) || !is.function(backend$resident_materialize)) {
+    return(NULL)
+  }
+  if (is.function(backend$prefer_chol_solve_resident) &&
+      !isTRUE(backend$prefer_chol_solve_resident(factor_obj, B_mat))) {
     return(NULL)
   }
 

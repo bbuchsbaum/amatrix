@@ -93,6 +93,7 @@ setOldClass(c("amQR", "amDenseQR"))
       factor = .amatrix_qr_or(qr_factor, qr_base),
       factor_source = .amatrix_qr_or(qr_factor_source, "native")
     )
+    wrapped_payload <- qr_base
   } else if (identical(qr_representation, "mlx_compact_qr")) {
     representation <- "mlx_compact_qr"
     rank <- as.integer(.amatrix_qr_or(qr_rank, .amatrix_qr_or(qr_factor$rank, if (!is.null(source_dim)) min(source_dim) else NA_integer_)))
@@ -110,6 +111,7 @@ setOldClass(c("amQR", "amDenseQR"))
       q_key = qr_q_key,
       backend_ops = qr_obj[["backend_ops", exact = TRUE]]
     )
+    wrapped_payload <- qr_obj
   } else if (!is.null(qr_q) && !is.null(qr_r)) {
     representation <- .amatrix_qr_or(qr_representation, "explicit_qr")
     rank <- .amatrix_explicit_qr_rank(qr_obj)
@@ -127,6 +129,7 @@ setOldClass(c("amQR", "amDenseQR"))
       q_key = qr_q_key,
       backend_ops = qr_obj[["backend_ops", exact = TRUE]]
     )
+    wrapped_payload <- qr_obj
   } else if (!is.null(qr_q_key) && !is.null(qr_r)) {
     representation <- .amatrix_qr_or(qr_representation, "explicit_qr")
     rank <- .amatrix_explicit_qr_rank(qr_obj)
@@ -144,13 +147,14 @@ setOldClass(c("amQR", "amDenseQR"))
       q_key = qr_q_key,
       backend_ops = qr_obj[["backend_ops", exact = TRUE]]
     )
+    wrapped_payload <- qr_obj
   } else {
     stop("unsupported QR payload", call. = FALSE)
   }
 
   structure(
     list(
-      qr = qr_obj,
+      qr = wrapped_payload,
       representation = representation,
       rank = rank,
       backend = if (inherits(x, "aMatrix")) x@preferred_backend else "cpu",

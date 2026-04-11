@@ -104,9 +104,20 @@
     isTRUE(isSymmetric(.amatrix_opencl_dense_host(x), tol = tol))
 }
 
-.amatrix_opencl_can_try_device_spd_solve <- function(a) {
+.amatrix_opencl_factor_min_dim <- function() {
+  as.integer(getOption("amatrix.opencl.factor_min_dim", 768L))
+}
+
+.amatrix_opencl_can_try_device_chol <- function(x) {
   .amatrix_opencl_device_linalg_available() &&
-    .amatrix_opencl_is_symmetric_matrix(a)
+    .amatrix_opencl_is_square_matrix(x) &&
+    max(dim(x)) >= .amatrix_opencl_factor_min_dim()
+}
+
+.amatrix_opencl_can_try_device_spd_solve <- function(a, b = NULL) {
+  rhs_cols <- if (is.null(b)) ncol(a) else .amatrix_opencl_rhs_width(b)
+  .amatrix_opencl_is_symmetric_matrix(a) &&
+    .amatrix_opencl_device_triangular_preferred(nrow(a), rhs_cols)
 }
 
 .amatrix_opencl_can_try_device_qr_solve <- function(a, b = NULL) {
@@ -176,6 +187,25 @@
   .amatrix_opencl_factor_gpu_enabled() &&
     isTRUE(amatrix_opencl_native_available(force = force)) &&
     isTRUE(amatrix_opencl_bridge_info()$clblast)
+}
+
+.amatrix_opencl_rhs_ncol <- function(x) {
+  dims <- dim(x)
+  if (is.null(dims) || length(dims) <= 1L) {
+    return(1L)
+  }
+  as.integer(dims[[2L]])
+}
+
+.amatrix_opencl_trsm_min_work <- function() {
+  as.double(getOption("amatrix.opencl.trsm_min_work", 262144))
+}
+
+.amatrix_opencl_device_triangular_preferred <- function(n, nrhs) {
+  .amatrix_opencl_device_linalg_available() &&
+    is.finite(n) &&
+    is.finite(nrhs) &&
+    (as.double(n) * as.double(nrhs)) >= .amatrix_opencl_trsm_min_work()
 }
 
 .amatrix_opencl_drop_if_present <- function(key) {
@@ -424,7 +454,7 @@ amatrix_opencl_axis_sums <- function(x, axis) {
 }
 
 amatrix_opencl_chol <- function(x) {
-  if (.amatrix_opencl_device_linalg_available()) {
+  if (.amatrix_opencl_can_try_device_chol(x)) {
     result <- tryCatch(
       .amatrix_opencl_temp_dense_result(
         x,
@@ -443,7 +473,7 @@ amatrix_opencl_chol <- function(x) {
 }
 
 amatrix_opencl_solve <- function(a, b = NULL) {
-  if (.amatrix_opencl_can_try_device_spd_solve(a)) {
+  if (.amatrix_opencl_can_try_device_spd_solve(a, b = b)) {
     result <- tryCatch(
       .amatrix_opencl_temp_solve_result(
         a,
@@ -710,6 +740,11 @@ amatrix_opencl_eigen <- function(x, symmetric, only.values = FALSE, EISPACK = FA
 
 amatrix_opencl_solve_triangular_resident <- function(factor_key, rhs_key, out_key, lower = FALSE, transpose = FALSE, defer = FALSE) {
   result <- tryCatch({
+    factor_dim <- amatrix_opencl_resident_dim(factor_key)
+    rhs_dim <- amatrix_opencl_resident_dim(rhs_key)
+    if (!.amatrix_opencl_device_triangular_preferred(factor_dim[[1L]], rhs_dim[[2L]])) {
+      stop("OpenCL triangular solve is below the device work threshold", call. = FALSE)
+    }
     .Call(
       "amatrix_opencl_solve_triangular_resident_bridge",
       as.character(factor_key),
@@ -737,6 +772,11 @@ amatrix_opencl_solve_triangular_resident <- function(factor_key, rhs_key, out_ke
 
 amatrix_opencl_chol_solve_resident <- function(factor_key, rhs_key, out_key, defer = FALSE) {
   result <- tryCatch({
+    factor_dim <- amatrix_opencl_resident_dim(factor_key)
+    rhs_dim <- amatrix_opencl_resident_dim(rhs_key)
+    if (!.amatrix_opencl_device_triangular_preferred(factor_dim[[1L]], rhs_dim[[2L]])) {
+      stop("OpenCL Cholesky solve is below the device work threshold", call. = FALSE)
+    }
     .Call(
       "amatrix_opencl_chol_solve_resident_bridge",
       as.character(factor_key),
@@ -756,7 +796,7 @@ amatrix_opencl_chol_solve_resident <- function(factor_key, rhs_key, out_key, def
 }
 
 amatrix_opencl_solve_triangular_factor <- function(R, B, lower = FALSE, transpose = FALSE) {
-  if (.amatrix_opencl_device_linalg_available()) {
+  if (.amatrix_opencl_device_triangular_preferred(nrow(R), .amatrix_opencl_rhs_ncol(B))) {
     factor_key <- .amatrix_opencl_temp_key("tri-factor")
     rhs_key <- .amatrix_opencl_temp_key("tri-rhs")
     out_key <- .amatrix_opencl_temp_key("tri-out")
@@ -818,6 +858,14 @@ amatrix_opencl_resident_store <- function(key, x) {
 amatrix_opencl_resident_has <- function(key) {
   isTRUE(.Call(
     "amatrix_opencl_resident_has_bridge",
+    as.character(key),
+    PACKAGE = "amatrix.opencl"
+  ))
+}
+
+amatrix_opencl_resident_dim <- function(key) {
+  as.integer(.Call(
+    "amatrix_opencl_resident_dim_bridge",
     as.character(key),
     PACKAGE = "amatrix.opencl"
   ))
@@ -894,6 +942,15 @@ amatrix_opencl_spmm_resident_key <- function(sp_key, y_key, out_key, trans_lhs =
 
 amatrix_opencl_solve_resident <- function(a_key, b_key = NULL, out_key, defer = FALSE) {
   result <- tryCatch({
+    a_dim <- amatrix_opencl_resident_dim(a_key)
+    rhs_cols <- if (is.null(b_key)) {
+      a_dim[[2L]]
+    } else {
+      amatrix_opencl_resident_dim(b_key)[[2L]]
+    }
+    if (!.amatrix_opencl_device_triangular_preferred(a_dim[[1L]], rhs_cols)) {
+      stop("OpenCL solve is below the device work threshold", call. = FALSE)
+    }
     .Call(
       "amatrix_opencl_solve_resident_bridge",
       as.character(a_key),
@@ -1110,7 +1167,7 @@ amatrix_opencl_backend <- function() {
         return(
           .amatrix_opencl_factor_gpu_enabled() &&
             .amatrix_opencl_is_square_matrix(x) &&
-            max(dim(x)) >= getOption("amatrix.opencl.factor_min_dim", 1024L) &&
+            max(dim(x)) >= .amatrix_opencl_factor_min_dim() &&
             (identical(op, "chol") || .amatrix_opencl_is_symmetric_matrix(x))
         )
       }
@@ -1299,8 +1356,14 @@ amatrix_opencl_backend <- function() {
     chol_solve_factor = function(R, B) {
       amatrix_opencl_chol_solve_factor(R, B)
     },
+    prefer_chol_solve_resident = function(factor, rhs) {
+      .amatrix_opencl_device_triangular_preferred(nrow(factor), .amatrix_opencl_rhs_ncol(rhs))
+    },
     solve_triangular_factor = function(R, B, lower = FALSE, transpose = FALSE) {
       amatrix_opencl_solve_triangular_factor(R, B, lower = lower, transpose = transpose)
+    },
+    prefer_solve_triangular_resident = function(factor, rhs, lower = FALSE, transpose = FALSE) {
+      .amatrix_opencl_device_triangular_preferred(nrow(factor), .amatrix_opencl_rhs_ncol(rhs))
     }
   )
 }

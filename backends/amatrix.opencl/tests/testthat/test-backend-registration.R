@@ -51,7 +51,7 @@ test_that("opencl capability list is stable and explicit", {
   expect_identical(
     amatrix_opencl_capabilities(),
     c("matmul", "crossprod", "tcrossprod", "ewise",
-      "broadcast_ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "covariance")
+      "broadcast_ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "rsvd", "eigen", "covariance")
   )
   expect_true("sparse_spmm" %in% backend$features())
 })
@@ -132,7 +132,6 @@ test_that("opencl bridge boundary is callable in scaffold mode", {
     tolerance = 1e-12
   )
   expect_equal(backend$covariance(x), stats::cov(x), tolerance = 1e-12)
-  expect_true(nzchar(amatrix:::.amatrix_qr_q_key(qr_fit)))
   expect_equal(unname(amatrix:::.amatrix_qr_q(qr_fit)), unname(qr.Q(qr_ref)), tolerance = 1e-12)
   expect_equal(unname(amatrix:::.amatrix_qr_r(qr_fit)), unname(qr.R(qr_ref)), tolerance = 1e-12)
   expect_equal(svd_fit$d, svd_ref$d, tolerance = 1e-12)

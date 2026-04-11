@@ -17,6 +17,7 @@ extern SEXP amatrix_opencl_sparse_drop_bridge(SEXP key);
 extern SEXP amatrix_opencl_spmm_bridge(SEXP values, SEXP p, SEXP i, SEXP dim, SEXP b, SEXP trans_lhs);
 extern SEXP amatrix_opencl_resident_store_bridge(SEXP key, SEXP x);
 extern SEXP amatrix_opencl_resident_has_bridge(SEXP key);
+extern SEXP amatrix_opencl_resident_dim_bridge(SEXP key);
 extern SEXP amatrix_opencl_resident_drop_bridge(SEXP key);
 extern SEXP amatrix_opencl_resident_materialize_bridge(SEXP key);
 extern SEXP amatrix_opencl_spmm_resident_bridge(SEXP key, SEXP b, SEXP trans_lhs);
@@ -54,6 +55,7 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_opencl_spmm_bridge", (DL_FUNC) &amatrix_opencl_spmm_bridge, 6},
     {"amatrix_opencl_resident_store_bridge", (DL_FUNC) &amatrix_opencl_resident_store_bridge, 2},
     {"amatrix_opencl_resident_has_bridge", (DL_FUNC) &amatrix_opencl_resident_has_bridge, 1},
+    {"amatrix_opencl_resident_dim_bridge", (DL_FUNC) &amatrix_opencl_resident_dim_bridge, 1},
     {"amatrix_opencl_resident_drop_bridge", (DL_FUNC) &amatrix_opencl_resident_drop_bridge, 1},
     {"amatrix_opencl_resident_materialize_bridge", (DL_FUNC) &amatrix_opencl_resident_materialize_bridge, 1},
     {"amatrix_opencl_spmm_resident_bridge", (DL_FUNC) &amatrix_opencl_spmm_resident_bridge, 3},
