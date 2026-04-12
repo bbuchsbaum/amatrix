@@ -317,7 +317,7 @@ sinkhorn <- function(
       am_sweep_inplace(h, 2L, col_scale, "/")
     }
 
-    if ((iter %% check_every) == 0L || iter == max_iter) {
+    if (tol > 0 && ((iter %% check_every) == 0L || iter == max_iter)) {
       row_error <- max(abs(rh_rowSums(h) - 1))
       col_error <- max(abs(rh_colSums(h) - 1))
       if (max(row_error, col_error) < tol) {

@@ -946,10 +946,17 @@ amatrix_mlx_ewise_resident <- function(lhs_key, rhs, op, out_key, defer = FALSE)
 
 .amatrix_mlx_product_thresholds <- function() {
   list(
-    matmul_min_dim = getOption("amatrix.mlx.matmul_min_dim", 128L),
+    matmul_min_dim = getOption("amatrix.mlx.matmul_min_dim", 512L),
     crossprod_min_dim = getOption("amatrix.mlx.crossprod_min_dim", 2048L),
     tcrossprod_min_dim = getOption("amatrix.mlx.tcrossprod_min_dim", 2048L),
-    qr_min_dim = getOption("amatrix.mlx.qr_min_dim", 256L)
+    qr_min_dim = getOption("amatrix.mlx.qr_min_dim", 256L),
+    svd_min_dim = getOption("amatrix.mlx.svd_min_dim", 512L),
+    rsvd_min_dim = getOption("amatrix.mlx.rsvd_min_dim", 512L),
+    covariance_min_dim = getOption("amatrix.mlx.covariance_min_dim", 512L),
+    chol_min_dim = getOption("amatrix.mlx.chol_min_dim", 512L),
+    solve_min_dim = getOption("amatrix.mlx.solve_min_dim", 512L),
+    sinkhorn_min_dim = getOption("amatrix.mlx.sinkhorn_min_dim", 512L),
+    ewise_min_dim = getOption("amatrix.mlx.ewise_min_dim", 512L)
   )
 }
 
@@ -1125,9 +1132,10 @@ amatrix_mlx_backend <- function() {
         return(FALSE)
       }
 
-      if (.amatrix_mlx_forced_available()) {
-        return(TRUE)
-      }
+      # NOTE: .amatrix_mlx_forced_available() is intentionally NOT checked
+      # here as an early return — it only affects the available() gate, not
+      # per-op dimension thresholds. Each op below checks its own threshold
+      # to avoid dispatching tiny matrices to the GPU.
 
       if (identical(op, "matmul")) {
         return(.amatrix_mlx_meets_threshold(x, thresholds$matmul_min_dim))
@@ -1151,23 +1159,41 @@ amatrix_mlx_backend <- function() {
                dims[1L] >= getOption("amatrix.mlx.eigen_min_dim", 200L))
       }
 
-      if (identical(op, "broadcast_ewise")) {
-        return(.amatrix_mlx_meets_threshold(x, thresholds$matmul_min_dim))
+      if (identical(op, "broadcast_ewise") || identical(op, "ewise")) {
+        return(.amatrix_mlx_meets_threshold(x, thresholds$ewise_min_dim))
       }
 
-      if (identical(op, "argmax")) {
-        return(TRUE)
+      if (identical(op, "svd")) {
+        return(.amatrix_mlx_meets_threshold(x, thresholds$svd_min_dim))
       }
 
-      if (identical(op, "scatter_mean")) {
-        return(TRUE)
+      if (identical(op, "rsvd")) {
+        return(.amatrix_mlx_meets_threshold(x, thresholds$rsvd_min_dim))
       }
 
-      if (identical(op, "segment_sum") || identical(op, "segment_mean")) {
-        return(TRUE)
+      if (identical(op, "covariance")) {
+        return(.amatrix_mlx_meets_threshold(x, thresholds$covariance_min_dim))
       }
 
-      TRUE
+      if (identical(op, "chol")) {
+        return(.amatrix_mlx_meets_threshold(x, thresholds$chol_min_dim))
+      }
+
+      if (identical(op, "solve")) {
+        return(.amatrix_mlx_meets_threshold(x, thresholds$solve_min_dim))
+      }
+
+      if (op %in% c("rowSums", "colSums")) {
+        return(.amatrix_mlx_meets_threshold(x, thresholds$ewise_min_dim))
+      }
+
+      if (identical(op, "argmax") || identical(op, "scatter_mean") ||
+          identical(op, "segment_sum") || identical(op, "segment_mean")) {
+        return(.amatrix_mlx_meets_threshold(x, thresholds$ewise_min_dim))
+      }
+
+      # Default: require minimum dimension for any unlisted op
+      .amatrix_mlx_meets_threshold(x, thresholds$ewise_min_dim)
     },
     matmul = function(x, y) {
       if (inherits(x, "dgCMatrix"))
