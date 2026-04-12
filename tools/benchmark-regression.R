@@ -282,7 +282,8 @@ dense_sizes <- function() {
   list(
     small = list(n = 256L, p = 32L, sink_n = 128L),
     medium = list(n = 1024L, p = 128L, sink_n = 512L),
-    large = list(n = 4096L, p = 128L, sink_n = 1024L)
+    large = list(n = 4096L, p = 128L, sink_n = 1024L),
+    xlarge = list(n = 4096L, p = 1024L, sink_n = 2048L)
   )
 }
 
