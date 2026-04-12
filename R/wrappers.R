@@ -1866,6 +1866,7 @@ segment_mean <- function(x, labels, K) {
 # Intercept base::rowsum(X, group) for GPU matrices and route to segment_sum.
 # group can be integer, numeric, character, or factor — we map to 1..K labels.
 
+#' @export
 rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
   if (is.factor(group)) {
     # reorder=TRUE: honour factor's own level ordering (user-defined, preserves
@@ -1895,6 +1896,7 @@ rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
 # Group row sums for sparse matrices. Result is always dense (K × p).
 # Avoids densifying the full matrix — uses Matrix::rowsum on the dgCMatrix host.
 
+#' @export
 rowsum.adgCMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
   host <- amatrix_materialize_host(x)   # dgCMatrix
 
@@ -1970,6 +1972,7 @@ sweep.adgCMatrix <- function(x, MARGIN, STATS, FUN = "-",
   base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, ...)
 }
 
+#' @noRd
 max.col.adgeMatrix <- function(m, ties.method = "random") {
   .am_argreduce(m, "rowargmax")
 }
@@ -2643,6 +2646,10 @@ dist_matrix <- function(X, Y = NULL,
 #' @param sigma Bandwidth for \code{"rbf"} and \code{"laplacian"}.
 #' @param degree Polynomial degree for \code{"polynomial"}.
 #' @param coef Constant term for \code{"polynomial"}: (coef + x·y)^degree.
+#' @param preferred_backend Optional backend name to override the default
+#'   dispatch (e.g., \code{"mlx"}, \code{"opencl"}).
+#' @param zero_diag When \code{TRUE} and \code{Y} is \code{NULL}, set the
+#'   diagonal of the kernel matrix to zero.
 #' @return Numeric matrix [m, n] of kernel values.
 #' @seealso \code{\link{dist_matrix}}
 #' @export
@@ -2701,6 +2708,7 @@ kernel_matrix <- function(X, Y = NULL,
 }
 
 # S4 method for adgeMatrix (primary dispatch)
+#' @noRd
 setMethod("norm", "adgeMatrix", function(x, type = "F", ...) {
   type <- .norm_type(type)
   if (type == "2") {
@@ -2711,6 +2719,7 @@ setMethod("norm", "adgeMatrix", function(x, type = "F", ...) {
 })
 
 # S4 method for plain base R matrix
+#' @noRd
 setMethod("norm", "matrix", function(x, type = "F", ...) {
   type <- .norm_type(type)
   if (type == "2") {
@@ -2721,6 +2730,7 @@ setMethod("norm", "matrix", function(x, type = "F", ...) {
 })
 
 # S4 method for numeric vector: vector norms
+#' @noRd
 setMethod("norm", "numeric", function(x, type = "F", ...) {
   type <- .norm_type(type)
   switch(type,

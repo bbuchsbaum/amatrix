@@ -259,40 +259,7 @@ irlba_native <- function(A,
   )
 }
 
-#' GPU-accelerated block Lanczos truncated SVD
-#'
-#' Computes a truncated SVD by building a block Krylov subspace, issuing one
-#' GEMM per block step instead of sequential GEMVs. Large matrix products route
-#' through \code{\link{matmul}} / \code{\link[base]{crossprod}}, so the dominant
-#' work executes on the active backend while the small block QR and projected
-#' SVD stay on CPU.
-#'
-#' @param A A matrix or \code{adgeMatrix}.  Plain matrices are coerced with
-#'   \code{adgeMatrix(A, mode=mode, backend=backend)}.
-#' @param nv Number of right singular vectors.
-#' @param nu Number of left singular vectors. Defaults to \code{nv}.
-#' @param block_size Number of vectors per Krylov block. By default this is
-#'   mildly oversampled only at smaller ranks: \code{k + 1} below rank 16, and
-#'   \code{k} from rank 16 upward, capped at 24. Larger values raise GEMM
-#'   arithmetic intensity but increase memory.
-#' @param n_steps Number of block Krylov steps.  Default
-#'   \code{max(4, ceiling(max(nv, nu) / block_size) + 2)}. More steps improve
-#'   accuracy for matrices with slowly decaying singular values.
-#' @param mode,backend Passed to \code{adgeMatrix()} when coercing.
-#'
-#' @return A list with components \code{d}, \code{u}, \code{v}, \code{iter},
-#'   and \code{mprod}, matching the broad \code{irlba}-style truncated-SVD
-#'   contract.
-#'
-#' @details
-#' This is the current GEMM-oriented Lanczos path in \pkg{amatrix}. It is much
-#' faster than \code{am_irlba()} on large dense GPU-backed matrices because it
-#' replaces many sequential GEMVs with a small number of batched GEMMs. It is
-#' still an approximation surface: use more block steps when you need higher
-#' fidelity on slowly decaying spectra.
-#'
-#' @seealso \code{\link{rsvd}}, \code{\link{irlba}}, \code{\link{block_lanczos}}
-#' @export
+#' @noRd
 .amatrix_block_lanczos_default_block_size <- function(k) {
   k <- as.integer(k)
   default_block <- if (k >= 16L) k else k + 1L

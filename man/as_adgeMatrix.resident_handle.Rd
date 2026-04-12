@@ -8,6 +8,11 @@ as_adgeMatrix.resident_handle(h, ..., defer_host = FALSE)
 }
 \arguments{
 \item{h}{A \code{resident_handle}.}
+
+\item{...}{Reserved for future use.}
+
+\item{defer_host}{When \code{TRUE}, return a deferred-host
+\code{adgeMatrix} that materializes lazily.}
 }
 \value{
 An \code{adgeMatrix}.

@@ -2,12 +2,9 @@
 % Please edit documentation in R/methods-dense.R
 \name{eigen,adgeMatrix-method}
 \alias{eigen,adgeMatrix-method}
-\alias{eigen,matrix-method}
 \title{Eigendecomposition for adgeMatrix}
 \usage{
 \S4method{eigen}{adgeMatrix}(x, symmetric, only.values = FALSE, EISPACK = FALSE)
-
-\S4method{eigen}{matrix}(x, symmetric, only.values = FALSE, EISPACK = FALSE)
 }
 \arguments{
 \item{x}{An \code{adgeMatrix} or plain \code{matrix}.}

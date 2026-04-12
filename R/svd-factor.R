@@ -62,6 +62,7 @@ setClass(
   }
 )
 
+#' @noRd
 setMethod("show", "amSVD", function(object) {
   cat(sprintf(
     "amSVD [%dx%d -> rank %d | %s | %s/%s@%s | source: %s]\n  d[1:min(3,k)]: %s\n",

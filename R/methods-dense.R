@@ -17,9 +17,20 @@
 #' B <- matrix(1:3, 3, 1)
 #' A %*% B
 #'
+#' @name matmul-methods
 #' @rdname matmul-methods
-#' @aliases %*%,adgeMatrix,ANY-method
-#' @export
+#' @aliases %*%,adgeMatrix,ANY-method %*%,adgeMatrix,matrix-method
+#'   %*%,adgeMatrix,Matrix-method %*%,adgeMatrix,dgeMatrix-method
+#'   %*%,adgeMatrix,dgCMatrix-method %*%,adgeMatrix,adgeMatrix-method
+#'   %*%,adgeMatrix,adgCMatrix-method %*%,numeric,adgeMatrix-method
+#'   %*%,matrix,adgeMatrix-method %*%,aTransposeView,ANY-method
+#'   %*%,aTransposeView,adgeMatrix-method %*%,aTransposeView,matrix-method
+#'   %*%,aTransposeView,aTransposeView-method
+#'   %*%,adgeMatrix,aTransposeView-method %*%,matrix,aTransposeView-method
+#'   %*%,KronMatrix,matrix-method %*%,KronMatrix,numeric-method
+#'   %*%,matrix,KronMatrix-method %*%,numeric,KronMatrix-method
+#'   %*%,dgCMatrix,adgCMatrix-method %*%,dgeMatrix,adgCMatrix-method
+#'   %*%,matrix,adgCMatrix-method %*%,numeric,adgCMatrix-method
 NULL
 setMethod("%*%", signature(x = "adgeMatrix", y = "ANY"),       function(x, y) matmul(x, y))
 #' @rdname matmul-methods
@@ -60,6 +71,7 @@ setMethod("%*%", signature(x = "numeric", y = "adgeMatrix"), function(x, y) {
 #' @rdname matmul-methods
 #' @aliases %*%,matrix,adgeMatrix-method
 # matrix %*% adgeMatrix: x(k×m) %*% A(m×n) = t(am_crossprod(A, t(x))) = k×n.
+#' @noRd
 setMethod("%*%", signature(x = "matrix",  y = "adgeMatrix"), function(x, y) {
   # x(k×m) %*% y(m×n): wrap x as adgeMatrix and use the standard matmul path.
   matmul(new_adgeMatrix(x,
@@ -69,11 +81,14 @@ setMethod("%*%", signature(x = "matrix",  y = "adgeMatrix"), function(x, y) {
 })
 
 if (!isGeneric("t")) setGeneric("t", function(x) base::t(x))
+#' @noRd
 setMethod("t", "adgeMatrix",     function(x) am_transpose(x))
+#' @noRd
 setMethod("t", "aTransposeView", function(x) x@source)
 
 # --- aTransposeView dispatch ------------------------------------------------
 
+#' @noRd
 setMethod("show", "aTransposeView", function(object) {
   cat(sprintf(
     "An amatrix transpose view [%s|policy=%s|precision=%s] %d x %d\n",
@@ -82,22 +97,31 @@ setMethod("show", "aTransposeView", function(object) {
   ))
 })
 
+#' @noRd
 setMethod("dim",      "aTransposeView", function(x) x@Dim)
+#' @noRd
 setMethod("nrow",     "aTransposeView", function(x) x@Dim[1L])
+#' @noRd
 setMethod("ncol",     "aTransposeView", function(x) x@Dim[2L])
+#' @noRd
 setMethod("dimnames", "aTransposeView", function(x) x@Dimnames)
 
 # t(A) %*% B — route to crossprod(A, B) using the source resident key
+#' @noRd
 setMethod("%*%", signature(x = "aTransposeView", y = "adgeMatrix"),
   function(x, y) am_crossprod(x@source, y))
+#' @noRd
 setMethod("%*%", signature(x = "aTransposeView", y = "matrix"),
   function(x, y) am_crossprod(x@source, y))
+#' @noRd
 setMethod("%*%", signature(x = "aTransposeView", y = "ANY"),
   function(x, y) am_crossprod(x@source, y))
 
 # A %*% t(B) — route to tcrossprod(A, B) using the source resident key
+#' @noRd
 setMethod("%*%", signature(x = "adgeMatrix",     y = "aTransposeView"),
   function(x, y) am_tcrossprod(x, y@source))
+#' @noRd
 setMethod("%*%", signature(x = "matrix",         y = "aTransposeView"),
   function(x, y) am_tcrossprod(new_adgeMatrix(x,
     preferred_backend = y@source@preferred_backend,
@@ -105,13 +129,16 @@ setMethod("%*%", signature(x = "matrix",         y = "aTransposeView"),
     precision         = y@source@precision), y@source))
 
 # t(A) %*% t(B) = tcrossprod(B, A)
+#' @noRd
 setMethod("%*%", signature(x = "aTransposeView", y = "aTransposeView"),
   function(x, y) am_tcrossprod(y@source, x@source))
 
 # Arithmetic: materialize to adgeMatrix then delegate
+#' @noRd
 setMethod("Ops", signature(e1 = "aTransposeView", e2 = "ANY"), function(e1, e2) {
   callGeneric(as(e1, "adgeMatrix"), e2)
 })
+#' @noRd
 setMethod("Ops", signature(e1 = "ANY", e2 = "aTransposeView"), function(e1, e2) {
   callGeneric(e1, as(e2, "adgeMatrix"))
 })
@@ -183,58 +210,72 @@ setMethod("rowMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) rowmea
 #' @aliases colMeans,adgeMatrix-method
 setMethod("colMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colmeans(x, na.rm = na.rm))
 
+#' @noRd
 setMethod("cbind2", signature(x = "aMatrix", y = "aMatrix"), function(x, y, ...) {
   .amatrix_bind2("cbind2", x, y)
 })
 
+#' @noRd
 setMethod("cbind2", signature(x = "aMatrix", y = "ANY"), function(x, y, ...) {
   .amatrix_bind2("cbind2", x, y)
 })
 
+#' @noRd
 setMethod("cbind2", signature(x = "ANY", y = "aMatrix"), function(x, y, ...) {
   .amatrix_bind2("cbind2", x, y)
 })
 
+#' @noRd
 setMethod("cbind2", signature(x = "matrix", y = "aMatrix"), function(x, y, ...) {
   .amatrix_bind2("cbind2", x, y)
 })
 
+#' @noRd
 setMethod("cbind2", signature(x = "Matrix", y = "aMatrix"), function(x, y, ...) {
   .amatrix_bind2("cbind2", x, y)
 })
 
+#' @noRd
 setMethod("rbind2", signature(x = "aMatrix", y = "aMatrix"), function(x, y, ...) {
   .amatrix_bind2("rbind2", x, y)
 })
 
+#' @noRd
 setMethod("rbind2", signature(x = "aMatrix", y = "ANY"), function(x, y, ...) {
   .amatrix_bind2("rbind2", x, y)
 })
 
+#' @noRd
 setMethod("rbind2", signature(x = "ANY", y = "aMatrix"), function(x, y, ...) {
   .amatrix_bind2("rbind2", x, y)
 })
 
+#' @noRd
 setMethod("rbind2", signature(x = "matrix", y = "aMatrix"), function(x, y, ...) {
   .amatrix_bind2("rbind2", x, y)
 })
 
+#' @noRd
 setMethod("rbind2", signature(x = "Matrix", y = "aMatrix"), function(x, y, ...) {
   .amatrix_bind2("rbind2", x, y)
 })
 
+#' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })
 
+#' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })
 
+#' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "missing", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })
 
+#' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "index", j = "missing", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })
@@ -305,6 +346,7 @@ setMethod("solve", signature(a = "adgeMatrix", b = "ANY"), function(a, b, ...) a
 #' @rdname chol-methods
 #' @aliases chol,adgeMatrix-method
 setMethod("chol", "adgeMatrix", function(x, ...) am_chol(x, ...))
+#' @noRd
 setMethod("qr", "adgeMatrix", function(x, ...) am_qr(x, ...))
 
 #' Singular value decomposition for adgeMatrix
@@ -330,7 +372,9 @@ setMethod("qr", "adgeMatrix", function(x, ...) am_qr(x, ...))
 #' length(s$d)
 #'
 #' @rdname svd-methods
-#' @aliases svd,adgeMatrix-method
+#' @name svd-methods
+#' @aliases svd svd,adgeMatrix-method
+#' @export
 setMethod("svd", "adgeMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
   am_svd(x, nu = nu, nv = nv, LINPACK = LINPACK, ...)
 })
@@ -338,6 +382,7 @@ setMethod("svd", "adgeMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), L
 #' @rdname svd-methods
 #' @aliases svd,matrix-method
 # Fallback: keep base::svd working for plain matrix after we take the generic
+#' @noRd
 setMethod("svd", "matrix", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
   base::svd(x, nu = nu, nv = nv)
 })
@@ -373,17 +418,20 @@ setMethod("eigen", "adgeMatrix", function(x, symmetric, only.values = FALSE, EIS
 #' @rdname eigen-methods
 #' @aliases eigen,matrix-method
 # Fallback: keep base::eigen working for plain matrix
+#' @noRd
 setMethod("eigen", "matrix", function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
   sym <- if (missing(symmetric)) isSymmetric(x) else symmetric
   base::eigen(x, symmetric = sym, only.values = only.values, EISPACK = EISPACK)
 })
 
+#' @noRd
 setMethod("diag", "adgeMatrix", function(x = 1, nrow, ncol, names = TRUE) {
   if (missing(nrow) && missing(ncol)) am_diag(x, names = names)
   else if (missing(ncol))             am_diag(x, nrow = nrow, names = names)
   else                                am_diag(x, nrow = nrow, ncol = ncol, names = names)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "ANY"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
@@ -392,58 +440,72 @@ setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "ANY"), function(e1, e2) {
 # Matrix's Ops(dgeMatrix, dgeMatrix) method (adgeMatrix extends dgeMatrix, so
 # the inherited method has distance 1+1=2 which beats (adgeMatrix, ANY) when
 # ANY has distance > 2 for the second slot).
+#' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "numeric"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "integer"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "logical"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "matrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "Matrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "ANY", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "numeric", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "integer", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "logical", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "matrix", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "Matrix", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })

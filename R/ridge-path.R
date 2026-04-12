@@ -68,6 +68,7 @@ ridge_path <- function(X, Y, lambdas, k = NULL, ...) {
   )
 }
 
+#' @export
 print.ridge_path <- function(x, ...) {
   cat(sprintf("ridge_path: %d lambda values, k=%d singular values\n",
     length(x$lambdas), x$k))
@@ -77,12 +78,14 @@ print.ridge_path <- function(x, ...) {
   invisible(x)
 }
 
+#' @export
 coef.ridge_path <- function(object, lambda = NULL, ...) {
   if (is.null(lambda)) return(object$coef)
   idx <- which.min(abs(object$lambdas - lambda))
   object$coef[,, idx, drop = FALSE]
 }
 
+#' @export
 predict.ridge_path <- function(object, newdata, lambda = NULL, ...) {
   coefs <- coef(object, lambda = lambda)
   newdata <- as.matrix(newdata)

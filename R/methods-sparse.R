@@ -39,6 +39,7 @@ setMethod("%*%", signature(x = "adgCMatrix", y = "adgeMatrix"), function(x, y) m
 #' @aliases %*%,adgCMatrix,adgCMatrix-method
 setMethod("%*%", signature(x = "adgCMatrix", y = "adgCMatrix"), function(x, y) matmul(x, y))
 
+#' @noRd
 setMethod("t", "adgCMatrix", function(x) am_transpose(x))
 
 #' Cross-product methods for adgCMatrix
@@ -140,18 +141,22 @@ setMethod("rowMeans", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) rowmea
 #' @aliases colMeans,adgCMatrix-method
 setMethod("colMeans", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) colmeans(x, na.rm = na.rm))
 
+#' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })
 
+#' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })
 
+#' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })
 
+#' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })
@@ -180,6 +185,7 @@ setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", valu
   am_subassign(x, i, j, ..., value = value)
 })
 
+#' @noRd
 setMethod("norm", "adgCMatrix", function(x, type = "1", ...) {
   Matrix::norm(amatrix_materialize_host(x), type = type)
 })
@@ -216,6 +222,7 @@ setMethod("solve", signature(a = "adgCMatrix", b = "ANY"), function(a, b, ...) a
 #' @rdname chol-sparse-methods
 #' @aliases chol,adgCMatrix-method
 setMethod("chol", "adgCMatrix", function(x, ...) am_chol(x, ...))
+#' @noRd
 setMethod("qr", "adgCMatrix", function(x, ...) am_qr(x, ...))
 
 #' Singular value decomposition for adgCMatrix
@@ -257,62 +264,76 @@ setMethod("eigen", "adgCMatrix", function(x, symmetric, only.values = FALSE, EIS
   am_eigen(x, symmetric = sym, only.values = only.values, EISPACK = EISPACK)
 })
 
+#' @noRd
 setMethod("diag", "adgCMatrix", function(x = 1, nrow, ncol, names = TRUE) {
   if (missing(nrow) && missing(ncol)) am_diag(x, names = names)
   else if (missing(ncol))             am_diag(x, nrow = nrow, names = names)
   else                                am_diag(x, nrow = nrow, ncol = ncol, names = names)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "ANY"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
 # Explicit same-class signature: adgCMatrix extends dgCMatrix, so without this
 # Matrix's Ops(dgCMatrix, dgCMatrix) would win by distance 1+1 vs (adgCMatrix, ANY).
+#' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "numeric"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "integer"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "logical"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "matrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "Matrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "ANY", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "numeric", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "integer", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "logical", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "matrix", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 
+#' @noRd
 setMethod("Ops", signature(e1 = "Matrix", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })

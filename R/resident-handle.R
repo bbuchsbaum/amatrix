@@ -386,6 +386,9 @@ ncol.resident_handle <- function(x) x$dim[2L]
 #' still bound.  The handle becomes inert after this call.
 #'
 #' @param h A \code{resident_handle}.
+#' @param ... Reserved for future use.
+#' @param defer_host When \code{TRUE}, return a deferred-host
+#'   \code{adgeMatrix} that materializes lazily.
 #' @return An \code{adgeMatrix}.
 as_adgeMatrix.resident_handle <- function(h, ..., defer_host = FALSE) {
   .rh_check(h)

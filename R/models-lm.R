@@ -1380,54 +1380,67 @@ array_lm <- function(
   )
 }
 
+#' @export
 coef.lm_fit <- function(object, ...) {
   object$coefficients
 }
 
+#' @export
 fitted.lm_fit <- function(object, ...) {
   object$fitted.values
 }
 
+#' @export
 residuals.lm_fit <- function(object, ...) {
   object$residuals
 }
 
+#' @export
 coef.am_many_lm_fit <- function(object, ...) {
   object$coefficients
 }
 
+#' @export
 fitted.am_many_lm_fit <- function(object, ...) {
   object$fitted.values
 }
 
+#' @export
 residuals.am_many_lm_fit <- function(object, ...) {
   object$residuals
 }
 
+#' @export
 coef.wls_fit <- function(object, ...) {
   object$coefficients
 }
 
+#' @export
 fitted.wls_fit <- function(object, ...) {
   object$fitted.values
 }
 
+#' @export
 residuals.wls_fit <- function(object, ...) {
   object$residuals
 }
 
+#' @export
 coef.am_array_lm_fit <- function(object, ...) {
   object$coefficients
 }
 
+#' @export
 fitted.am_array_lm_fit <- function(object, ...) {
   object$fitted.values
 }
 
+#' @export
 residuals.am_array_lm_fit <- function(object, ...) {
   object$residuals
 }
 
+#' @export
 print.lm_fit <- function(x, ...) {
   cat(sprintf(
     "am_lm_fit [backend=%s|precision=%s|method=%s|rank=%d|df.residual=%d|cache=%s",
@@ -1446,6 +1459,7 @@ print.lm_fit <- function(x, ...) {
   invisible(x)
 }
 
+#' @export
 print.am_many_lm_fit <- function(x, ...) {
   cat(sprintf(
     "am_many_lm_fit [backend=%s|precision=%s|method=%s|responses=%d|rank=%d|df.residual=%d|cache=%s",
@@ -1465,6 +1479,7 @@ print.am_many_lm_fit <- function(x, ...) {
   invisible(x)
 }
 
+#' @export
 print.wls_fit <- function(x, ...) {
   cat(sprintf(
     "am_wls_fit [backend=%s|precision=%s|method=%s|rank=%d|df.residual=%d|cache=%s",
@@ -1483,6 +1498,7 @@ print.wls_fit <- function(x, ...) {
   invisible(x)
 }
 
+#' @export
 print.am_array_lm_fit <- function(x, ...) {
   cat(sprintf(
     "am_array_lm_fit [backend=%s|precision=%s|method=%s|responses=%d|response_dims=%s|rank=%d|df.residual=%d|cache=%s",
@@ -1503,18 +1519,22 @@ print.am_array_lm_fit <- function(x, ...) {
   invisible(x)
 }
 
+#' @export
 coef.ridge_fit <- function(object, ...) {
   object$coefficients
 }
 
+#' @export
 fitted.ridge_fit <- function(object, ...) {
   object$fitted.values
 }
 
+#' @export
 residuals.ridge_fit <- function(object, ...) {
   object$residuals
 }
 
+#' @export
 print.ridge_fit <- function(x, ...) {
   cat(sprintf(
     "am_ridge_fit [backend=%s|precision=%s|lambda=%g|rank=%d|df.residual=%d|cache=%s]\n",

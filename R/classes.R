@@ -127,6 +127,7 @@ setClass(
   )
 )
 
+#' @noRd
 setMethod("show", "adgeMatrix", function(object) {
   cat(sprintf(
     "An amatrix dense matrix [%s|policy=%s|precision=%s]\n",
@@ -143,6 +144,7 @@ setMethod("show", "adgeMatrix", function(object) {
   }
 })
 
+#' @noRd
 setMethod("show", "adgCMatrix", function(object) {
   cat(sprintf(
     "An amatrix sparse matrix [%s|policy=%s|precision=%s]\n",

@@ -66,10 +66,12 @@ kron_matrix <- function(A, B) {
 # Basic shape
 # ---------------------------------------------------------------------------
 
+#' @noRd
 setMethod("dim", "KronMatrix", function(x) {
   c(nrow(x@A) * nrow(x@B), ncol(x@A) * ncol(x@B))
 })
 
+#' @noRd
 setMethod("show", "KronMatrix", function(object) {
   dm <- dim(object)
   cat(sprintf(
@@ -92,6 +94,7 @@ as.matrix.KronMatrix <- function(x, ...) base::kronecker(x@A, x@B)
 # Transpose  t(A⊗B) = A^T ⊗ B^T
 # ---------------------------------------------------------------------------
 
+#' @noRd
 setMethod("t", "KronMatrix", function(x) {
   kron_matrix(t(x@A), t(x@B))
 })
@@ -119,19 +122,23 @@ setMethod("t", "KronMatrix", function(x) {
 # Matrix multiplication  (A⊗B) %*% rhs
 # ---------------------------------------------------------------------------
 
+#' @noRd
 setMethod("%*%", signature("KronMatrix", "numeric"), function(x, y) {
   .kron_matvec(x@A, x@B, y)
 })
 
+#' @noRd
 setMethod("%*%", signature("KronMatrix", "matrix"), function(x, y) {
   .kron_matmat(x@A, x@B, y)
 })
 
 # lhs %*% (A⊗B)  ≡  t((A⊗B)^T %*% t(lhs))  = t((A^T⊗B^T) %*% t(lhs))
+#' @noRd
 setMethod("%*%", signature("numeric", "KronMatrix"), function(x, y) {
   as.vector(.kron_matmat(t(y@A), t(y@B), matrix(x, ncol = 1L)))
 })
 
+#' @noRd
 setMethod("%*%", signature("matrix", "KronMatrix"), function(x, y) {
   t(.kron_matmat(t(y@A), t(y@B), t(x)))
 })
@@ -140,14 +147,17 @@ setMethod("%*%", signature("matrix", "KronMatrix"), function(x, y) {
 # Crossproduct  crossprod(K) = (A^T A) ⊗ (B^T B);  crossprod(K, Y) = K^T Y
 # ---------------------------------------------------------------------------
 
+#' @noRd
 setMethod("crossprod", signature("KronMatrix", "missing"), function(x, y = NULL) {
   kron_matrix(crossprod(x@A), crossprod(x@B))
 })
 
+#' @noRd
 setMethod("crossprod", signature("KronMatrix", "matrix"), function(x, y) {
   .kron_matmat(t(x@A), t(x@B), y)
 })
 
+#' @noRd
 setMethod("crossprod", signature("KronMatrix", "numeric"), function(x, y) {
   .kron_matvec(t(x@A), t(x@B), y)
 })
@@ -162,17 +172,20 @@ setMethod("crossprod", signature("KronMatrix", "numeric"), function(x, y) {
   }
 }
 
+#' @noRd
 setMethod("solve", signature("KronMatrix", "missing"), function(a, b, ...) {
   .kron_check_square(a)
   kron_matrix(solve(a@A), solve(a@B))
 })
 
+#' @noRd
 setMethod("solve", signature("KronMatrix", "numeric"), function(a, b, ...) {
   .kron_check_square(a)
   inv <- solve(a)
   .kron_matvec(inv@A, inv@B, b)
 })
 
+#' @noRd
 setMethod("solve", signature("KronMatrix", "matrix"), function(a, b, ...) {
   .kron_check_square(a)
   inv <- solve(a)
@@ -183,6 +196,7 @@ setMethod("solve", signature("KronMatrix", "matrix"), function(a, b, ...) {
 # Determinant  det(A⊗B) = det(A)^nrow(B) * det(B)^nrow(A)
 # ---------------------------------------------------------------------------
 
+#' @noRd
 setMethod("determinant", "KronMatrix", function(x, logarithm = TRUE, ...) {
   .kron_check_square(x)
   m <- nrow(x@A)   # dim of A factor

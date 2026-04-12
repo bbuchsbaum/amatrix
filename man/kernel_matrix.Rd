@@ -27,6 +27,12 @@ kernel_matrix(
 \item{degree}{Polynomial degree for \code{"polynomial"}.}
 
 \item{coef}{Constant term for \code{"polynomial"}: (coef + x·y)^degree.}
+
+\item{preferred_backend}{Optional backend name to override the default
+dispatch (e.g., \code{"mlx"}, \code{"opencl"}).}
+
+\item{zero_diag}{When \code{TRUE} and \code{Y} is \code{NULL}, set the
+diagonal of the kernel matrix to zero.}
 }
 \value{
 Numeric matrix [m, n] of kernel values.

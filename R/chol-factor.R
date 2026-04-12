@@ -89,6 +89,7 @@ setClass(
   validity = .validate_amChol
 )
 
+#' @noRd
 setMethod("show", "amChol", function(object) {
   dims <- .amatrix_amchol_dim(object)
   cat(sprintf(
@@ -746,6 +747,7 @@ setClass(
   )
 )
 
+#' @noRd
 setMethod("show", "amLU", function(object) {
   cat(sprintf(
     "amLU [%dx%d | %s | source: %s]\n",
