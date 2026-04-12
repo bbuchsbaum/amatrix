@@ -3,6 +3,10 @@
 `%||%` <- function(x, y) if (is.null(x)) y else x
 r_string_literal <- function(x) encodeString(x, quote = "\"")
 
+opencl_exact_svd_benchmark_enabled <- function() {
+  identical(Sys.getenv("AMATRIX_OPENCL_EXACT_SVD_GPU", unset = ""), "1")
+}
+
 parse_args <- function(args) {
   out <- list(
     worker = "--worker" %in% args,
@@ -226,6 +230,11 @@ benchmark_backend_case <- function(case, backend_spec, reps = 3L) {
 
   exact_status <- svd_support_status(x, backend_name, "svd")
   if (isTRUE(exact_status$ok)) {
+    old_options <- NULL
+    if (identical(backend_name, "opencl") && isTRUE(opencl_exact_svd_benchmark_enabled())) {
+      old_options <- options(amatrix.opencl.exact_svd_gpu = TRUE)
+      on.exit(options(old_options), add = TRUE)
+    }
     exact_bench <- benchmark_elapsed(
       function() svd(x, nu = case$k, nv = case$k),
       reps = reps,
@@ -234,9 +243,11 @@ benchmark_backend_case <- function(case, backend_spec, reps = 3L) {
     plan <- tryCatch(amatrix_backend_plan(x, "svd"), error = function(e) NULL)
     selected_backend <- plan$chosen %||% backend_name
     reason <- NA_character_
-    if (identical(backend_name, "opencl")) {
+    if (identical(backend_name, "opencl") && !isTRUE(opencl_exact_svd_benchmark_enabled())) {
       selected_backend <- "cpu"
       reason <- "OpenCL exact svd currently uses host LAPACK"
+    } else if (identical(backend_name, "opencl") && identical(selected_backend, "opencl")) {
+      reason <- "OpenCL exact svd via opt-in BDC route"
     }
     rows[[length(rows) + 1L]] <- new_row(
       case = case$id,
@@ -572,6 +583,7 @@ print_svd_benchmark <- function(output_dir) {
   cat("- `svd` benchmarks exact singular-value decomposition through the public amatrix surface.\n")
   cat("- `rsvd` benchmarks the standalone truncated randomized SVD surface.\n")
   cat("- MLX exact SVD stays on the safe CPU fallback path because `mlx_linalg_svd` is CPU-stream only in the current bridge.\n")
+  cat("- Set `AMATRIX_OPENCL_EXACT_SVD_GPU=1` to benchmark the opt-in OpenCL exact BDC path instead of the default CPU fallback.\n")
   cat("- MLX RSVD uses safe CPU fallback by default; set `AMATRIX_MLX_NATIVE_SPECTRAL=1` or pass `--mlx-native-spectral` to crash-probe native RSVD in isolated workers.\n")
   cat("- For actual native MLX RSVD timings, use `Rscript -e 'setwd(\"...\"); source(\"tools/benchmark-mlx-native-rsvd.R\")'`; the standalone runner intentionally avoids sourcing this full harness before MLX initializes.\n")
   cat("- `selected_backend` records the backend actually used by the path; `unsupported` and `crash` rows make backend gaps explicit.\n")

@@ -227,6 +227,32 @@ test_that("opencl deferred resident chol reports non-SPD failure at materializat
   )
 })
 
+test_that("opencl exact SVD BDC path matches base for square-ish matrices", {
+  backend <- amatrix_opencl_backend()
+  old <- options(amatrix.opencl.available = TRUE, amatrix.opencl.exact_svd_gpu = TRUE)
+  on.exit(options(old), add = TRUE)
+
+  x_square <- matrix(stats::rnorm(48L * 48L), nrow = 48L, ncol = 48L)
+  fit_square <- backend$svd(x_square, nu = 48L, nv = 48L)
+  ref_square <- base::svd(x_square, nu = 48L, nv = 48L)
+  expect_equal(fit_square$d, ref_square$d, tolerance = 1e-10)
+  expect_equal(
+    fit_square$u %*% diag(fit_square$d, nrow = length(fit_square$d)) %*% t(fit_square$v),
+    x_square,
+    tolerance = 1e-4
+  )
+
+  x_wide <- matrix(stats::rnorm(24L * 48L), nrow = 24L, ncol = 48L)
+  fit_wide <- backend$svd(x_wide, nu = 24L, nv = 24L)
+  ref_wide <- base::svd(x_wide, nu = 24L, nv = 24L)
+  expect_equal(fit_wide$d, ref_wide$d, tolerance = 1e-10)
+  expect_equal(
+    fit_wide$u %*% diag(fit_wide$d, nrow = length(fit_wide$d)) %*% t(fit_wide$v),
+    x_wide,
+    tolerance = 1e-4
+  )
+})
+
 test_that("opencl sparse routing is threshold-gated and host-backed", {
   backend <- amatrix_opencl_backend()
   sparse <- amatrix::adgCMatrix(

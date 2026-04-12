@@ -1,6 +1,7 @@
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Error.h>
+#include <R_ext/Lapack.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -521,6 +522,10 @@ static void amatrix_opencl_runtime_clear(void) {
   g_device_name[0] = '\0';
 }
 
+/* Tracks the stage at which the last init attempt failed (0 = no failure). */
+static int g_init_fail_stage = 0;
+static cl_int g_init_fail_err = 0;
+
 static int amatrix_opencl_try_init(void) {
   cl_int err = CL_SUCCESS;
   cl_uint num_platforms = 0;
@@ -537,9 +542,13 @@ static int amatrix_opencl_try_init(void) {
   }
 
   g_runtime_attempted = 1;
+  g_init_fail_stage = 0;
+  g_init_fail_err = 0;
 
   err = clGetPlatformIDs((cl_uint)(sizeof(platforms) / sizeof(platforms[0])), platforms, &num_platforms);
   if (err != CL_SUCCESS || num_platforms == 0) {
+    g_init_fail_stage = 1; /* clGetPlatformIDs */
+    g_init_fail_err = err;
     amatrix_opencl_runtime_clear();
     return 0;
   }
@@ -567,18 +576,24 @@ static int amatrix_opencl_try_init(void) {
   }
 
   if (g_device == NULL) {
+    g_init_fail_stage = 2; /* no GPU device found */
+    g_init_fail_err = err;
     amatrix_opencl_runtime_clear();
     return 0;
   }
 
   g_context = clCreateContext(NULL, 1, &g_device, NULL, NULL, &err);
   if (err != CL_SUCCESS || g_context == NULL) {
+    g_init_fail_stage = 3; /* clCreateContext */
+    g_init_fail_err = err;
     amatrix_opencl_runtime_clear();
     return 0;
   }
 
   g_queue = clCreateCommandQueue(g_context, g_device, 0, &err);
   if (err != CL_SUCCESS || g_queue == NULL) {
+    g_init_fail_stage = 4; /* clCreateCommandQueue */
+    g_init_fail_err = err;
     amatrix_opencl_runtime_clear();
     return 0;
   }
@@ -594,6 +609,15 @@ static int amatrix_opencl_try_init(void) {
 
   g_runtime_available = 1;
   return 1;
+}
+
+static void amatrix_opencl_reset_init(void) {
+  if (g_runtime_available) {
+    return; /* don't reset a working runtime */
+  }
+  g_runtime_attempted = 0;
+  g_init_fail_stage = 0;
+  g_init_fail_err = 0;
 }
 
 static cl_mem amatrix_opencl_buffer_from_r(SEXP x) {
@@ -2682,6 +2706,183 @@ static SEXP amatrix_opencl_broadcast_ewise_impl(SEXP lhs, SEXP v, int margin, co
   return out;
 }
 
+SEXP amatrix_opencl_bdc_bidiag_bridge(SEXP A_r) {
+  if (!isReal(A_r) || !isMatrix(A_r)) {
+    error("bdc_bidiag: A must be a real matrix");
+  }
+
+  SEXP dim = getAttrib(A_r, R_DimSymbol);
+  int m = INTEGER(dim)[0];
+  int n = INTEGER(dim)[1];
+  int k = (m < n) ? m : n;
+  int e_len = (k > 1) ? k - 1 : 0;
+
+  SEXP a_sexp = PROTECT(allocMatrix(REALSXP, m, n));
+  memcpy(REAL(a_sexp), REAL(A_r), (size_t)m * (size_t)n * sizeof(double));
+
+  SEXP d_sexp = PROTECT(allocVector(REALSXP, k));
+  SEXP e_sexp = PROTECT(allocVector(REALSXP, e_len));
+  SEXP tauq_sexp = PROTECT(allocVector(REALSXP, k));
+  SEXP taup_sexp = PROTECT(allocVector(REALSXP, k));
+
+  int lwork = -1;
+  int info = 0;
+  double work_query = 0.0;
+  F77_CALL(dgebrd)(
+    &m, &n, REAL(a_sexp), &m,
+    REAL(d_sexp), REAL(e_sexp),
+    REAL(tauq_sexp), REAL(taup_sexp),
+    &work_query, &lwork, &info
+  );
+  lwork = (work_query > 1.0) ? (int)work_query : (m + n) * 64;
+  double *work = (double *)R_alloc((size_t)lwork, sizeof(double));
+
+  F77_CALL(dgebrd)(
+    &m, &n, REAL(a_sexp), &m,
+    REAL(d_sexp), REAL(e_sexp),
+    REAL(tauq_sexp), REAL(taup_sexp),
+    work, &lwork, &info
+  );
+  if (info != 0) {
+    error("dgebrd failed with INFO = %d", info);
+  }
+
+  SEXP result = PROTECT(allocVector(VECSXP, 5));
+  SEXP names = PROTECT(allocVector(STRSXP, 5));
+  SET_STRING_ELT(names, 0, mkChar("a"));
+  SET_STRING_ELT(names, 1, mkChar("d"));
+  SET_STRING_ELT(names, 2, mkChar("e"));
+  SET_STRING_ELT(names, 3, mkChar("tauq"));
+  SET_STRING_ELT(names, 4, mkChar("taup"));
+  setAttrib(result, R_NamesSymbol, names);
+  SET_VECTOR_ELT(result, 0, a_sexp);
+  SET_VECTOR_ELT(result, 1, d_sexp);
+  SET_VECTOR_ELT(result, 2, e_sexp);
+  SET_VECTOR_ELT(result, 3, tauq_sexp);
+  SET_VECTOR_ELT(result, 4, taup_sexp);
+
+  UNPROTECT(7);
+  return result;
+}
+
+SEXP amatrix_opencl_bdc_orgbr_bridge(SEXP vect_r, SEXP A_r, SEXP tau_r, SEXP M_r, SEXP N_r, SEXP K_r) {
+  if (TYPEOF(vect_r) != STRSXP || XLENGTH(vect_r) < 1) {
+    error("bdc_orgbr: vect must be a length-1 character string");
+  }
+  const char *vect = CHAR(STRING_ELT(vect_r, 0));
+  if (vect[0] != 'Q' && vect[0] != 'P') {
+    error("bdc_orgbr: vect must be \"Q\" or \"P\"");
+  }
+  if (!isReal(A_r) || !isMatrix(A_r)) {
+    error("bdc_orgbr: A must be a real matrix");
+  }
+  if (!isReal(tau_r)) {
+    error("bdc_orgbr: tau must be a real vector");
+  }
+
+  SEXP dim = getAttrib(A_r, R_DimSymbol);
+  int lda = INTEGER(dim)[0];
+  int n_col = INTEGER(dim)[1];
+  int M = asInteger(M_r);
+  int N = asInteger(N_r);
+  int K = asInteger(K_r);
+
+  if (M < 0 || N < 0 || K < 0) {
+    error("bdc_orgbr: M, N, K must be non-negative");
+  }
+
+  size_t full_sz = (size_t)lda * (size_t)n_col;
+  double *a_work = (double *)R_alloc(full_sz, sizeof(double));
+  memcpy(a_work, REAL(A_r), full_sz * sizeof(double));
+  double *tau = REAL(tau_r);
+
+  int lwork = -1;
+  int info = 0;
+  double work_query = 0.0;
+  F77_CALL(dorgbr)(
+    vect, &M, &N, &K, a_work, &lda, tau,
+    &work_query, &lwork, &info, (size_t)1
+  );
+  lwork = (work_query > 1.0) ? (int)work_query : (M + N + K) * 64;
+  double *work = (double *)R_alloc((size_t)lwork, sizeof(double));
+
+  F77_CALL(dorgbr)(
+    vect, &M, &N, &K, a_work, &lda, tau,
+    work, &lwork, &info, (size_t)1
+  );
+  if (info != 0) {
+    error("dorgbr failed with INFO = %d", info);
+  }
+
+  SEXP out = PROTECT(allocMatrix(REALSXP, M, N));
+  double *out_data = REAL(out);
+  for (int j = 0; j < N; ++j) {
+    for (int i = 0; i < M; ++i) {
+      out_data[i + (size_t)j * (size_t)M] = a_work[i + (size_t)j * (size_t)lda];
+    }
+  }
+
+  UNPROTECT(1);
+  return out;
+}
+
+SEXP amatrix_opencl_bdc_dbdsdc_bridge(SEXP d_r, SEXP e_r, SEXP uplo_r) {
+  if (!isReal(d_r)) {
+    error("bdc_dbdsdc: d must be a real vector");
+  }
+  if (TYPEOF(uplo_r) != STRSXP || XLENGTH(uplo_r) < 1) {
+    error("bdc_dbdsdc: uplo must be a length-1 character string");
+  }
+
+  const char *uplo = CHAR(STRING_ELT(uplo_r, 0));
+  int N = (int)XLENGTH(d_r);
+  int e_len = (N > 1) ? N - 1 : 0;
+
+  SEXP d_out = PROTECT(allocVector(REALSXP, N));
+  memcpy(REAL(d_out), REAL(d_r), (size_t)N * sizeof(double));
+
+  double *e_work = (double *)R_alloc((size_t)((e_len > 0) ? e_len : 1), sizeof(double));
+  if (e_len > 0) {
+    memcpy(e_work, REAL(e_r), (size_t)e_len * sizeof(double));
+  }
+
+  SEXP U_out = PROTECT(allocMatrix(REALSXP, N, N));
+  SEXP VT_out = PROTECT(allocMatrix(REALSXP, N, N));
+
+  int lwork = (N > 0) ? (3 * N * N + 4 * N) : 1;
+  int liwork = (N > 0) ? (8 * N) : 1;
+  double *work = (double *)R_alloc((size_t)lwork, sizeof(double));
+  int *iwork = (int *)R_alloc((size_t)liwork, sizeof(int));
+  double dum_q = 0.0;
+  int dum_iq = 0;
+  int info = 0;
+
+  F77_CALL(dbdsdc)(
+    uplo, "I", &N,
+    REAL(d_out), e_work,
+    REAL(U_out), &N,
+    REAL(VT_out), &N,
+    &dum_q, &dum_iq, work, iwork, &info,
+    (size_t)1, (size_t)1
+  );
+  if (info != 0) {
+    error("dbdsdc failed with INFO = %d", info);
+  }
+
+  SEXP result = PROTECT(allocVector(VECSXP, 3));
+  SEXP names = PROTECT(allocVector(STRSXP, 3));
+  SET_STRING_ELT(names, 0, mkChar("d"));
+  SET_STRING_ELT(names, 1, mkChar("u"));
+  SET_STRING_ELT(names, 2, mkChar("vt"));
+  setAttrib(result, R_NamesSymbol, names);
+  SET_VECTOR_ELT(result, 0, d_out);
+  SET_VECTOR_ELT(result, 1, U_out);
+  SET_VECTOR_ELT(result, 2, VT_out);
+
+  UNPROTECT(5);
+  return result;
+}
+
 static const char *amatrix_opencl_engine_name(void) {
 #ifdef HAVE_CLBLAST
   return "opencl-clblast-scaffold";
@@ -2698,6 +2899,31 @@ SEXP amatrix_opencl_native_available_bridge(void) {
 #else
   return ScalarLogical(0);
 #endif
+}
+
+SEXP amatrix_opencl_reset_init_bridge(void) {
+#ifdef HAVE_OPENCL
+  amatrix_opencl_reset_init();
+#endif
+  return R_NilValue;
+}
+
+SEXP amatrix_opencl_init_status_bridge(void) {
+  static const char *names[] = {"attempted", "available", "fail_stage", "fail_err"};
+  SEXP out = PROTECT(amatrix_opencl_named_list(4, names));
+#ifdef HAVE_OPENCL
+  SET_VECTOR_ELT(out, 0, ScalarLogical(g_runtime_attempted));
+  SET_VECTOR_ELT(out, 1, ScalarLogical(g_runtime_available));
+  SET_VECTOR_ELT(out, 2, ScalarInteger(g_init_fail_stage));
+  SET_VECTOR_ELT(out, 3, ScalarInteger((int)g_init_fail_err));
+#else
+  SET_VECTOR_ELT(out, 0, ScalarLogical(0));
+  SET_VECTOR_ELT(out, 1, ScalarLogical(0));
+  SET_VECTOR_ELT(out, 2, ScalarInteger(0));
+  SET_VECTOR_ELT(out, 3, ScalarInteger(0));
+#endif
+  UNPROTECT(1);
+  return out;
 }
 
 SEXP amatrix_opencl_bridge_info_bridge(void) {

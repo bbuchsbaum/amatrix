@@ -214,6 +214,16 @@
     ncol <= .amatrix_opencl_ts_svd_max_n()
 }
 
+.amatrix_opencl_use_bdc_svd <- function(nrow, ncol) {
+  .amatrix_opencl_exact_svd_gpu_enabled() &&
+    nrow > 0L &&
+    ncol > 0L
+}
+
+.amatrix_opencl_bdc_gemm_min <- function() {
+  as.integer(getOption("amatrix.opencl.bdc_gemm_min", 256L))
+}
+
 .amatrix_opencl_device_linalg_available <- function(force = FALSE) {
   .amatrix_opencl_factor_gpu_enabled() &&
     isTRUE(amatrix_opencl_native_available(force = force)) &&
@@ -302,8 +312,16 @@ amatrix_opencl_native_available <- function(force = FALSE) {
     return(FALSE)
   }
 
+  if (force) {
+    .Call("amatrix_opencl_reset_init_bridge", PACKAGE = "amatrix.opencl")
+  }
+
   available <- isTRUE(.Call("amatrix_opencl_native_available_bridge", PACKAGE = "amatrix.opencl"))
   .amatrix_opencl_probe_cache_set(available)
+}
+
+amatrix_opencl_init_status <- function() {
+  .Call("amatrix_opencl_init_status_bridge", PACKAGE = "amatrix.opencl")
 }
 
 amatrix_opencl_enable_probe <- function(register = TRUE) {
@@ -333,6 +351,10 @@ amatrix_opencl_bridge_info <- function() {
 amatrix_opencl_diagnostics <- function() {
   diag <- .Call("amatrix_opencl_diagnostics_bridge", PACKAGE = "amatrix.opencl")
   diag$available <- amatrix_opencl_is_available()
+  init <- amatrix_opencl_init_status()
+  diag$init_attempted <- init$attempted
+  diag$init_fail_stage <- init$fail_stage
+  diag$init_fail_err <- init$fail_err
   diag
 }
 
@@ -716,7 +738,62 @@ amatrix_opencl_svd <- function(x, nu, nv, LINPACK = FALSE, ...) {
     ))
   }
 
+  if (.amatrix_opencl_use_bdc_svd(m, n)) {
+    return(amatrix_opencl_bdc_svd(x_mat, nu = nu, nv = nv))
+  }
+
   base::svd(x_mat, nu = nu, nv = nv, ...)
+}
+
+amatrix_opencl_bdc_svd <- function(x, nu, nv) {
+  mat <- .amatrix_opencl_dense_host(x)
+  storage.mode(mat) <- "double"
+  m <- nrow(mat)
+  n <- ncol(mat)
+  k <- min(m, n)
+  nu_eff <- min(as.integer(nu), k)
+  nv_eff <- min(as.integer(nv), k)
+
+  brd <- .Call("amatrix_opencl_bdc_bidiag_bridge", mat, PACKAGE = "amatrix.opencl")
+  uplo <- if (m >= n) "U" else "L"
+  sv_bd <- .Call("amatrix_opencl_bdc_dbdsdc_bridge", brd$d, brd$e, uplo, PACKAGE = "amatrix.opencl")
+
+  u_B <- if (nu_eff > 0L) sv_bd$u[, seq_len(nu_eff), drop = FALSE] else matrix(0, k, 0L)
+  v_B <- if (nv_eff > 0L) t(sv_bd$vt)[, seq_len(nv_eff), drop = FALSE] else matrix(0, k, 0L)
+  d_B <- sv_bd$d
+  gemm_min <- .amatrix_opencl_bdc_gemm_min()
+
+  U_out <- matrix(0, nrow = m, ncol = 0L)
+  if (nu_eff > 0L) {
+    Q_brd <- .Call(
+      "amatrix_opencl_bdc_orgbr_bridge",
+      "Q", brd$a, brd$tauq, m, k, n,
+      PACKAGE = "amatrix.opencl"
+    )
+    storage.mode(Q_brd) <- "double"
+    U_out <- if ((m * nu_eff) >= (gemm_min * gemm_min)) {
+      .Call("amatrix_opencl_matmul_bridge", Q_brd, u_B, PACKAGE = "amatrix.opencl")
+    } else {
+      Q_brd %*% u_B
+    }
+  }
+
+  V_out <- matrix(0, nrow = n, ncol = 0L)
+  if (nv_eff > 0L) {
+    Pt_brd <- .Call(
+      "amatrix_opencl_bdc_orgbr_bridge",
+      "P", brd$a, brd$taup, k, n, m,
+      PACKAGE = "amatrix.opencl"
+    )
+    storage.mode(Pt_brd) <- "double"
+    V_out <- if ((n * nv_eff) >= (gemm_min * gemm_min)) {
+      .Call("amatrix_opencl_crossprod_bridge", Pt_brd, v_B, PACKAGE = "amatrix.opencl")
+    } else {
+      crossprod(Pt_brd, v_B)
+    }
+  }
+
+  list(u = U_out, d = d_B, v = V_out)
 }
 
 amatrix_opencl_ts_svd <- function(x, nu, nv) {
