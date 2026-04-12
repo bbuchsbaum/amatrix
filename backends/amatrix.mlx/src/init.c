@@ -28,6 +28,8 @@ extern SEXP amatrix_mlx_crossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP o
 extern SEXP amatrix_mlx_tcrossprod_resident_bridge(SEXP x_key, SEXP y_key, SEXP out_key);
 extern SEXP amatrix_mlx_ewise_resident_bridge(SEXP lhs_key, SEXP rhs, SEXP op, SEXP out_key);
 extern SEXP amatrix_mlx_broadcast_ewise_resident_bridge(SEXP lhs_key, SEXP v, SEXP margin, SEXP op, SEXP out_key);
+extern SEXP amatrix_mlx_sum_axis_resident_key_bridge(SEXP x_key, SEXP axis, SEXP out_key);
+extern SEXP amatrix_mlx_broadcast_ewise_resident_inplace_key_bridge(SEXP lhs_key, SEXP v_key, SEXP margin, SEXP op);
 extern SEXP amatrix_mlx_argreduce_bridge(SEXP lhs_key, SEXP axis, SEXP is_max);
 extern SEXP amatrix_mlx_scatter_mean_bridge(SEXP lhs_key, SEXP labels, SEXP K);
 extern SEXP amatrix_mlx_segment_sum_bridge(SEXP x_key, SEXP labels, SEXP K, SEXP out_key);
@@ -74,6 +76,8 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_mlx_tcrossprod_resident_bridge", (DL_FUNC) &amatrix_mlx_tcrossprod_resident_bridge, 3},
     {"amatrix_mlx_ewise_resident_bridge",           (DL_FUNC) &amatrix_mlx_ewise_resident_bridge,           4},
     {"amatrix_mlx_broadcast_ewise_resident_bridge", (DL_FUNC) &amatrix_mlx_broadcast_ewise_resident_bridge, 5},
+    {"amatrix_mlx_sum_axis_resident_key_bridge",              (DL_FUNC) &amatrix_mlx_sum_axis_resident_key_bridge,              3},
+    {"amatrix_mlx_broadcast_ewise_resident_inplace_key_bridge", (DL_FUNC) &amatrix_mlx_broadcast_ewise_resident_inplace_key_bridge, 4},
     {"amatrix_mlx_argreduce_bridge",               (DL_FUNC) &amatrix_mlx_argreduce_bridge,               3},
     {"amatrix_mlx_scatter_mean_bridge",            (DL_FUNC) &amatrix_mlx_scatter_mean_bridge,            3},
     {"amatrix_mlx_segment_sum_bridge",             (DL_FUNC) &amatrix_mlx_segment_sum_bridge,             4},

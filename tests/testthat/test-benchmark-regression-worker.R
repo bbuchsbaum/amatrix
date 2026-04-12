@@ -168,3 +168,104 @@ test_that("benchmark regression worker marks dense Metal groups unsupported inst
   expect_true(all(rows$requested_backend == "metal"))
   expect_true(all(rows$error_message %in% c("op unsupported", "calibration rejected", "resident op unsupported")))
 })
+
+test_that("benchmark regression worker handles MLX groups without crashing", {
+  ctx <- benchmark_helper_context()
+  repo_root <- ctx$repo_root
+  helper_env <- ctx$helper_env
+
+  mlx_spec <- helper_env$.benchmark_optional_backend_specs(include_arrayfire = FALSE)[["mlx"]]
+  if (is.null(mlx_spec)) {
+    skip("MLX backend spec not available")
+  }
+
+  plan <- list(list(
+    group_id = "dense-mlx-matmul",
+    suite = "dense",
+    requested_backend = "mlx",
+    op = "matmul"
+  ))
+  plan_path <- tempfile("benchmark-regression-mlx-plan-", fileext = ".rds")
+  out_path <- tempfile("benchmark-regression-mlx-out-", fileext = ".rds")
+  on.exit(unlink(c(plan_path, out_path)), add = TRUE)
+  saveRDS(plan, plan_path)
+
+  script_path <- file.path(repo_root, "tools", "benchmark-regression.R")
+  launch <- helper_env$benchmark_system2_capture(
+    file.path(R.home("bin"), "Rscript"),
+    helper_env$benchmark_rscript_source_args(
+      script_path,
+      working_dir = repo_root,
+      main_call = "benchmark_regression_main(commandArgs(trailingOnly = TRUE))",
+      args = c(
+        "--worker",
+        paste0("--plan=", plan_path),
+        "--group-id=dense-mlx-matmul",
+        paste0("--out=", out_path)
+      )
+    )
+  )
+
+  expect_equal(launch$status, 0L, info = paste(launch$output, collapse = "\n"))
+  expect_true(file.exists(out_path), info = paste(launch$output, collapse = "\n"))
+
+  rows <- readRDS(out_path)
+  expect_true(all(rows$requested_backend == "mlx"))
+  expect_true(
+    all(rows$status %in% c("ok", "unsupported", "unavailable")),
+    info = sprintf("unexpected status: %s", paste(unique(rows$status), collapse = ", "))
+  )
+  expect_false(any(rows$status == "crash"), info = "MLX worker crashed")
+})
+
+test_that("benchmark regression worker handles ArrayFire groups without crashing", {
+  ctx <- benchmark_helper_context()
+  repo_root <- ctx$repo_root
+  helper_env <- ctx$helper_env
+
+  af_spec <- helper_env$.benchmark_optional_backend_specs(include_arrayfire = TRUE)[["arrayfire"]]
+  if (is.null(af_spec)) {
+    skip("ArrayFire backend spec not available")
+  }
+  if (!dir.exists(file.path(repo_root, af_spec$repo_dir))) {
+    skip("ArrayFire backend source directory not found")
+  }
+
+  plan <- list(list(
+    group_id = "dense-arrayfire-matmul",
+    suite = "dense",
+    requested_backend = "arrayfire",
+    op = "matmul"
+  ))
+  plan_path <- tempfile("benchmark-regression-af-plan-", fileext = ".rds")
+  out_path <- tempfile("benchmark-regression-af-out-", fileext = ".rds")
+  on.exit(unlink(c(plan_path, out_path)), add = TRUE)
+  saveRDS(plan, plan_path)
+
+  script_path <- file.path(repo_root, "tools", "benchmark-regression.R")
+  launch <- helper_env$benchmark_system2_capture(
+    file.path(R.home("bin"), "Rscript"),
+    helper_env$benchmark_rscript_source_args(
+      script_path,
+      working_dir = repo_root,
+      main_call = "benchmark_regression_main(commandArgs(trailingOnly = TRUE))",
+      args = c(
+        "--worker",
+        paste0("--plan=", plan_path),
+        "--group-id=dense-arrayfire-matmul",
+        paste0("--out=", out_path)
+      )
+    )
+  )
+
+  expect_equal(launch$status, 0L, info = paste(launch$output, collapse = "\n"))
+  expect_true(file.exists(out_path), info = paste(launch$output, collapse = "\n"))
+
+  rows <- readRDS(out_path)
+  expect_true(all(rows$requested_backend == "arrayfire"))
+  expect_true(
+    all(rows$status %in% c("ok", "unsupported", "unavailable")),
+    info = sprintf("unexpected status: %s", paste(unique(rows$status), collapse = ", "))
+  )
+  expect_false(any(rows$status == "crash"), info = "ArrayFire worker crashed")
+})

@@ -3,8 +3,74 @@
 `%||%` <- function(x, y) if (is.null(x)) y else x
 r_string_literal <- function(x) encodeString(x, quote = "\"")
 
+benchmark_regression_cli_script_path <- function(script_path = NULL) {
+  if (is.null(script_path)) {
+    script_path <- getOption("amatrix.benchmark_regression.script_path", "tools/benchmark-regression.R")
+  }
+
+  repo_root <- normalizePath(dirname(dirname(script_path)), winslash = "/", mustWork = TRUE)
+  cli_path <- normalizePath(file.path(repo_root, "tools", "benchmark-regression-cli.R"), winslash = "/", mustWork = TRUE)
+
+  list(
+    script_path = normalizePath(script_path, winslash = "/", mustWork = TRUE),
+    repo_root = repo_root,
+    cli_path = cli_path
+  )
+}
+
+benchmark_regression_bootstrap_direct_entry <- function() {
+  raw_args <- commandArgs(trailingOnly = FALSE)
+  direct_file_paths <- sub("^--file=", "", grep("^--file=", raw_args, value = TRUE))
+  if (length(direct_file_paths) == 0L) {
+    return(invisible(FALSE))
+  }
+  direct_file_paths <- direct_file_paths[basename(direct_file_paths) == "benchmark-regression.R"]
+  if (length(direct_file_paths) == 0L) {
+    return(invisible(FALSE))
+  }
+
+  trailing_args <- commandArgs(trailingOnly = TRUE)
+  if ("--safe-main" %in% trailing_args || "--worker" %in% trailing_args) {
+    return(invisible(FALSE))
+  }
+
+  cli_info <- benchmark_regression_cli_script_path(direct_file_paths[[1L]])
+  relaunch_args <- c(cli_info$cli_path, trailing_args)
+  warned_status <- NULL
+  relaunch_output <- withCallingHandlers(
+    system2(file.path(R.home("bin"), "Rscript"), vapply(relaunch_args, shQuote, character(1), USE.NAMES = FALSE), stdout = TRUE, stderr = TRUE),
+    warning = function(w) {
+      warned_status <<- attr(w, "status") %||% warned_status
+      invokeRestart("muffleWarning")
+    }
+  )
+  status <- attr(relaunch_output, "status") %||% warned_status %||% 0L
+
+  if (length(relaunch_output) > 0L) {
+    cat(paste(relaunch_output, collapse = "\n"), sep = "\n")
+    if (!grepl("\n$", paste(relaunch_output, collapse = "\n"))) {
+      cat("\n")
+    }
+  }
+
+  quit(save = "no", status = status)
+}
+
+benchmark_regression_bootstrap_direct_entry()
+
 timestamp_tag <- function(x = Sys.time()) {
   format(as.POSIXct(x, tz = Sys.timezone()), "%Y%m%d-%H%M%S")
+}
+
+benchmark_launch_debug <- function(...) {
+  path <- Sys.getenv("AMATRIX_BENCHMARK_LAUNCH_DEBUG", unset = "")
+  if (!nzchar(path)) {
+    return(invisible(FALSE))
+  }
+
+  line <- paste(..., collapse = "")
+  cat(sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), line), file = path, append = TRUE)
+  invisible(TRUE)
 }
 
 parse_args <- function(args) {
@@ -52,6 +118,7 @@ parse_args <- function(args) {
 relaunch_safe_master_if_needed <- function(args) {
   raw_args <- commandArgs(trailingOnly = FALSE)
   direct_file_paths <- sub("^--file=", "", grep("^--file=", raw_args, value = TRUE))
+  direct_file_paths <- direct_file_paths[basename(direct_file_paths) == "benchmark-regression.R"]
   if (length(direct_file_paths) == 0L) {
     script_like_paths <- raw_args[basename(raw_args) == "benchmark-regression.R"]
     if (length(script_like_paths) > 0L) {
@@ -61,21 +128,24 @@ relaunch_safe_master_if_needed <- function(args) {
       direct_file_paths <- existing_paths[basename(existing_paths) == "benchmark-regression.R"]
     }
   }
-  direct_file_entry <- !("-e" %in% raw_args) || length(direct_file_paths) > 0L
+  direct_file_entry <- length(direct_file_paths) > 0L
+  benchmark_launch_debug(
+    "raw_args=", paste(raw_args, collapse = " | "),
+    " ; direct_file_paths=", paste(direct_file_paths, collapse = " | "),
+    " ; direct_file_entry=", direct_file_entry,
+    " ; worker=", isTRUE(args$worker),
+    " ; safe_main=", isTRUE(args$safe_main)
+  )
 
   if (!direct_file_entry || isTRUE(args$worker) || isTRUE(args$safe_main)) {
+    benchmark_launch_debug("skipping relaunch")
     return(invisible(FALSE))
   }
 
-  script_path <- normalizePath(direct_file_paths[[1L]], winslash = "/", mustWork = TRUE)
-  repo_root <- normalizePath(dirname(dirname(script_path)), winslash = "/", mustWork = TRUE)
-  expr <- sprintf(
-    "setwd(%s); source(%s, local = globalenv())",
-    r_string_literal(repo_root),
-    r_string_literal(script_path)
-  )
-  relaunch_args <- c("-e", expr, "--args", "--safe-main", commandArgs(trailingOnly = TRUE))
+  cli_info <- benchmark_regression_cli_script_path(direct_file_paths[[1L]])
+  relaunch_args <- c(cli_info$cli_path, commandArgs(trailingOnly = TRUE))
   quoted_relaunch_args <- vapply(relaunch_args, shQuote, character(1), USE.NAMES = FALSE)
+  benchmark_launch_debug("relaunching via cli wrapper with script_path=", cli_info$script_path)
   warned_status <- NULL
   relaunch_output <- withCallingHandlers(
     system2(file.path(R.home("bin"), "Rscript"), quoted_relaunch_args, stdout = TRUE, stderr = TRUE),
@@ -336,6 +406,13 @@ with_sparse_benchmark_backend_options <- function(requested_backend, rhs_width, 
     )
   }
 
+  if (identical(requested_backend, "arrayfire")) {
+    options(
+      amatrix.arrayfire.spmv_min_nnz = 1L,
+      amatrix.arrayfire.spmm_min_nnz = 1L
+    )
+  }
+
   force(code)
 }
 
@@ -494,6 +571,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
       eigen_sym = "eigen",
       many_lm = "matmul",
       rsvd = "rsvd",
+      svd = "svd",
       sinkhorn = "matmul"
     )
     dispatch <- compute_dispatch_info(probe_x, dispatch_op, y = probe_y, requested_backend = requested_backend)
@@ -543,6 +621,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
       eigen_sym = function() { aS <- make_dense_operand(SPD, requested_backend); on.exit(release_residency(aS), add = TRUE); invisible(eigh(aS)) },
       many_lm = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(many_lm(aX, Y, method = "qr", cache = FALSE)) },
       rsvd = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(rsvd(aX, k = 10L)) },
+      svd = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(svd(aX)) },
       sinkhorn = function() { aSink <- make_dense_operand(sink_host, requested_backend); on.exit(release_residency(aSink), add = TRUE); invisible(sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE)) }
     ),
     warm = {
@@ -568,6 +647,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
         if (identical(op, "eigen_sym")) invisible(eigh(aS))
         if (identical(op, "many_lm")) invisible(many_lm(aX, Y, method = "qr", cache = TRUE))
         if (identical(op, "rsvd")) invisible(rsvd(aX, k = 10L))
+        if (identical(op, "svd")) invisible(svd(aX))
         if (identical(op, "sinkhorn")) invisible(sinkhorn(aSink, max_iter = 5L, tol = 0, return_info = FALSE))
       }, error = function(e) NULL)
 
@@ -582,6 +662,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
         eigen_sym = function() invisible(eigh(aS)),
         many_lm = function() invisible(many_lm(aX, Y, method = "qr", cache = TRUE)),
         rsvd = function() invisible(rsvd(aX, k = 10L)),
+        svd = function() invisible(svd(aX)),
         sinkhorn = function() invisible(sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE))
       )
     },
@@ -650,13 +731,13 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
     release_residency(probe_y)
 
     if (!identical(requested_backend, "cpu") && identical(dispatch$requested_supported, FALSE)) {
-      return(list(
+      list(
         dispatch = dispatch,
         reps = NA_integer_,
         median_ms = NA_real_,
         unsupported = TRUE
-      ))
-    }
+      )
+    } else {
 
     reps <- 5L
     runner <- switch(
@@ -694,6 +775,7 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
       reps = reps,
       median_ms = benchmark_time_ms(runner, reps = reps)
     )
+    } # end else (supported path)
   })
 
   dispatch <- sparse_result$dispatch
@@ -776,6 +858,18 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
       tryCatch(amatrix::amatrix_resident_backend_for(probe_x, op = "matmul"), error = function(e) NULL) %||% requested_backend
     }
     release_residency(probe_x)
+    requested_supported <- if (identical(requested_backend, "cpu")) {
+      NA
+    } else {
+      isTRUE(!is.na(dispatch_backend) && identical(dispatch_backend, requested_backend))
+    }
+    requested_support_reason <- if (identical(requested_backend, "cpu")) {
+      NA_character_
+    } else if (isTRUE(requested_supported)) {
+      "iterative supported"
+    } else {
+      "iterative rerouted"
+    }
 
     reps <- 3L
     runner <- switch(
@@ -858,6 +952,8 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
     )
 
     list(
+      requested_supported = requested_supported,
+      requested_support_reason = requested_support_reason,
       dispatch_backend = dispatch_backend,
       reps = reps,
       median_ms = benchmark_time_ms(runner, reps = reps)
@@ -872,6 +968,9 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
     size_label = size_label,
     variant = variant,
     requested_backend = requested_backend,
+    dispatch_probe_op = op,
+    requested_supported = iterative_result$requested_supported,
+    requested_support_reason = iterative_result$requested_support_reason,
     dispatch_backend = iterative_result$dispatch_backend,
     dispatch_path = "iterative",
     nrow = size$nrow,
@@ -962,7 +1061,7 @@ group_plan <- function(backends, suites = c("dense", "sparse")) {
   out <- list()
 
   if ("dense" %in% suites) {
-    dense_ops <- c("matmul", "crossprod", "covariance", "dist", "chol", "solve_rhs", "eigen_sym", "many_lm", "rsvd", "sinkhorn")
+    dense_ops <- c("matmul", "crossprod", "covariance", "dist", "chol", "solve_rhs", "eigen_sym", "many_lm", "rsvd", "svd", "sinkhorn")
     for (backend in backends) {
       for (op in dense_ops) {
         out[[length(out) + 1L]] <- list(group_id = sprintf("dense-%s-%s", backend, op), suite = "dense", requested_backend = backend, op = op)
@@ -1406,7 +1505,13 @@ run_worker <- function(args) {
 
   groups <- readRDS(args$plan)
   group <- Filter(function(x) identical(x$group_id, args$group_id), groups)[[1L]]
-  prime_requested_backend(group$requested_backend, include_arrayfire = args$include_arrayfire)
+  prime_ok <- prime_requested_backend(group$requested_backend, include_arrayfire = args$include_arrayfire)
+  benchmark_launch_debug(
+    "worker group=", group$group_id,
+    " ; requested_backend=", group$requested_backend,
+    " ; prime_ok=", isTRUE(prime_ok),
+    " ; diagnostics=", format_backend_diagnostics(group$requested_backend)
+  )
   result <- run_group(group)
   saveRDS(result, args$out)
   invisible(NULL)
@@ -1416,6 +1521,11 @@ run_master <- function(args) {
   specs <- canonical_backend_specs(include_arrayfire = args$include_arrayfire)
   specs <- filter_backend_specs(specs, args$backends)
   detected_backend_names <- vapply(specs, `[[`, character(1), "name")
+  benchmark_launch_debug(
+    "master detected_backends=", paste(detected_backend_names, collapse = ","),
+    " ; requested=", paste(args$backends %||% character(), collapse = ","),
+    " ; include_arrayfire=", args$include_arrayfire
+  )
   backend_names <- if (is.null(args$backends)) {
     detected_backend_names
   } else {
@@ -1469,7 +1579,11 @@ run_master <- function(args) {
   )
 
   rows <- list()
-  script_path <- normalizePath(sys.frame(1)$ofile %||% "tools/benchmark-regression.R", mustWork = FALSE)
+  script_path <- normalizePath(
+    getOption("amatrix.benchmark_regression.script_path", sys.frame(1)$ofile %||% "tools/benchmark-regression.R"),
+    winslash = "/",
+    mustWork = FALSE
+  )
 
   for (group in groups) {
     out_path <- tempfile(sprintf("%s-", group$group_id), fileext = ".rds")
@@ -1478,7 +1592,8 @@ run_master <- function(args) {
       file.path(R.home("bin"), "Rscript"),
       benchmark_rscript_source_args(
         script_path,
-        args = c("--worker", paste0("--plan=", plan_path), paste0("--group-id=", group$group_id), paste0("--out=", out_path))
+        args = c("--worker", paste0("--plan=", plan_path), paste0("--group-id=", group$group_id), paste0("--out=", out_path)),
+        main_call = "benchmark_regression_main(commandArgs(trailingOnly = TRUE))"
       )
     )
     log <- launch$output
@@ -1522,12 +1637,98 @@ run_master <- function(args) {
   invisible(results)
 }
 
-args <- parse_args(commandArgs(trailingOnly = TRUE))
-relaunch_safe_master_if_needed(args)
-initialize_regression_benchmark_context()
+benchmark_regression_dispatch <- function(command_args = commandArgs(trailingOnly = TRUE), allow_relaunch = TRUE) {
+  args <- parse_args(command_args)
+  if (isTRUE(allow_relaunch)) {
+    relaunch_safe_master_if_needed(args)
+  }
+  initialize_regression_benchmark_context()
 
-if (isTRUE(args$worker)) {
-  run_worker(args)
-} else {
-  run_master(args)
+  if (isTRUE(args$worker)) {
+    run_worker(args)
+  } else {
+    run_master(args)
+  }
+
+  invisible(TRUE)
+}
+
+benchmark_regression_main <- function(command_args = commandArgs(trailingOnly = TRUE)) {
+  benchmark_regression_dispatch(command_args = command_args, allow_relaunch = TRUE)
+}
+
+benchmark_regression_direct_file_info <- function() {
+  raw_args <- commandArgs(trailingOnly = FALSE)
+  direct_file_paths <- sub("^--file=", "", grep("^--file=", raw_args, value = TRUE))
+  if (length(direct_file_paths) == 0L) {
+    script_like_paths <- raw_args[basename(raw_args) == "benchmark-regression.R"]
+    if (length(script_like_paths) > 0L) {
+      direct_file_paths <- script_like_paths
+    } else {
+      existing_paths <- raw_args[file.exists(raw_args)]
+      direct_file_paths <- existing_paths[basename(existing_paths) == "benchmark-regression.R"]
+    }
+  }
+
+  if (length(direct_file_paths) == 0L) {
+    return(NULL)
+  }
+  direct_file_paths <- direct_file_paths[basename(direct_file_paths) == "benchmark-regression.R"]
+  if (length(direct_file_paths) == 0L) {
+    return(NULL)
+  }
+
+  script_path <- normalizePath(direct_file_paths[[1L]], winslash = "/", mustWork = TRUE)
+  list(
+    script_path = script_path,
+    repo_root = normalizePath(dirname(dirname(script_path)), winslash = "/", mustWork = TRUE)
+  )
+}
+
+benchmark_regression_invoked_directly <- function() {
+  !is.null(benchmark_regression_direct_file_info())
+}
+
+benchmark_regression_direct_relaunch <- function(command_args = commandArgs(trailingOnly = TRUE)) {
+  info <- benchmark_regression_direct_file_info()
+  if (is.null(info)) {
+    return(invisible(FALSE))
+  }
+
+  cli_info <- benchmark_regression_cli_script_path(info$script_path)
+  relaunch_args <- c(cli_info$cli_path, command_args)
+  warned_status <- NULL
+  relaunch_output <- withCallingHandlers(
+    system2(
+      file.path(R.home("bin"), "Rscript"),
+      vapply(relaunch_args, shQuote, character(1), USE.NAMES = FALSE),
+      stdout = TRUE,
+      stderr = TRUE
+    ),
+    warning = function(w) {
+      warned_status <<- attr(w, "status") %||% warned_status
+      invokeRestart("muffleWarning")
+    }
+  )
+  relaunch_status <- attr(relaunch_output, "status") %||% warned_status %||% 0L
+
+  if (length(relaunch_output) > 0L) {
+    cat(paste(relaunch_output, collapse = "\n"), sep = "\n")
+    if (!grepl("\n$", paste(relaunch_output, collapse = "\n"))) {
+      cat("\n")
+    }
+  }
+
+  quit(save = "no", status = relaunch_status)
+}
+
+if (benchmark_regression_invoked_directly()) {
+  direct_args <- commandArgs(trailingOnly = TRUE)
+  parsed_args <- parse_args(direct_args)
+
+  if (!isTRUE(parsed_args$safe_main) && !isTRUE(parsed_args$worker)) {
+    benchmark_regression_direct_relaunch(direct_args)
+  } else {
+    benchmark_regression_main(direct_args)
+  }
 }

@@ -7,7 +7,7 @@ benchmark_regression_context <- function() {
   sys.source(helper_path, envir = env)
 
   script_lines <- readLines(script_path, warn = FALSE)
-  cutoff <- grep("^args <- parse_args\\(", script_lines)[[1L]] - 1L
+  cutoff <- grep("^benchmark_regression_main <- function", script_lines)[[1L]] - 1L
   eval(parse(text = paste(script_lines[seq_len(cutoff)], collapse = "\n")), envir = env)
 
   env
@@ -17,54 +17,61 @@ test_that("benchmark summary separates availability support routing and performa
   ctx <- benchmark_regression_context()
 
   rows <- data.frame(
-    suite = rep("dense", 5L),
-    op = rep("matmul", 5L),
-    size_label = rep("small", 5L),
-    variant = rep("cold", 5L),
-    requested_backend = c("cpu", "opencl", "arrayfire", "metal", "opencl"),
-    dispatch_probe_op = rep("matmul", 5L),
-    requested_supported = c(NA, TRUE, TRUE, FALSE, FALSE),
-    requested_support_reason = c(NA, "cold supported", "cold supported", "op unsupported", "backend unavailable"),
-    dispatch_backend = c("cpu", "opencl", "cpu", "cpu", NA),
-    dispatch_path = c("cold", "cold", "cold", "cold", NA),
-    status = c("ok", "ok", "ok", "unsupported", "unavailable"),
-    error_message = rep(NA_character_, 5L),
-    nrow = rep(256L, 5L),
-    ncol = rep(32L, 5L),
-    rhs_width = rep(0L, 5L),
-    nnz = rep(0L, 5L),
-    density = rep(0, 5L),
-    density_bucket = rep("dense", 5L),
-    reps = rep(1L, 5L),
-    median_ms = c(10, 5, 12, NA, NA),
-    cpu_reference_ms = rep(10, 5L),
-    baseline_ms = rep(NA_real_, 5L),
-    ratio_vs_baseline = rep(NA_real_, 5L),
+    suite = c(rep("dense", 5L), "sparse"),
+    op = c(rep("matmul", 5L), "block_lanczos"),
+    size_label = c(rep("small", 5L), "medium"),
+    variant = c(rep("cold", 5L), "warm"),
+    requested_backend = c("cpu", "opencl", "arrayfire", "metal", "opencl", "opencl"),
+    dispatch_probe_op = c(rep("matmul", 5L), "block_lanczos"),
+    requested_supported = c(NA, TRUE, TRUE, FALSE, FALSE, TRUE),
+    requested_support_reason = c(NA, "cold supported", "cold supported", "op unsupported", "backend unavailable", "iterative supported"),
+    dispatch_backend = c("cpu", "opencl", "cpu", "cpu", NA, "opencl"),
+    dispatch_path = c("cold", "cold", "cold", "cold", NA, "iterative"),
+    status = c("ok", "ok", "ok", "unsupported", "unavailable", "ok"),
+    error_message = rep(NA_character_, 6L),
+    nrow = c(rep(256L, 5L), 4000L),
+    ncol = c(rep(32L, 5L), 1000L),
+    rhs_width = c(rep(0L, 5L), 8L),
+    nnz = c(rep(0L, 5L), 2000L),
+    density = c(rep(0, 5L), 0.05),
+    density_bucket = c(rep("dense", 5L), "sparse"),
+    reps = rep(1L, 6L),
+    median_ms = c(10, 5, 12, NA, NA, 4),
+    cpu_reference_ms = c(rep(10, 5L), 8),
+    baseline_ms = rep(NA_real_, 6L),
+    ratio_vs_baseline = rep(NA_real_, 6L),
     stringsAsFactors = FALSE
   )
 
   summary <- ctx$summarize_results(rows)
-  key <- paste(summary$requested_backend, summary$status, ifelse(is.na(summary$dispatch_backend), "NA", summary$dispatch_backend), sep = "|")
+  key <- paste(
+    summary$requested_backend,
+    summary$op,
+    summary$status,
+    ifelse(is.na(summary$dispatch_backend), "NA", summary$dispatch_backend),
+    sep = "|"
+  )
   summary <- summary[match(
     c(
-      "cpu|ok|cpu",
-      "opencl|ok|opencl",
-      "arrayfire|ok|cpu",
-      "metal|unsupported|cpu",
-      "opencl|unavailable|NA"
+      "cpu|matmul|ok|cpu",
+      "opencl|matmul|ok|opencl",
+      "arrayfire|matmul|ok|cpu",
+      "metal|matmul|unsupported|cpu",
+      "opencl|matmul|unavailable|NA",
+      "opencl|block_lanczos|ok|opencl"
     ),
     key
   ), ]
 
   expect_identical(summary$selected_backend, summary$dispatch_backend)
-  expect_identical(summary$availability_state, c("cpu_baseline", "available", "available", "available", "unavailable"))
-  expect_identical(summary$support_state, c("cpu_baseline", "supported", "supported", "unsupported", "backend_unavailable"))
-  expect_identical(summary$execution_state, c("executed", "executed", "executed", "unsupported", "unavailable"))
-  expect_identical(summary$routing_state, c("cpu_baseline", "accelerated", "cpu_fallback", "not_run", "not_run"))
+  expect_identical(summary$availability_state, c("cpu_baseline", "available", "available", "available", "unavailable", "available"))
+  expect_identical(summary$support_state, c("cpu_baseline", "supported", "supported", "unsupported", "backend_unavailable", "supported"))
+  expect_identical(summary$execution_state, c("executed", "executed", "executed", "unsupported", "unavailable", "executed"))
+  expect_identical(summary$routing_state, c("cpu_baseline", "accelerated", "cpu_fallback", "not_run", "not_run", "accelerated"))
   expect_identical(summary$dispatch_state, summary$routing_state)
   expect_identical(
     summary$performance_state,
-    c("cpu_baseline", "accelerated_faster_than_cpu", "not_accelerated", "not_run", "not_run")
+    c("cpu_baseline", "accelerated_faster_than_cpu", "not_accelerated", "not_run", "not_run", "accelerated_faster_than_cpu")
   )
 })
 

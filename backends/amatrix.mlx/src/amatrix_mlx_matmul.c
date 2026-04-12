@@ -2457,6 +2457,114 @@ SEXP amatrix_mlx_broadcast_ewise_resident_bridge(SEXP lhs_key, SEXP v, SEXP marg
 #endif
 }
 
+/* ── Key-chain helpers for sinkhorn (stay on device) ──────────────────── */
+
+SEXP amatrix_mlx_sum_axis_resident_key_bridge(SEXP x_key, SEXP axis, SEXP out_key) {
+#ifdef HAVE_MLXC
+  mlx_stream stream;
+  mlx_array ax = amatrix_mlx_array_from_resident_key(x_key);
+  mlx_array out = mlx_array_new();
+  int axis_val = INTEGER(axis)[0];
+  amatrix_mlx_resident_entry* entry = NULL;
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+    error("mlx GPU stream is unavailable");
+  }
+
+  if (mlx_sum_axis(&out, ax, axis_val, false, stream) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx_sum_axis (resident_key) failed");
+  }
+
+  if (mlx_array_eval(out) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx_array_eval (sum_axis_resident_key) failed");
+  }
+
+  entry = amatrix_mlx_registry_reserve(CHAR(asChar(out_key)));
+  entry->array = out;
+  mlx_stream_free(stream);
+  return R_NilValue;
+#else
+  error("mlx sum_axis_resident_key requires mlx-c");
+  return R_NilValue;
+#endif
+}
+
+SEXP amatrix_mlx_broadcast_ewise_resident_inplace_key_bridge(
+    SEXP lhs_key, SEXP v_key, SEXP margin_r, SEXP op) {
+#ifdef HAVE_MLXC
+  mlx_stream stream;
+  mlx_array a = amatrix_mlx_array_from_resident_key(lhs_key);
+  mlx_array v_raw = amatrix_mlx_array_from_resident_key(v_key);
+  mlx_array v_arr = mlx_array_new();
+  mlx_array out = mlx_array_new();
+  const char* op_name = CHAR(asChar(op));
+  int margin = INTEGER(margin_r)[0];
+  amatrix_mlx_resident_entry* entry = NULL;
+
+  amatrix_mlx_install_error_handler();
+  if (!amatrix_mlx_gpu_stream_ok(&stream)) {
+    error("mlx GPU stream is unavailable");
+  }
+
+  /* Reshape 1-D sum vector for broadcasting (MLX row-major):
+   * margin=1: row sums → shape [n, 1]
+   * margin=2: col sums → shape [1, K] */
+  int len = (int)mlx_array_size(v_raw);
+  int shape[2];
+  if (margin == 1) { shape[0] = len; shape[1] = 1; }
+  else             { shape[0] = 1;   shape[1] = len; }
+  if (mlx_reshape(&v_arr, v_raw, shape, 2, stream) != 0) {
+    mlx_stream_free(stream);
+    error("mlx reshape failed in broadcast_ewise_resident_inplace_key");
+  }
+
+  int err = 0;
+  if      (strcmp(op_name, "+") == 0) err = mlx_add(&out, a, v_arr, stream);
+  else if (strcmp(op_name, "-") == 0) err = mlx_subtract(&out, a, v_arr, stream);
+  else if (strcmp(op_name, "*") == 0) err = mlx_multiply(&out, a, v_arr, stream);
+  else if (strcmp(op_name, "/") == 0) err = mlx_divide(&out, a, v_arr, stream);
+  else {
+    mlx_array_free(v_arr);
+    mlx_stream_free(stream);
+    error("unsupported broadcast ewise op: %s", op_name);
+  }
+  mlx_array_free(v_arr);
+
+  if (err != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx broadcast ewise inplace_key failed for op '%s'", op_name);
+  }
+
+  if (mlx_array_eval(out) != 0) {
+    mlx_stream_free(stream);
+    amatrix_mlx_free_array_if_needed(out);
+    error("mlx_array_eval (broadcast_ewise_inplace_key) failed");
+  }
+
+  /* Overwrite the lhs resident entry with the result */
+  entry = amatrix_mlx_registry_find(CHAR(asChar(lhs_key)));
+  if (entry != NULL) {
+    amatrix_mlx_free_array_if_needed(entry->array);
+    entry->array = out;
+  } else {
+    entry = amatrix_mlx_registry_reserve(CHAR(asChar(lhs_key)));
+    entry->array = out;
+  }
+
+  mlx_stream_free(stream);
+  return R_NilValue;
+#else
+  error("mlx broadcast_ewise_resident_inplace_key requires mlx-c");
+  return R_NilValue;
+#endif
+}
+
 #ifdef HAVE_MLXC
 static SEXP amatrix_mlx_argreduce_real(SEXP lhs_key, SEXP axis_r, SEXP is_max_r) {
   mlx_stream stream;

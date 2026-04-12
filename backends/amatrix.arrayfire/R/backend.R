@@ -108,6 +108,16 @@ amatrix_arrayfire_set_backend <- function(backend = c("cpu", "opencl", "cuda", "
   identical(amatrix_arrayfire_active_backend(), 1L) || .amatrix_arrayfire_qr_experimental()
 }
 
+.amatrix_arrayfire_solve_safe <- function() {
+  identical(amatrix_arrayfire_active_backend(), 1L) ||
+    isTRUE(getOption("amatrix.arrayfire.experimental_solve", FALSE))
+}
+
+.amatrix_arrayfire_sparse_safe <- function() {
+  identical(amatrix_arrayfire_active_backend(), 1L) ||
+    isTRUE(getOption("amatrix.arrayfire.experimental_sparse", FALSE))
+}
+
 amatrix_arrayfire_matmul <- function(x, y) {
   x_mat <- as.matrix(x)
   y_mat <- as.matrix(y)
@@ -347,7 +357,7 @@ amatrix_arrayfire_solve <- function(a, b = NULL) {
   a_mat <- as.matrix(a)
   if (!is.double(a_mat)) storage.mode(a_mat) <- "double"
   b_arg <- if (!is.null(b)) { b_mat <- as.matrix(b); if (!is.double(b_mat)) storage.mode(b_mat) <- "double"; b_mat } else NULL
-  if (amatrix_arrayfire_lapack_available()) {
+  if (.amatrix_arrayfire_solve_safe() && amatrix_arrayfire_lapack_available()) {
     .Call("amatrix_arrayfire_solve_bridge", a_mat, b_arg)
   } else {
     if (is.null(b_arg)) base::solve(a_mat) else base::solve(a_mat, b_arg)
@@ -867,6 +877,7 @@ amatrix_arrayfire_backend <- function() {
       # ── Sparse SpMM path ─────────────────────────────────────────────────
       if (is(x, "adgCMatrix")) {
         if (!(op %in% c("matmul", "crossprod", "tcrossprod"))) return(FALSE)
+        if (!.amatrix_arrayfire_sparse_safe()) return(FALSE)
         # crossprod/tcrossprod without y: result is square dense — CPU sparse
         # BLAS (Matrix pkg) handles these well; no benefit to GPU round-trip.
         if (op %in% c("crossprod", "tcrossprod") && is.null(y)) return(FALSE)
@@ -892,9 +903,16 @@ amatrix_arrayfire_backend <- function() {
 
       if (.amatrix_arrayfire_forced_available()) {
         # Bypass size thresholds for GEMM-class ops (testing convenience),
-        # but keep LAPACK availability gate for decomposition ops.
-        if (op %in% c("chol", "solve")) {
+        # but keep LAPACK availability gate for decomposition ops and
+        # backend safety gates for ops known to SEGV on non-CPU AF backends.
+        if (identical(op, "solve")) {
+          return(.amatrix_arrayfire_solve_safe() && amatrix_arrayfire_lapack_available())
+        }
+        if (identical(op, "chol")) {
           return(amatrix_arrayfire_lapack_available())
+        }
+        if (identical(op, "qr")) {
+          return(.amatrix_arrayfire_qr_safe())
         }
         return(TRUE)
       }
@@ -949,7 +967,13 @@ amatrix_arrayfire_backend <- function() {
         return(.amatrix_arrayfire_meets_threshold(x, getOption("amatrix.arrayfire.rsvd_min_dim", 400L)))
       }
 
-      if (op %in% c("chol", "solve")) {
+      if (identical(op, "solve")) {
+        return(.amatrix_arrayfire_solve_safe() &&
+               amatrix_arrayfire_lapack_available() &&
+               .amatrix_arrayfire_meets_threshold(x, getOption("amatrix.arrayfire.lapack_min_dim", 256L)))
+      }
+
+      if (identical(op, "chol")) {
         return(amatrix_arrayfire_lapack_available() &&
                .amatrix_arrayfire_meets_threshold(x, getOption("amatrix.arrayfire.lapack_min_dim", 256L)))
       }

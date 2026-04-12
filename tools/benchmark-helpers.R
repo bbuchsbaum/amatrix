@@ -3,6 +3,41 @@ local_backend_libpaths <- function() {
   Filter(dir.exists, candidates)
 }
 
+.benchmark_debug <- function(...) {
+  path <- Sys.getenv("AMATRIX_BENCHMARK_LAUNCH_DEBUG", unset = "")
+  if (!nzchar(path)) {
+    return(invisible(FALSE))
+  }
+
+  line <- paste(..., collapse = "")
+  cat(sprintf("[%s] %s\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), line), file = path, append = TRUE)
+  invisible(TRUE)
+}
+
+.benchmark_debug_state <- function(tag) {
+  env_names <- c(
+    "AMATRIX_OPENCL_PROBE_GPU",
+    "AMATRIX_METAL_PROBE_GPU",
+    "R_LIBS",
+    "R_LIBS_USER",
+    "DYLD_LIBRARY_PATH",
+    "LD_LIBRARY_PATH",
+    "PATH"
+  )
+  env_values <- vapply(
+    env_names,
+    function(name) sprintf("%s=%s", name, Sys.getenv(name, unset = "<unset>")),
+    character(1)
+  )
+
+  .benchmark_debug(
+    tag,
+    " ; wd=", getwd(),
+    " ; libpaths=", paste(.libPaths(), collapse = " | "),
+    " ; env=", paste(env_values, collapse = " ; ")
+  )
+}
+
 load_benchmark_amatrix <- function() {
   prepare_benchmark_libpaths()
 
@@ -28,8 +63,10 @@ prepare_benchmark_libpaths <- function() {
 
 ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
   prepare_benchmark_libpaths()
+  .benchmark_debug_state(sprintf("ensure_optional_backend_namespace start package=%s repo_dir=%s", package, repo_dir %||% "<null>"))
 
   if (!is.null(repo_dir) && dir.exists(repo_dir) && requireNamespace("pkgload", quietly = TRUE)) {
+    pkgload_error <- NULL
     source_ns <- tryCatch(
       {
         pkgload::load_all(repo_dir, quiet = TRUE, helpers = FALSE, export_all = FALSE)
@@ -39,17 +76,50 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
           NULL
         }
       },
-      error = function(e) NULL
+      error = function(e) {
+        pkgload_error <<- conditionMessage(e)
+        NULL
+      }
     )
     if (!is.null(source_ns)) {
+      .benchmark_debug(
+        "ensure_optional_backend_namespace loaded via pkgload package=", package,
+        " ; ns_path=", getNamespaceInfo(source_ns, "path")
+      )
       return(source_ns)
+    }
+    if (!is.null(pkgload_error)) {
+      warning(
+        sprintf("pkgload::load_all('%s') failed: %s — falling back to installed package", repo_dir, pkgload_error),
+        call. = FALSE, immediate. = TRUE
+      )
+      .benchmark_debug(
+        "ensure_optional_backend_namespace pkgload FAILED package=", package,
+        " ; error=", pkgload_error
+      )
     }
   }
 
   if (requireNamespace(package, quietly = TRUE)) {
-    return(loadNamespace(package))
+    ns <- loadNamespace(package)
+    ns_path <- getNamespaceInfo(ns, "path")
+    .benchmark_debug(
+      "ensure_optional_backend_namespace loaded installed package=", package,
+      " ; ns_path=", ns_path
+    )
+    if (!is.null(repo_dir) && dir.exists(repo_dir)) {
+      warning(
+        sprintf(
+          "Backend '%s' loaded from installed path (%s) instead of source (%s) — installed .so may be stale",
+          package, ns_path, repo_dir
+        ),
+        call. = FALSE, immediate. = TRUE
+      )
+    }
+    return(ns)
   }
 
+  .benchmark_debug("ensure_optional_backend_namespace failed package=", package)
   NULL
 }
 
@@ -119,14 +189,44 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
   if (!is.null(spec$options)) {
     options(as.list(spec$options))
   }
+  .benchmark_debug_state(sprintf("enable_backend start %s", spec$name))
 
   ns <- ensure_optional_backend_namespace(spec$package, repo_dir = spec$repo_dir)
   if (is.null(ns)) {
+    .benchmark_debug("enable_backend ", spec$name, ": namespace unavailable")
     return(FALSE)
   }
 
   try(get(spec$register_fun, envir = ns)(overwrite = TRUE), silent = TRUE)
   available <- try(do.call(get(spec$available_fun, envir = ns), spec$available_args), silent = TRUE)
+  ns_path <- getNamespaceInfo(ns, "path")
+  so_path <- file.path(ns_path, "libs", paste0(spec$package, .Platform$dynlib.ext))
+  if (!file.exists(so_path)) {
+    so_path <- file.path(ns_path, "src", paste0(spec$package, .Platform$dynlib.ext))
+  }
+  .benchmark_debug(
+    "enable_backend ", spec$name,
+    " ; ns_path=", ns_path,
+    " ; so_path=", so_path,
+    " ; so_exists=", file.exists(so_path),
+    " ; so_mtime=", if (file.exists(so_path)) format(file.mtime(so_path), "%Y-%m-%d %H:%M:%S") else "<missing>",
+    ": env=", paste(names(spec$env %||% character()), unlist(spec$env %||% character()), collapse = ","),
+    " ; options=", paste(names(spec$options %||% character()), unlist(spec$options %||% character()), collapse = ","),
+    " ; available_result=", if (inherits(available, "try-error")) as.character(available) else as.character(available)
+  )
+
+  if (identical(spec$name, "opencl")) {
+    diag <- try(get("amatrix_opencl_diagnostics", envir = ns, inherits = FALSE)(), silent = TRUE)
+    if (!inherits(diag, "try-error") && is.list(diag)) {
+      diag_parts <- vapply(
+        names(diag),
+        function(name) sprintf("%s=%s", name, as.character(diag[[name]])),
+        character(1)
+      )
+      .benchmark_debug("enable_backend opencl diagnostics ; ", paste(diag_parts, collapse = " ; "))
+    }
+  }
+
   isTRUE(available)
 }
 
@@ -158,6 +258,9 @@ available_benchmark_backends <- function(
     }
     if (.benchmark_enable_backend(spec)) {
       backends[[name]] <- list(name = spec$name, precision = spec$precision)
+      .benchmark_debug("available_backends admitted ", spec$name)
+    } else {
+      .benchmark_debug("available_backends rejected ", spec$name)
     }
   }
 
@@ -173,14 +276,16 @@ r_string_literal <- function(x) {
   encodeString(x, quote = "\"")
 }
 
-benchmark_rscript_source_args <- function(script_path, args = character(), working_dir = getwd()) {
+benchmark_rscript_source_args <- function(script_path, args = character(), working_dir = getwd(), main_call = NULL) {
   script_path <- normalizePath(script_path, winslash = "/", mustWork = TRUE)
   working_dir <- normalizePath(working_dir, winslash = "/", mustWork = TRUE)
-  expr <- sprintf(
-    "setwd(%s); source(%s, local = globalenv())",
+  expr <- sprintf("setwd(%s); source(%s, local = globalenv())",
     r_string_literal(working_dir),
     r_string_literal(script_path)
   )
+  if (!is.null(main_call) && nzchar(main_call)) {
+    expr <- sprintf("%s; %s", expr, main_call)
+  }
   c("-e", expr, "--args", args)
 }
 

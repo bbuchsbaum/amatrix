@@ -896,6 +896,40 @@ amatrix_mlx_broadcast_ewise_resident <- function(lhs_key, v, margin, op, out_key
   if (defer) NULL else val
 }
 
+amatrix_mlx_rowSums_resident_key <- function(x_key, out_key, na.rm = FALSE, dims = 1L) {
+  .Call("amatrix_mlx_sum_axis_resident_key_bridge",
+        as.character(x_key), 1L, as.character(out_key),
+        PACKAGE = "amatrix.mlx")
+  invisible(NULL)
+}
+
+amatrix_mlx_colSums_resident_key <- function(x_key, out_key, na.rm = FALSE, dims = 1L) {
+  .Call("amatrix_mlx_sum_axis_resident_key_bridge",
+        as.character(x_key), 0L, as.character(out_key),
+        PACKAGE = "amatrix.mlx")
+  invisible(NULL)
+}
+
+amatrix_mlx_broadcast_ewise_resident_inplace <- function(lhs_key, v, margin, op) {
+  # Host-vector variant: upload v to a temp resident key, sweep in-place, drop temp
+  tmp_key <- sprintf("sink:tmp:%d", sample.int(1e6L, 1L))
+  amatrix_mlx_resident_store(tmp_key, matrix(v, nrow = length(v), ncol = 1L))
+  on.exit(try(amatrix_mlx_resident_drop(tmp_key), silent = TRUE), add = TRUE)
+  .Call("amatrix_mlx_broadcast_ewise_resident_inplace_key_bridge",
+        as.character(lhs_key), as.character(tmp_key),
+        as.integer(margin), as.character(op),
+        PACKAGE = "amatrix.mlx")
+  invisible(NULL)
+}
+
+amatrix_mlx_broadcast_ewise_resident_inplace_key <- function(lhs_key, v_key, margin, op) {
+  .Call("amatrix_mlx_broadcast_ewise_resident_inplace_key_bridge",
+        as.character(lhs_key), as.character(v_key),
+        as.integer(margin), as.character(op),
+        PACKAGE = "amatrix.mlx")
+  invisible(NULL)
+}
+
 amatrix_mlx_ewise_resident <- function(lhs_key, rhs, op, out_key, defer = FALSE) {
   rhs_arg <- rhs
   if (is.character(rhs_arg)) {
@@ -1231,6 +1265,22 @@ amatrix_mlx_backend <- function() {
     },
     colSums_resident = function(x_key, na.rm = FALSE, dims = 1L) {
       amatrix_mlx_colSums_resident(x_key, na.rm = na.rm, dims = dims)
+    },
+    rowSums_resident_key = function(x_key, out_key, na.rm = FALSE, dims = 1L) {
+      amatrix_mlx_rowSums_resident_key(x_key, out_key)
+    },
+    colSums_resident_key = function(x_key, out_key, na.rm = FALSE, dims = 1L) {
+      amatrix_mlx_colSums_resident_key(x_key, out_key)
+    },
+    broadcast_ewise_resident_inplace = function(lhs_key, v, margin, op) {
+      amatrix_mlx_broadcast_ewise_resident_inplace(lhs_key, v, margin, op)
+    },
+    broadcast_ewise_resident_inplace_key = function(lhs_key, v_key, margin, op) {
+      amatrix_mlx_broadcast_ewise_resident_inplace_key(lhs_key, v_key, margin, op)
+    },
+    broadcast_ewise_resident_key = function(lhs_key, v_key, margin, op, out_key, defer = FALSE) {
+      amatrix_mlx_broadcast_ewise_resident_inplace_key(lhs_key, v_key, margin, op)
+      invisible(NULL)
     },
     solve_resident = function(a_key, b_key = NULL, out_key) {
       amatrix_mlx_solve_resident(a_key, b_key = b_key, out_key = out_key)
