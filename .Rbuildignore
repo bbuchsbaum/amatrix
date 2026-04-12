@@ -12,3 +12,12 @@
 ^examples$
 ^paprs$
 ^\.claude$
+^doc$
+^Meta$
+^_pkgdown\.yml$
+^pkgdown$
+^planning_docs$
+^tools/benchmark-results$
+^\.\.Rcheck$
+^cran-comments\.md$
+^\.github$

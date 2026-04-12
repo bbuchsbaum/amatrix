@@ -14,11 +14,16 @@ Imports:
     Matrix
 Suggests:
     testthat (>= 3.0.0),
+    ggplot2,
     irlba,
+    knitr,
     pkgload,
+    rmarkdown,
     withr,
     amatrix.mlx,
     amatrix.arrayfire,
     amatrix.opencl
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 RoxygenNote: 7.3.3
+Config/Needs/website: albersdown

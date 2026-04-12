@@ -1,110 +1,87 @@
 # amatrix
 
-GPU acceleration for R matrix workloads, with Matrix-compatible objects and no framework lock-in.
+<!-- badges: start -->
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![R-CMD-check](https://github.com/bbuchsbaum/amatrix/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/bbuchsbaum/amatrix/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
 
-## What it is
+`amatrix` keeps matrix-heavy R code in the `Matrix` idiom while adding backend-aware dispatch and optional accelerator execution. The main target is repeated linear algebra on the same design matrix, especially many-response regression where factorization reuse matters.
 
-`amatrix` is an acceleration layer, not a framework. Your existing Matrix-based R code gets faster. You do not adopt a new computational model.
+## What problem does it solve?
+
+If your workflow already starts with matrices and ends in `%*%`, `crossprod()`, `qr()`, or repeated least-squares fits, `amatrix` gives you:
+
+- Matrix-compatible dense and sparse objects
+- predictable CPU fallback when no accelerator backend is available
+- optional fast backends such as MLX on Apple Silicon
+- shared-design workflows such as `many_lm()`
+
+You do not need to adopt a new tensor framework or rewrite the analysis around a separate object model.
+
+## Quick start
 
 ```r
-# Before
-X <- matrix(design, nrow = n)
-fit <- lm.fit(X, y)
-
-# After — one constructor change, same downstream code
 library(amatrix)
-library(amatrix.models)
 
-X <- adgeMatrix(design, mode = "fast", backend = "mlx")
-fit <- many_lm(X, Y_many, method = "qr", cache = TRUE)
+set.seed(1)
+X <- matrix(rnorm(120 * 6), nrow = 120, ncol = 6)
+Y <- matrix(rnorm(120 * 8), nrow = 120, ncol = 8)
+
+# Safe default: strict CPU semantics
+X_am <- adgeMatrix(X)
+fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+
+dim(coef(fit))
+fit$sigma2[1:3]
 ```
 
-## What it is not
+On a machine with an available accelerator backend, the workflow stays the same and only the constructor metadata changes.
 
-`amatrix` is not trying to become a bag of `gpuFoo()` wrappers.
+```r
+X_fast <- adgeMatrix(X, mode = "fast", backend = "mlx")
+fit_fast <- many_lm(X_fast, Y, method = "qr", cache = TRUE)
+```
 
-The design target is:
+## How does backend selection work?
 
-- one Matrix-compatible object model
-- one backend-planning layer
-- one factor-first runtime
-- a few benchmark-backed workflows that users actually feel
+`amatrix` separates the matrix object from the execution backend. You can inspect what is available and what will be chosen for a specific operation.
 
-That means the package should win as infrastructure, not as a collection of one-off GPU demos. A short design note on this point lives in [docs/legacy-r-gpu-lessons.md](/Users/bbuchsbaum/code/amatrix/docs/legacy-r-gpu-lessons.md).
+```r
+amatrix_backend_status()
+amatrix_backend_plan(X_am, "qr")
+amatrix_explain(X_am, "qr")
+```
 
-## Why
+If no accelerator backend is available, the same code still runs on CPU.
 
-The primary value is GPU speed on Apple Silicon via [MLX](https://github.com/ml-explore/mlx). The design is optimized for workloads that are common in statistical computing but are not served by existing GPU frameworks:
+## When is it worth using?
 
-- one shared design matrix, many response columns
-- repeated least-squares fits with the same `X`
-- f64-correct numerics (no silent float32 downcast under the default mode)
-- Matrix-compatible S4 objects that work with existing R packages
-
-`torch` for R cannot win this space: torch tensors are not Matrix subclasses, torch is float32-first, and torch has no equivalent of a cached shared-X QR factorization across many response columns.
-
-The package is also intentionally conservative about where acceleration is promised:
-
-- large dense repeated workloads are the main target
-- benchmark-backed workflow wins matter more than isolated kernel claims
-- unsupported or low-value shapes should remain boring CPU fallbacks
+- one design matrix and many response columns
+- repeated fits where QR or other factors can be reused
+- workflows that need Matrix-compatible objects instead of a separate tensor API
+- Apple Silicon systems where MLX can accelerate the hot path
 
 ## Modes
 
-```r
-adgeMatrix(x)                                   # default balanced: strict f64, CPU
-adgeMatrix(x, mode = "exact")                   # strict f64, CPU-pinned
-adgeMatrix(x, mode = "fast", backend = "mlx")   # fast: f32-permitted, MLX GPU
-```
-
-Current contract:
-
-- `exact` is strict CPU semantics.
-- `balanced` is currently conservative strict-CPU behavior unless you supply an explicit `backend =`.
-- `fast` permits float32-oriented backend execution, but you still need `backend = "mlx"` or another supported backend to leave CPU.
-
-## Flagship workload
-
-One design matrix, many response columns, GPU-accelerated QR:
-
-```r
-X <- adgeMatrix(design, mode = "fast", backend = "mlx")
-fit <- many_lm(X, Y_many, method = "qr", cache = TRUE)
-
-coef(fit)       # coefficients for all response columns
-fit$rss         # residual sum of squares
-fit$sigma2      # per-column sigma^2
-```
-
-Benchmark (this machine, 1024×128 design):
-
-| RHS columns | CPU cached QR | MLX resident |
-|-------------|--------------|--------------|
-| 8           | 0.0016 s     | 0.0020 s     |
-| 32          | 0.0058 s     | 0.0018 s     |
-| 128         | 0.0215 s     | 0.0025 s     |
-
-MLX dominates once the number of right-hand sides grows.
-
-## Packages
-
-| Package | Role |
-|---------|------|
-| `amatrix` | Core: classes, constructors, backend registry, kernels |
-| `amatrix.mlx` | Apple Silicon MLX backend |
-| `amatrix.arrayfire` | Portable dense backend (ArrayFire) |
-| `amatrix.models` | Model-core fitters: `many_lm`, `array_lm`, `wls_fit`, `covariance` |
+- `adgeMatrix(x)` uses the conservative default path and is safe on CPU-only machines.
+- `adgeMatrix(x, mode = "exact")` pins execution to strict CPU semantics.
+- `adgeMatrix(x, mode = "fast", backend = "mlx")` allows reduced-precision accelerator execution when the backend supports it.
 
 ## Installation
 
 ```r
-# Core package (no backend required)
+# Core package
 pak::pkg_install("amatrix")
 
-# With MLX backend (Apple Silicon)
-pak::pkg_install(c("amatrix", "amatrix.mlx", "amatrix.models"))
+# Optional MLX backend for Apple Silicon
+pak::pkg_install(c("amatrix", "amatrix.mlx"))
 ```
 
-## CPU mode
+Other accelerator backends can be installed separately when needed.
 
-`adgeMatrix(x)` without a backend is a valid entry point: it opts into the model surface (`many_lm`, shared-X cache) and makes the object GPU-ready when a backend is added. The package works on CPU. But the reason to adopt it is GPU acceleration.
+## Start here
+
+- `vignette("amatrix")` for the getting-started workflow
+- `?adgeMatrix` for matrix constructors
+- `?many_lm` for the flagship shared-design regression path
+- `?amatrix_backend_status` for backend availability and capability checks

@@ -598,9 +598,9 @@
   }
 
   lhs <- if (inherits(e1, "adgeMatrix")) {
-    .amatrix_prepare_resident_arg(e1, backend_name, promote_amatrix = FALSE)
+    .amatrix_prepare_resident_arg(e1, backend_name, promote_amatrix = TRUE)
   } else {
-    .amatrix_prepare_resident_arg(e2, backend_name, promote_amatrix = FALSE)
+    .amatrix_prepare_resident_arg(e2, backend_name, promote_amatrix = TRUE)
   }
   if (is.null(lhs)) {
     return(NULL)
@@ -610,7 +610,7 @@
   rhs_payload <- rhs_arg
 
   if (inherits(rhs_arg, "adgeMatrix") || .amatrix_is_dense_matrix_like(rhs_arg)) {
-    rhs <- .amatrix_prepare_resident_arg(rhs_arg, backend_name, promote_amatrix = FALSE)
+    rhs <- .amatrix_prepare_resident_arg(rhs_arg, backend_name, promote_amatrix = TRUE)
     if (is.null(rhs)) {
       .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       return(NULL)
@@ -1970,11 +1970,6 @@ sweep.adgCMatrix <- function(x, MARGIN, STATS, FUN = "-",
   }
   # Fallback: densify for other margins/ops (e.g., +/- which destroy sparsity)
   base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, ...)
-}
-
-#' @noRd
-max.col.adgeMatrix <- function(m, ties.method = "random") {
-  .am_argreduce(m, "rowargmax")
 }
 
 # ── addmm (amatrix-uaj) ─────────────────────────────────────────────────
