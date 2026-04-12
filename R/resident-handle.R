@@ -18,9 +18,33 @@
 
 #' Create a mutable GPU-resident handle
 #'
-#' @param x An \code{adgeMatrix} or plain matrix.
-#' @param backend Backend name (default: inferred from \code{x}).
-#' @return A \code{resident_handle} environment.
+#' Wraps an \code{adgeMatrix} or plain matrix in a lightweight mutable
+#' environment that holds a GPU-resident buffer key. Unlike
+#' \code{adgeMatrix}, the handle can be updated in place, making it
+#' suitable for iterative algorithms that would otherwise incur per-step
+#' S4 object allocation overhead. The handle owns its resident key and
+#' releases the device buffer when garbage collected.
+#'
+#' @param x An \code{adgeMatrix} or plain \code{matrix}. If \code{x}
+#'   is already GPU-resident on \code{backend}, the existing device
+#'   buffer is reused without re-uploading.
+#' @param backend Character string. Name of the backend to use.
+#'   Defaults to \code{x@@preferred_backend} for \code{adgeMatrix}
+#'   inputs and \code{"cpu"} for plain matrices. The backend must
+#'   support GPU residency.
+#'
+#' @return A \code{resident_handle} environment with fields
+#'   \code{backend_name}, \code{resident_key}, \code{dim},
+#'   \code{dimnames}, \code{policy}, \code{precision}, and
+#'   \code{active}.
+#'
+#' @examples
+#' m <- matrix(runif(12), 3, 4)
+#' h <- resident_handle(m, backend = "cpu")
+#' as.matrix(h)
+#'
+#' @seealso \code{\link{am_sweep_inplace}}, \code{\link{rh_rowSums}},
+#'   \code{\link{rh_colSums}}
 #' @export
 resident_handle <- function(x, backend = NULL) {
   if (inherits(x, "adgeMatrix")) {
@@ -186,14 +210,30 @@ resident_handle <- function(x, backend = NULL) {
 
 #' In-place broadcast sweep on a resident handle
 #'
-#' Replaces the handle's resident key with the result of the sweep.
-#' Equivalent to \code{am_sweep(x, MARGIN, STATS, FUN)} but mutates in place.
+#' Applies a row-wise or column-wise arithmetic operation between the
+#' resident matrix and a statistics vector, mutating the handle in
+#' place. Equivalent to \code{sweep(as.matrix(h), MARGIN, STATS, FUN)}
+#' but avoids downloading the matrix to host.
 #'
 #' @param h A \code{resident_handle}.
-#' @param MARGIN 1L (rows) or 2L (columns).
-#' @param STATS Numeric vector of statistics.
-#' @param FUN Operation: \code{"+"}, \code{"-"}, \code{"*"}, or \code{"/"}.
-#' @return \code{h}, invisibly (modified in place).
+#' @param MARGIN Integer. \code{1L} to sweep across rows (one value per
+#'   row), \code{2L} to sweep across columns.
+#' @param STATS Numeric vector of length equal to the number of rows or
+#'   columns selected by \code{MARGIN}.
+#' @param FUN Character string. Arithmetic operator to apply:
+#'   \code{"+"}, \code{"-"}, \code{"*"}, or \code{"/"}.
+#'   Default \code{"+"}.
+#'
+#' @return \code{h}, invisibly. The handle is modified in place; the
+#'   underlying device buffer is replaced with the sweep result.
+#'
+#' @examples
+#' m <- matrix(1:12, 3, 4)
+#' h <- resident_handle(m, backend = "cpu")
+#' row_scales <- rowSums(m)
+#' am_sweep_inplace(h, 1L, 1 / row_scales, "*")
+#'
+#' @seealso \code{\link{resident_handle}}, \code{\link{am_ewise_inplace}}
 #' @export
 am_sweep_inplace <- function(h, MARGIN, STATS, FUN = "+") {
   .rh_check(h)
@@ -224,10 +264,24 @@ am_sweep_inplace <- function(h, MARGIN, STATS, FUN = "+") {
 
 #' In-place elementwise operation on a resident handle
 #'
+#' Applies an elementwise arithmetic operation between the handle's
+#' resident matrix and either a scalar or another resident handle,
+#' replacing the handle's device buffer with the result.
+#'
 #' @param h A \code{resident_handle}.
-#' @param rhs A scalar or another \code{resident_handle}.
-#' @param op Operation string: \code{"+"}, \code{"-"}, \code{"*"}, \code{"/"}.
-#' @return \code{h}, invisibly (modified in place).
+#' @param rhs A length-1 numeric scalar, or a \code{resident_handle}
+#'   with identical dimensions to \code{h}.
+#' @param op Character string. Arithmetic operator: \code{"+"}, \code{"-"},
+#'   \code{"*"}, or \code{"/"}.
+#'
+#' @return \code{h}, invisibly. The handle is modified in place.
+#'
+#' @examples
+#' m <- matrix(1:6, 2, 3)
+#' h <- resident_handle(m, backend = "cpu")
+#' am_ewise_inplace(h, 2.0, "*")
+#'
+#' @seealso \code{\link{am_sweep_inplace}}, \code{\link{resident_handle}}
 #' @export
 am_ewise_inplace <- function(h, rhs, op) {
   .rh_check(h)
@@ -252,9 +306,22 @@ am_ewise_inplace <- function(h, rhs, op) {
 # Note: rowSums/colSums are S4 generics in amatrix, so S3 dispatch does not
 # work for non-S4 classes.  Use rh_rowSums/rh_colSums for resident handles.
 
-#' Row sums of a resident handle (GPU-resident reduction)
+#' Row sums of a GPU-resident handle
+#'
+#' Computes row sums of the matrix stored in a \code{resident_handle},
+#' using a GPU-resident reduction when the backend supports it to avoid
+#' a round-trip download. Falls back to \code{base::rowSums} on the
+#' materialized matrix when no resident reduction is available.
+#'
 #' @param h A \code{resident_handle}.
-#' @return Numeric vector of row sums.
+#'
+#' @return Numeric vector of length \code{nrow(h)}.
+#'
+#' @examples
+#' h <- resident_handle(matrix(1:6, 2, 3), backend = "cpu")
+#' rh_rowSums(h)
+#'
+#' @seealso \code{\link{rh_colSums}}, \code{\link{am_sweep_inplace}}
 #' @export
 rh_rowSums <- function(h) {
   .rh_check(h)
@@ -264,9 +331,22 @@ rh_rowSums <- function(h) {
   base::rowSums(as.matrix(h))
 }
 
-#' Column sums of a resident handle (GPU-resident reduction)
+#' Column sums of a GPU-resident handle
+#'
+#' Computes column sums of the matrix stored in a
+#' \code{resident_handle}, using a GPU-resident reduction when the
+#' backend supports it. Falls back to \code{base::colSums} on the
+#' materialized matrix when no resident reduction is available.
+#'
 #' @param h A \code{resident_handle}.
-#' @return Numeric vector of column sums.
+#'
+#' @return Numeric vector of length \code{ncol(h)}.
+#'
+#' @examples
+#' h <- resident_handle(matrix(1:6, 2, 3), backend = "cpu")
+#' rh_colSums(h)
+#'
+#' @seealso \code{\link{rh_rowSums}}, \code{\link{am_sweep_inplace}}
 #' @export
 rh_colSums <- function(h) {
   .rh_check(h)

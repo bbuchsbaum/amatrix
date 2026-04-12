@@ -3,6 +3,8 @@
 .dolt/
 *.db
 .beads-credential-key
+.omc/
+**/.omc/
 
 # Machine-local benchmark baseline (regenerate with: Rscript tools/benchmark-regression.R --update)
 tools/baseline.csv

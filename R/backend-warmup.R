@@ -9,6 +9,34 @@
 # are silently swallowed — warming is always best-effort and never changes
 # numerical state.
 
+#' Warm up GPU backends to eliminate cold-start latency
+#'
+#' Pre-compiles GPU kernels by running tiny dummy operations through
+#' each requested backend. Call once before timed work to pay JIT
+#' compilation costs upfront. Errors are silently swallowed; warming
+#' never alters numerical state.
+#'
+#' @param backend Character vector of backend names to warm, or
+#'   \code{NULL} to warm all non-CPU backends currently registered.
+#' @param ops Character vector of operation names to trigger.
+#'   Recognised values: \code{"matmul"}, \code{"crossprod"},
+#'   \code{"tcrossprod"}, \code{"qr"}, \code{"chol"}, \code{"svd"},
+#'   \code{"solve"}.
+#' @param size Integer vector of length 2 giving the dimensions
+#'   \code{c(nrow, ncol)} of the dummy matrices used during warming.
+#' @param quiet Logical; suppress progress messages when \code{TRUE}.
+#'
+#' @return An invisible named list, one entry per backend, each a list
+#'   with elements \code{warmed} (logical) and \code{elapsed_ms}
+#'   (numeric milliseconds, or \code{NA} when unavailable).
+#'
+#' @examples
+#' \donttest{
+#' results <- amatrix_warm(quiet = TRUE)
+#' }
+#'
+#' @seealso \code{\link{amatrix_backend_names}}
+#' @export
 amatrix_warm <- function(
   backend = NULL,
   ops     = c("matmul", "crossprod", "qr", "chol"),

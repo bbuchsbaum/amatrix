@@ -26,6 +26,30 @@
   TRUE
 }
 
+#' Virtual base class for backend-aware matrices
+#'
+#' \code{aMatrix} is the abstract base from which all concrete amatrix
+#' classes inherit. It carries backend-dispatch metadata that controls
+#' which compute backend (CPU, GPU, etc.) is used for operations on the
+#' matrix.
+#'
+#' @slot preferred_backend Single string naming the preferred compute
+#'   backend; one of \code{"cpu"}, \code{"mlx"}, \code{"metal"},
+#'   \code{"arrayfire"}, or \code{"torch"}.
+#' @slot policy Single string controlling dispatch policy; one of
+#'   \code{"auto"}, \code{"cpu"}, \code{"mlx"}, \code{"metal"},
+#'   \code{"arrayfire"}, or \code{"torch"}.
+#' @slot precision Single string; either \code{"strict"} (double
+#'   precision, exact results) or \code{"fast"} (backend may use
+#'   lower precision).
+#' @slot object_id Non-empty string uniquely identifying this object
+#'   within the session; used for caching and residency tracking.
+#' @slot src_id String recording the \code{object_id} of the object
+#'   this was derived from, or \code{""} for originals.
+#' @slot finalizer_env Environment used to manage GPU-resident memory
+#'   and deferred host-copy state.
+#'
+#' @exportClass aMatrix
 setClass(
   "aMatrix",
   contains = "VIRTUAL",
@@ -48,19 +72,51 @@ setClass(
   validity = .validate_amatrix_slots
 )
 
+#' Dense general matrix with backend-dispatch metadata
+#'
+#' \code{adgeMatrix} extends both \code{aMatrix} and
+#' \code{Matrix::dgeMatrix}, adding backend-dispatch slots to a
+#' column-major dense double-precision matrix. All arithmetic
+#' generics dispatch through the amatrix backend system rather than
+#' directly to BLAS.
+#'
+#' @exportClass adgeMatrix
+#' @seealso \code{\link{adgeMatrix}} for the user-facing constructor,
+#'   \code{\link{adgCMatrix}} for the sparse counterpart
 setClass(
   "adgeMatrix",
   contains = c("aMatrix", "dgeMatrix")
 )
 
+#' Sparse column-compressed matrix with backend-dispatch metadata
+#'
+#' \code{adgCMatrix} extends both \code{aMatrix} and
+#' \code{Matrix::dgCMatrix}, adding backend-dispatch slots to a
+#' compressed-column sparse double-precision matrix.
+#'
+#' @exportClass adgCMatrix
+#' @seealso \code{\link{adgCMatrix}} for the user-facing constructor,
+#'   \code{\link{adgeMatrix-class}} for the dense counterpart
 setClass(
   "adgCMatrix",
   contains = c("aMatrix", "dgCMatrix")
 )
 
-# A zero-copy structural view of an adgeMatrix representing its transpose.
-# Does NOT inherit from dgeMatrix — carries no concrete dense host storage.
-# Materialized on demand via as.matrix() or amatrix_materialize_host().
+#' Lazy transpose view of an adgeMatrix
+#'
+#' \code{aTransposeView} is a zero-copy structural view representing
+#' the transpose of an \code{adgeMatrix}. It carries no independent
+#' dense host storage; the underlying data lives in \code{source}.
+#' The transposed matrix is materialized on demand via
+#' \code{as.matrix()} or \code{amatrix_materialize_host()}.
+#'
+#' @slot source The originating \code{adgeMatrix}; kept alive by this
+#'   reference.
+#' @slot Dim Integer vector of length 2 giving the transposed
+#'   dimensions \code{c(ncol_src, nrow_src)}.
+#' @slot Dimnames List of length 2 with transposed dimnames.
+#'
+#' @exportClass aTransposeView
 setClass(
   "aTransposeView",
   contains = "aMatrix",

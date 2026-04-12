@@ -4,6 +4,31 @@
 # candidate was accepted or rejected, and actionable suggestions for getting
 # the best performance.
 
+#' Explain dispatch decisions for an aMatrix operation
+#'
+#' Prints a human-readable diagnostic showing which backend was chosen
+#' for \code{op} on \code{x}, the accept/reject status of every
+#' candidate backend, and actionable suggestions for improving
+#' performance.
+#'
+#' @param x An \code{aMatrix} object.
+#' @param op Character string. Operation to explain, e.g.
+#'   \code{"matmul"}, \code{"crossprod"}, \code{"svd"}.
+#' @param y Right-hand-side \code{aMatrix} or \code{NULL}. Supply for
+#'   binary operations to include workload-specific advice.
+#'
+#' @return Invisibly, the dispatch plan list from
+#'   \code{\link{amatrix_backend_plan}}. Called primarily for its
+#'   printed output.
+#'
+#' @examples
+#' m <- adgeMatrix(matrix(1:12, 3, 4))
+#' amatrix_explain(m, "matmul")
+#'
+#' @seealso \code{\link{amatrix_backend_plan}},
+#'   \code{\link{amatrix_backend_matrix}},
+#'   \code{\link{amatrix_execution_info}}
+#' @export
 amatrix_explain <- function(x, op, y = NULL) {
   stopifnot(inherits(x, "aMatrix"), is.character(op), length(op) == 1L)
 

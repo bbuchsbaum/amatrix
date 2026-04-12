@@ -38,10 +38,46 @@
   )
 }
 
+#' Get the session-level default dispatch policy
+#'
+#' Returns the dispatch policy used when an \code{aMatrix} object does
+#' not specify its own policy. The policy controls which backend is
+#' preferred for operations on new matrices.
+#'
+#' @return Character string, one of \code{"auto"}, \code{"cpu"},
+#'   \code{"mlx"}, \code{"metal"}, \code{"arrayfire"}, or
+#'   \code{"torch"}.
+#'
+#' @examples
+#' amatrix_default_policy()
+#'
+#' @seealso \code{\link{amatrix_set_default_policy}},
+#'   \code{\link{amatrix_default_precision}}
+#' @export
 amatrix_default_policy <- function() {
   .amatrix_state$default_policy
 }
 
+#' Set the session-level default dispatch policy
+#'
+#' Sets the dispatch policy applied to new \code{aMatrix} objects that
+#' do not specify their own policy. The change affects all subsequent
+#' matrix constructions in the current session.
+#'
+#' @param policy Character string. Must be one of \code{"auto"},
+#'   \code{"cpu"}, \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
+#'   or \code{"torch"}.
+#'
+#' @return Invisibly, \code{policy}.
+#'
+#' @examples
+#' old <- amatrix_default_policy()
+#' amatrix_set_default_policy("auto")
+#' amatrix_set_default_policy(old) # restore
+#'
+#' @seealso \code{\link{amatrix_default_policy}},
+#'   \code{\link{amatrix_set_default_precision}}
+#' @export
 amatrix_set_default_policy <- function(policy) {
   stopifnot(is.character(policy), length(policy) == 1L, nzchar(policy))
   if (!(policy %in% .amatrix_valid_policies)) {
@@ -51,6 +87,20 @@ amatrix_set_default_policy <- function(policy) {
   invisible(policy)
 }
 
+#' Get the session-level default precision mode
+#'
+#' Returns the precision mode used when constructing new \code{aMatrix}
+#' objects that do not specify their own precision.
+#'
+#' @return Character string, either \code{"strict"} (double precision)
+#'   or \code{"fast"} (single/mixed precision).
+#'
+#' @examples
+#' amatrix_default_precision()
+#'
+#' @seealso \code{\link{amatrix_set_default_precision}},
+#'   \code{\link{amatrix_default_policy}}
+#' @export
 amatrix_default_precision <- function() {
   .amatrix_state$default_precision
 }
@@ -102,6 +152,26 @@ amatrix_default_precision <- function() {
   ), call. = FALSE)
 }
 
+#' Set the session-level default precision mode
+#'
+#' Sets the precision mode applied to new \code{aMatrix} objects that
+#' do not specify their own precision. Use \code{"strict"} for
+#' reproducible double-precision results and \code{"fast"} for maximum
+#' GPU throughput with single/mixed precision.
+#'
+#' @param precision Character string. Must be one of \code{"strict"}
+#'   or \code{"fast"}.
+#'
+#' @return Invisibly, \code{precision}.
+#'
+#' @examples
+#' old <- amatrix_default_precision()
+#' amatrix_set_default_precision("strict")
+#' amatrix_set_default_precision(old) # restore
+#'
+#' @seealso \code{\link{amatrix_default_precision}},
+#'   \code{\link{amatrix_set_default_policy}}
+#' @export
 amatrix_set_default_precision <- function(precision) {
   stopifnot(is.character(precision), length(precision) == 1L, nzchar(precision))
   if (!(precision %in% .amatrix_valid_precisions)) {

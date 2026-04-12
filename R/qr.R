@@ -368,6 +368,47 @@ setOldClass(c("amQR", "amDenseQR"))
   factor
 }
 
+#' Inspect an amQR factorization object
+#'
+#' Returns a named list of metadata fields describing an \code{amQR}
+#' factor produced by \code{am_qr()}.
+#'
+#' @param qr An \code{amQR} object.
+#'
+#' @return A named list with the following elements:
+#'   \describe{
+#'     \item{rank}{Integer effective rank of the factored matrix.}
+#'     \item{dim}{Integer vector of length 2: \code{c(nrow, ncol)} of
+#'       the source matrix.}
+#'     \item{thin}{Logical; \code{TRUE} when a thin (economy) QR was
+#'       computed.}
+#'     \item{pivoted}{Logical; \code{TRUE} when column pivoting was
+#'       used.}
+#'     \item{pivot}{Integer permutation vector, or \code{NULL} when
+#'       unpivoted.}
+#'     \item{representation}{Character string describing the internal
+#'       storage format.}
+#'     \item{backend_ops}{Character string naming the backend that owns
+#'       any resident buffers, or \code{NULL}.}
+#'     \item{backend}{Character string: the preferred backend.}
+#'     \item{precision}{Character string: \code{"strict"} or
+#'       \code{"fast"}.}
+#'     \item{method}{Character string: QR algorithm used.}
+#'     \item{compact_factor_available}{Logical.}
+#'     \item{compact_factor_source}{Character string or \code{NULL}.}
+#'     \item{compact_factor_materialized}{Logical.}
+#'     \item{q_materialized}{Logical.}
+#'     \item{r_materialized}{Logical.}
+#'   }
+#'
+#' @examples
+#' X <- matrix(rnorm(30), nrow = 6)
+#' qf <- am_qr(X)
+#' info <- qr_info(qf)
+#' info$rank
+#'
+#' @seealso \code{\link{am_qr}}, \code{\link{qr_downdate}}
+#' @export
 qr_info <- function(qr) {
   if (!inherits(qr, "amQR")) {
     stop("qr must inherit from amQR", call. = FALSE)

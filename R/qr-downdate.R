@@ -6,6 +6,31 @@
 #   a sequence of p Givens rotations to zero out the contribution of
 #   row row_idx, then re-thin. See Golub & Van Loan sec 12.5.
 
+#' QR downdate after removing one row
+#'
+#' Updates a QR factorization to reflect the removal of a single row
+#' from the original matrix. The current implementation refits from the
+#' reduced matrix; a Givens-rotation path is planned for a future
+#' release.
+#'
+#' @param qr_factor An \code{amQR} factor object returned by
+#'   \code{am_qr()}, or any object for which a method is defined.
+#' @param row_idx Positive integer index of the row to remove.
+#' @param X The original numeric matrix or \code{adgeMatrix} used to
+#'   compute \code{qr_factor}. Required for \code{amQR} factors because
+#'   they do not store the source matrix.
+#'
+#' @return An updated \code{amQR} factor with row \code{row_idx}
+#'   excluded.
+#'
+#' @examples
+#' X <- matrix(rnorm(40), nrow = 8)
+#' qf <- am_qr(X)
+#' qf2 <- qr_downdate(qf, row_idx = 3L, X = X)
+#' qr_info(qf2)$dim
+#'
+#' @seealso \code{\link{am_qr}}, \code{\link{qr_info}},
+#'   \code{\link{lm_loo_cv}}
 #' @export
 qr_downdate <- function(qr_factor, row_idx, X = NULL) {
   UseMethod("qr_downdate")
@@ -45,6 +70,35 @@ qr_downdate.default <- function(qr_factor, row_idx, X = NULL) {
 # Cost: O(n * p^2) for the refit path (v1).
 # With Givens downdate: O(n * p^2) amortised but with much smaller constant.
 
+#' Leave-one-out cross-validation for linear models
+#'
+#' Computes exact leave-one-out (LOO) prediction errors by refitting the
+#' model \code{n} times, each time dropping one observation. Uses
+#' \code{qr_downdate} internally to avoid recomputing the full
+#' factorization from scratch.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of predictors, shape
+#'   \code{[n, p]}. No intercept column is added automatically.
+#' @param y Numeric vector or single-column matrix of responses, length
+#'   \code{n}.
+#' @param method Character string passed to \code{am_qr} controlling
+#'   the QR algorithm. Currently only \code{"qr"} is supported.
+#' @param ... Additional arguments forwarded to \code{am_qr}.
+#'
+#' @return A named list with two elements:
+#'   \describe{
+#'     \item{residuals}{Numeric vector of length \code{n}: LOO prediction
+#'       errors \eqn{y_i - \hat{y}_i^{(-i)}}.}
+#'     \item{mse}{Scalar mean squared LOO error.}
+#'   }
+#'
+#' @examples
+#' X <- matrix(rnorm(50), nrow = 10)
+#' y <- rnorm(10)
+#' cv <- lm_loo_cv(X, y)
+#' cv$mse
+#'
+#' @seealso \code{\link{lm_fit}}, \code{\link{many_lm}}
 #' @export
 lm_loo_cv <- function(X, y, method = "qr", ...) {
   stopifnot(

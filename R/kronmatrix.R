@@ -7,6 +7,20 @@
 #
 # where X = matrix(y, nrow = q, ncol = n) for an input vector y of length nq.
 
+#' Lazy Kronecker product of two matrices
+#'
+#' \code{KronMatrix} stores the two factor matrices \code{A} (m x n)
+#' and \code{B} (p x q) without forming the full (mp x nq) Kronecker
+#' product. Matrix-vector and matrix-matrix products are evaluated
+#' using the vec-permutation identity
+#' \code{(A x B) vec(X) = vec(B X t(A))}, keeping memory use at
+#' \code{O(mn + pq)} rather than \code{O(mnpq)}.
+#'
+#' @slot A Numeric matrix; the left factor of the Kronecker product.
+#' @slot B Numeric matrix; the right factor of the Kronecker product.
+#'
+#' @exportClass KronMatrix
+#' @seealso \code{\link{kron_matrix}}
 setClass(
   "KronMatrix",
   slots = list(A = "matrix", B = "matrix")
@@ -16,6 +30,30 @@ setClass(
 # Constructor
 # ---------------------------------------------------------------------------
 
+#' Construct a lazy Kronecker product
+#'
+#' Creates a \code{\linkS4class{KronMatrix}} that stores the factor
+#' matrices \code{A} and \code{B} without materializing the full
+#' Kronecker product. Standard operations such as \code{\%*\%},
+#' \code{crossprod}, \code{solve}, and \code{determinant} are
+#' available and exploit the Kronecker structure.
+#'
+#' @param A Numeric matrix or object coercible via \code{as.matrix()};
+#'   the left Kronecker factor.
+#' @param B Numeric matrix or object coercible via \code{as.matrix()};
+#'   the right Kronecker factor.
+#'
+#' @return A \code{\linkS4class{KronMatrix}} of implicit dimensions
+#'   \code{c(nrow(A) * nrow(B), ncol(A) * ncol(B))}.
+#'
+#' @examples
+#' A <- matrix(1:4, 2, 2)
+#' B <- diag(3)
+#' K <- kron_matrix(A, B)
+#' dim(K)
+#' as.matrix(K)
+#'
+#' @export
 kron_matrix <- function(A, B) {
   A_mat <- if (is.matrix(A)) A else as.matrix(A)
   B_mat <- if (is.matrix(B)) B else as.matrix(B)

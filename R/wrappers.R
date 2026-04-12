@@ -708,6 +708,24 @@
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
+#' Matrix multiplication
+#'
+#' Multiplies two matrices, routing to an accelerated backend when available.
+#' Plain numeric vectors supplied as \code{y} are promoted to a column matrix
+#' and the result is dropped back to a vector.
+#'
+#' @param x A matrix or \code{aMatrix} object.
+#' @param y A matrix, \code{aMatrix} object, or numeric vector.
+#'
+#' @return A matrix (or numeric vector when \code{y} was a vector) of
+#'   dimensions \code{nrow(x)} by \code{ncol(y)}.
+#'
+#' @examples
+#' A <- matrix(1:6, 2, 3)
+#' B <- matrix(1:6, 3, 2)
+#' matmul(A, B)
+#'
+#' @export
 matmul <- function(x, y) {
   if (.amatrix_sparse_rhs_lowerable(x, y)) {
     return(.amatrix_lower_sparse_rhs_matmul(x, y))
@@ -848,15 +866,35 @@ am_tcrossprod <- function(x, y = NULL, ...) {
   )
 }
 
-# gemm: full BLAS DGEMM-style control surface.
-# Computes alpha * op(A) %*% op(B) + beta * C.
-# op(X) = t(X) when transX = TRUE, otherwise X.
-# Routes each case to the most efficient resident operation:
-#   transA only  → crossprod_resident  (t(A) %*% B)
-#   transB only  → tcrossprod_resident (A %*% t(B))
-#   transA+B     → t(B %*% A)  (tcrossprod identity; no host copy of t(B))
-#   neither      → matmul_resident     (A %*% B)
-# Use matmul / am_crossprod / am_tcrossprod for plain operator idioms.
+#' Generalised matrix multiply (BLAS DGEMM interface)
+#'
+#' Computes \code{alpha * op(A) \%*\% op(B) + beta * C}, where
+#' \code{op(X) = t(X)} when the corresponding \code{trans} flag is
+#' \code{TRUE}. Routes internally to the most efficient resident
+#' operation for the chosen transpose combination.
+#'
+#' @param A A matrix or \code{aMatrix}.
+#' @param B A matrix or \code{aMatrix}.
+#' @param C Optional matrix or \code{aMatrix} to add after scaling;
+#'   \code{NULL} omits the addition term.
+#' @param alpha Numeric scalar multiplier for \code{op(A) \%*\% op(B)}.
+#'   Default \code{1.0}.
+#' @param beta Numeric scalar multiplier for \code{C}. Default \code{1.0}.
+#' @param transA Logical; transpose \code{A} before multiplying.
+#'   Default \code{FALSE}.
+#' @param transB Logical; transpose \code{B} before multiplying.
+#'   Default \code{FALSE}.
+#'
+#' @return A matrix of dimensions \code{nrow(op(A))} by
+#'   \code{ncol(op(B))}.
+#'
+#' @examples
+#' A <- matrix(1:6, 2, 3)
+#' B <- matrix(1:6, 2, 3)
+#' gemm(A, B, transA = TRUE)          # t(A) %*% B
+#' gemm(A, B, transB = TRUE)          # A %*% t(B)
+#'
+#' @export
 gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
                     transA = FALSE, transB = FALSE) {
   AB <- if (transA && transB) {
@@ -880,6 +918,26 @@ gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
   }
 }
 
+#' Row and column sums
+#'
+#' Compute row or column sums of a matrix or \code{aMatrix}, dispatching
+#' to an accelerated backend when one is available.
+#'
+#' @param x A matrix or \code{aMatrix} object.
+#' @param na.rm Logical; if \code{TRUE}, missing values are removed before
+#'   summing. Default \code{FALSE}.
+#' @param dims Integer; the number of dimensions to regard as rows
+#'   (for \code{rowsums}) or columns (for \code{colsums}). Default \code{1L}.
+#'
+#' @return A numeric vector of length \code{nrow(x)} (\code{rowsums}) or
+#'   \code{ncol(x)} (\code{colsums}).
+#'
+#' @examples
+#' m <- matrix(1:12, 3, 4)
+#' rowsums(m)
+#' colsums(m)
+#'
+#' @export
 rowsums <- function(x, na.rm = FALSE, dims = 1L) {
   choice <- .amatrix_backend_for(x, "rowSums")
   resident <- .amatrix_try_resident_rowSums(x, na.rm, dims, choice$name)
@@ -893,6 +951,8 @@ rowsums <- function(x, na.rm = FALSE, dims = 1L) {
   )
 }
 
+#' @rdname rowsums
+#' @export
 colsums <- function(x, na.rm = FALSE, dims = 1L) {
   choice <- .amatrix_backend_for(x, "colSums")
   resident <- .amatrix_try_resident_colSums(x, na.rm, dims, choice$name)
@@ -1008,6 +1068,23 @@ am_chol <- function(x, ...) {
   )
 }
 
+#' QR decomposition of an amatrix object
+#'
+#' Computes the QR decomposition of a matrix or \code{aMatrix}, routing to
+#' a backend-specific implementation when available.
+#'
+#' @param x A matrix or \code{aMatrix} object.
+#' @param ... Additional arguments passed to the underlying QR routine.
+#'
+#' @return An object of class \code{amDenseQR} (or a wrapped sparse QR
+#'   for \code{adgCMatrix} input) containing the factorisation components.
+#'
+#' @examples
+#' m <- matrix(rnorm(12), 4, 3)
+#' qr_obj <- am_qr(m)
+#' qr.R(qr_obj)
+#'
+#' @export
 am_qr <- function(x, ...) {
   if (inherits(x, "adgCMatrix")) {
     host <- amatrix_materialize_host(x)
@@ -1110,12 +1187,50 @@ am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) 
   )
 }
 
+#' Symmetric eigendecomposition
+#'
+#' Computes eigenvalues and eigenvectors of a real symmetric matrix by
+#' dispatching to the active backend via \code{\link{am_eigen}} with
+#' \code{symmetric = TRUE}.
+#'
+#' @param x A real symmetric numeric matrix, \code{adgeMatrix}, or other
+#'   object accepted by \code{\link{am_eigen}}.
+#'
+#' @return A list with components \code{values} (numeric vector of eigenvalues
+#'   in ascending order) and \code{vectors} (numeric matrix whose columns are
+#'   the corresponding eigenvectors).
+#'
+#' @examples
+#' S <- crossprod(matrix(rnorm(25), nrow = 5))
+#' ev <- eigh(S)
+#' length(ev$values)
+#'
+#' @seealso \code{\link{rsvd}}
+#' @export
 eigh <- function(x) {
   am_eigen(x, symmetric = TRUE)
 }
 
 # ── Weighted am_crossprod helpers ─────────────────────────────────────────────
 
+#' Weighted cross-product X'WX
+#'
+#' Computes \eqn{X^T \mathrm{diag}(w) X}, a \code{p x p} weighted
+#' cross-product. A GPU-resident fast path is used when available.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of shape \code{[n, p]}.
+#' @param w Positive numeric vector of length \code{n}; observation
+#'   weights.
+#'
+#' @return An \code{adgeMatrix} of shape \code{[p, p]}.
+#'
+#' @examples
+#' X <- matrix(rnorm(20), nrow = 5)
+#' w <- runif(5)
+#' crossprod_weighted(X, w)
+#'
+#' @seealso \code{\link{tcrossprod_weighted}}, \code{\link{xty_weighted}}
+#' @export
 # X' diag(w) X  (p x p)
 crossprod_weighted <- function(X, w) {
   X_arg <- .amatrix_model_dense_arg(X)
@@ -1160,6 +1275,24 @@ crossprod_weighted <- function(X, w) {
   am_crossprod(.amatrix_rewrap_like(X_arg, x_scaled))
 }
 
+#' Weighted outer cross-product XWX'
+#'
+#' Computes \eqn{X \mathrm{diag}(w) X^T}, an \code{n x n} weighted
+#' outer cross-product. A GPU-resident fast path is used when available.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of shape \code{[n, p]}.
+#' @param w Positive numeric vector of length \code{n}; observation
+#'   weights.
+#'
+#' @return An \code{adgeMatrix} of shape \code{[n, n]}.
+#'
+#' @examples
+#' X <- matrix(rnorm(20), nrow = 5)
+#' w <- runif(5)
+#' tcrossprod_weighted(X, w)
+#'
+#' @seealso \code{\link{crossprod_weighted}}, \code{\link{xty_weighted}}
+#' @export
 # X diag(w) X'  (n x n)
 tcrossprod_weighted <- function(X, w) {
   X_arg <- .amatrix_model_dense_arg(X)
@@ -1203,6 +1336,29 @@ tcrossprod_weighted <- function(X, w) {
   am_tcrossprod(.amatrix_rewrap_like(X_arg, x_scaled))
 }
 
+#' Weighted cross-product X'Wy
+#'
+#' Computes \eqn{X^T \mathrm{diag}(w) y}, a \code{p x k} weighted
+#' cross-product between \code{X} and response matrix \code{y}. A
+#' GPU-resident fast path is used when available.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of shape \code{[n, p]}.
+#' @param w Positive numeric vector of length \code{n}; observation
+#'   weights.
+#' @param y Numeric vector or matrix of shape \code{[n, k]};
+#'   response(s).
+#'
+#' @return An \code{adgeMatrix} of shape \code{[p, k]}.
+#'
+#' @examples
+#' X <- matrix(rnorm(20), nrow = 5)
+#' w <- runif(5)
+#' y <- rnorm(5)
+#' xty_weighted(X, w, y)
+#'
+#' @seealso \code{\link{crossprod_weighted}},
+#'   \code{\link{tcrossprod_weighted}}
+#' @export
 # X' diag(w) y  (p x k)
 xty_weighted <- function(X, w, y) {
   X_arg <- .amatrix_model_dense_arg(X)
@@ -1267,7 +1423,26 @@ xty_weighted <- function(X, w, y) {
 
 # ── Diagonal scaling ──────────────────────────────────────────────────────────
 
-# diag(d) %*% X  — scale row i by d[i]
+#' Row and column diagonal scaling
+#'
+#' Scale each row or column of a matrix by a numeric vector, equivalent to
+#' left- or right-multiplying by a diagonal matrix.
+#' \code{rowscale} computes \code{diag(d) \%*\% X} (row \eqn{i} scaled by
+#' \code{d[i]}); \code{colscale} computes \code{X \%*\% diag(d)} (column
+#' \eqn{j} scaled by \code{d[j]}).
+#'
+#' @param X A matrix or \code{aMatrix} object.
+#' @param d Numeric vector of scale factors. Length must equal \code{nrow(X)}
+#'   for \code{rowscale} and \code{ncol(X)} for \code{colscale}.
+#'
+#' @return A matrix or \code{aMatrix} of the same dimensions as \code{X}.
+#'
+#' @examples
+#' m <- matrix(1:6, 2, 3)
+#' rowscale(m, c(2, 0.5))
+#' colscale(m, c(1, 2, 3))
+#'
+#' @export
 rowscale <- function(X, d) {
   X_arg <- .amatrix_model_dense_arg(X)
   d <- as.double(d)
@@ -1278,7 +1453,8 @@ rowscale <- function(X, d) {
   .amatrix_rewrap_like(X_arg, x_host * d)
 }
 
-# X %*% diag(d)  — scale col j by d[j]
+#' @rdname rowscale
+#' @export
 colscale <- function(X, d) {
   X_arg <- .amatrix_model_dense_arg(X)
   d <- as.double(d)
@@ -1316,6 +1492,25 @@ am_diag <- function(x, nrow, ncol, names = TRUE) {
 
 # ── Fused crossprod + diagonal add ───────────────────────────────────────────
 
+#' Cross-product plus diagonal perturbation
+#'
+#' Computes \eqn{X^T X + \lambda I} (scalar \code{lambda}) or
+#' \eqn{X^T X + \mathrm{diag}(\lambda)} (vector \code{lambda}) in a
+#' single fused call.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of shape \code{[n, p]}.
+#' @param lambda Scalar or numeric vector of length \code{p}; diagonal
+#'   perturbation to add to the cross-product.
+#'
+#' @return An \code{adgeMatrix} of shape \code{[p, p]}: the perturbed
+#'   cross-product.
+#'
+#' @examples
+#' X <- matrix(rnorm(20), nrow = 5)
+#' crossprod_add_diag(X, lambda = 0.1)
+#'
+#' @seealso \code{\link{crossprod_weighted}}
+#' @export
 # X'X + lambda*I  or  X'X + diag(d)
 crossprod_add_diag <- function(X, lambda) {
   X_arg  <- .amatrix_model_dense_arg(X)
@@ -1346,15 +1541,64 @@ crossprod_add_diag <- function(X, lambda) {
   .amatrix_rewrap_like(X_arg, Q %*% diag(new_lam) %*% t(Q))
 }
 
+#' Matrix functions via symmetric eigendecomposition
+#'
+#' Apply an elementwise function to the eigenvalues of a symmetric
+#' positive definite matrix and reconstruct the result:
+#' \eqn{f(X) = Q \, \mathrm{diag}(f(\lambda)) \, Q^T}.
+#'
+#' @param X Symmetric positive definite numeric matrix or
+#'   \code{adgeMatrix} of shape \code{[p, p]}.
+#' @param p Numeric scalar exponent (used by \code{mat_pow} only).
+#'
+#' @return An \code{adgeMatrix} of shape \code{[p, p]}: the matrix
+#'   function applied to \code{X}.
+#'
+#' @examples
+#' S <- crossprod(matrix(rnorm(16), 4)) + diag(4)
+#' mat_sqrt(S)
+#' mat_log(S)
+#' mat_pow(S, -1)
+#'
+#' @name mat_fun
+#' @rdname mat_fun
+#' @export
 mat_sqrt <- function(X) .mat_fun(X, sqrt)
+
+#' @rdname mat_fun
+#' @export
 mat_pow  <- function(X, p) .mat_fun(X, function(lam) lam^p)
+
+#' @rdname mat_fun
+#' @export
 mat_log  <- function(X) .mat_fun(X, log)
 
 # ── Stochastic trace estimator (Hutchinson) ───────────────────────────────────
 
-# Estimates tr(A) or tr(A^{-1}) via k Rademacher probes.
-# For tr(A):         trace_estim(A, k)
-# For tr(K^{-1}):   trace_estim(solve_fn = function(v) chol_solve(L, v), n, k)
+#' Stochastic trace estimator (Hutchinson)
+#'
+#' Estimates \eqn{\mathrm{tr}(A)} or \eqn{\mathrm{tr}(A^{-1})} using
+#' Hutchinson's method with \code{k} Rademacher probe vectors. Supply
+#' \code{solve_fn} to estimate the trace of an inverse without forming it
+#' explicitly.
+#'
+#' @param A Square matrix or \code{aMatrix}; required when \code{solve_fn}
+#'   is \code{NULL}.
+#' @param k Integer number of Rademacher probe vectors. Default \code{30L}.
+#' @param seed Optional integer random seed for reproducibility.
+#' @param solve_fn Optional function \code{function(V)} that returns
+#'   \code{A^{-1} \%*\% V}; use this to estimate \eqn{\mathrm{tr}(A^{-1})}
+#'   without materialising the inverse.
+#' @param n Integer dimension of the matrix; required when \code{solve_fn}
+#'   is supplied.
+#'
+#' @return A single numeric scalar estimate of the trace.
+#'
+#' @examples
+#' A <- crossprod(matrix(rnorm(25), 5, 5)) + 5 * diag(5)
+#' trace_estim(A, k = 50L, seed = 1L)
+#'
+#' @export
 trace_estim <- function(A = NULL, k = 30L, seed = NULL,
                         solve_fn = NULL, n = NULL) {
   if (!is.null(seed)) set.seed(seed)
@@ -1374,6 +1618,24 @@ trace_estim <- function(A = NULL, k = 30L, seed = NULL,
 
 # ── Row / column means ────────────────────────────────────────────────────────
 
+#' Row and column means
+#'
+#' Compute row or column means of a matrix or \code{aMatrix}, dispatching
+#' to an accelerated backend when one is available.
+#'
+#' @param x A matrix or \code{aMatrix} object.
+#' @param na.rm Logical; if \code{TRUE}, \code{NA} values are excluded before
+#'   averaging. Default \code{FALSE}.
+#'
+#' @return A numeric vector of length \code{nrow(x)} (\code{rowmeans}) or
+#'   \code{ncol(x)} (\code{colmeans}).
+#'
+#' @examples
+#' m <- matrix(1:12, 3, 4)
+#' rowmeans(m)
+#' colmeans(m)
+#'
+#' @export
 rowmeans <- function(x, na.rm = FALSE) {
   if (inherits(x, "adgCMatrix")) {
     return(Matrix::rowMeans(amatrix_materialize_host(x), na.rm = na.rm))
@@ -1385,6 +1647,8 @@ rowmeans <- function(x, na.rm = FALSE) {
   base::rowMeans(x_host, na.rm = na.rm)
 }
 
+#' @rdname rowmeans
+#' @export
 colmeans <- function(x, na.rm = FALSE) {
   if (inherits(x, "adgCMatrix")) {
     return(Matrix::colMeans(amatrix_materialize_host(x), na.rm = na.rm))
@@ -1398,6 +1662,19 @@ colmeans <- function(x, na.rm = FALSE) {
 
 # ── Matrix trace ──────────────────────────────────────────────────────────────
 
+#' Matrix trace
+#'
+#' Returns the trace (sum of diagonal elements) of a square matrix or
+#' \code{aMatrix}.
+#'
+#' @param x A square matrix, sparse \code{sparseMatrix}, or \code{aMatrix}.
+#'
+#' @return A single numeric scalar equal to the sum of diagonal elements.
+#'
+#' @examples
+#' trace(diag(1:4))
+#'
+#' @export
 trace <- function(x) {
   host <- amatrix_materialize_host(x)
   if (inherits(host, "sparseMatrix")) return(sum(Matrix::diag(host)))
@@ -1406,6 +1683,21 @@ trace <- function(x) {
 
 # ── Symmetry enforcement ──────────────────────────────────────────────────────
 
+#' Symmetrise a matrix
+#'
+#' Returns \code{(x + t(x)) / 2}, enforcing exact symmetry. Handles both
+#' dense \code{aMatrix} and sparse \code{adgCMatrix} inputs.
+#'
+#' @param x A square matrix or \code{aMatrix} object.
+#'
+#' @return A symmetric matrix or \code{aMatrix} of the same class and
+#'   dimensions as \code{x}.
+#'
+#' @examples
+#' m <- matrix(c(1, 2, 3, 4), 2, 2)
+#' sym(m)
+#'
+#' @export
 sym <- function(x) {
   if (inherits(x, "adgCMatrix")) {
     host <- amatrix_materialize_host(x)
@@ -1420,6 +1712,21 @@ sym <- function(x) {
 
 # ── Inner product ─────────────────────────────────────────────────────────────
 
+#' Inner product of two vectors or matrices
+#'
+#' Computes the element-wise inner product \code{sum(x * y)}, equivalent to
+#' \code{as.numeric(t(x) \%*\% y)} for vectors.
+#'
+#' @param x A numeric vector, matrix, or \code{aMatrix}.
+#' @param y A numeric vector, matrix, or \code{aMatrix} conformable with
+#'   \code{x}.
+#'
+#' @return A single numeric scalar.
+#'
+#' @examples
+#' dot(1:4, 4:1)
+#'
+#' @export
 dot <- function(x, y) {
   x_host <- .amatrix_host_arg(x)
   y_host <- .amatrix_host_arg(y)
@@ -1477,6 +1784,17 @@ dot <- function(x, y) {
   .amatrix_bind_resident(wrapped, choice_name, resident$key)
 }
 
+#' Segment sum by group labels
+#'
+#' Sum rows of \code{x} grouped by integer \code{labels}, dispatching to
+#' GPU when available.
+#'
+#' @param x A numeric matrix or \code{adgeMatrix}.
+#' @param labels Integer vector of group labels (1-based).
+#' @param K Number of groups.
+#' @return A \code{K}-by-\code{ncol(x)} matrix of group sums.
+#' @seealso \code{\link{segment_mean}}, \code{\link{am_scatter_mean}}
+#' @export
 segment_sum <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
@@ -1502,6 +1820,17 @@ segment_sum <- function(x, labels, K) {
   .am_segment_resident_wrap(x, resident, choice$name)
 }
 
+#' Segment mean by group labels
+#'
+#' Compute the mean of rows of \code{x} grouped by integer \code{labels},
+#' dispatching to GPU when available.
+#'
+#' @param x A numeric matrix or \code{adgeMatrix}.
+#' @param labels Integer vector of group labels (1-based).
+#' @param K Number of groups.
+#' @return A \code{K}-by-\code{ncol(x)} matrix of group means.
+#' @seealso \code{\link{segment_sum}}, \code{\link{am_scatter_mean}}
+#' @export
 segment_mean <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
@@ -1815,6 +2144,15 @@ pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
   result
 }
 
+#' Scatter mean by group labels
+#'
+#' Compute the mean of rows of \code{x} grouped by integer \code{labels}.
+#'
+#' @param x A numeric matrix or \code{adgeMatrix}.
+#' @param labels Integer vector of group labels (1-based).
+#' @param K Number of groups.
+#' @return A \code{K}-by-\code{ncol(x)} matrix of group means.
+#' @export
 am_scatter_mean <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
@@ -1853,6 +2191,18 @@ am_scatter_mean <- function(x, labels, K) {
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
+#' Backend-dispatched sweep
+#'
+#' Apply a function to each row or column of a matrix, dispatching to the
+#' preferred GPU backend when available.
+#'
+#' @param x A numeric matrix or \code{adgeMatrix}.
+#' @param MARGIN 1 for rows, 2 for columns.
+#' @param STATS Numeric vector of statistics to apply.
+#' @param FUN Operation: \code{"+"}, \code{"-"}, \code{"*"}, or \code{"/"}.
+#' @return A matrix of the same dimensions as \code{x}.
+#' @seealso \code{\link{am_sweep_inplace}}
+#' @export
 am_sweep <- function(x, MARGIN, STATS, FUN = "+") {
   if (!inherits(x, "adgeMatrix")) {
     return(base::sweep(as.matrix(x), MARGIN = MARGIN, STATS = STATS, FUN = FUN))
@@ -1913,11 +2263,39 @@ am_sweep <- function(x, MARGIN, STATS, FUN = "+") {
   .am_argreduce_cpu(x, kind)
 }
 
+#' Row and column argmax/argmin
+#'
+#' Return the index of the maximum or minimum value in each row or column.
+#'
+#' @param x A numeric matrix or \code{adgeMatrix}.
+#' @return An integer vector of indices.
+#' @name am_argreduce
+#' @rdname am_argreduce
+#' @export
 am_rowargmax <- function(x) .am_argreduce(x, "rowargmax")
+
+#' @rdname am_argreduce
+#' @export
 am_rowargmin <- function(x) .am_argreduce(x, "rowargmin")
+
+#' @rdname am_argreduce
+#' @export
 am_colargmax <- function(x) .am_argreduce(x, "colargmax")
+
+#' @rdname am_argreduce
+#' @export
 am_colargmin <- function(x) .am_argreduce(x, "colargmin")
 
+#' Element-wise operations
+#'
+#' Apply an element-wise arithmetic operation to one or two matrices,
+#' dispatching to the preferred GPU backend when available.
+#'
+#' @param op Character string: \code{"+"}, \code{"-"}, \code{"*"}, or \code{"/"}.
+#' @param e1 A numeric matrix or \code{adgeMatrix}.
+#' @param e2 A numeric matrix, \code{adgeMatrix}, or \code{NULL} for unary ops.
+#' @return A matrix of the same dimensions as \code{e1}.
+#' @export
 ewise <- function(op, e1, e2 = NULL) {
   template <- .amatrix_template(e1, e2)
 
@@ -2211,6 +2589,12 @@ am_set_dimnames <- function(x, value) {
 #'   Set explicitly to process any size in row-blocks; useful when GPU memory
 #'   is limited.  Not supported for \code{method = "cosine"}.
 #' @return Numeric matrix [m, n] of pairwise distances.
+#'
+#' @examples
+#' X <- matrix(rnorm(30), nrow = 6)
+#' D <- dist_matrix(X)
+#' dim(D)
+#'
 #' @seealso \code{\link{kernel_matrix}}
 #' @export
 dist_matrix <- function(X, Y = NULL,

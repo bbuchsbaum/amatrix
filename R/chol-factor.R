@@ -46,6 +46,30 @@
   mat
 }
 
+#' Cholesky factorization result
+#'
+#' Stores the upper-triangular Cholesky factor \code{R} of a
+#' symmetric positive-definite \code{adgeMatrix}, as returned by
+#' \code{\link{chol_factor}}. When the factor is resident on a GPU
+#' backend the host-side \code{@factor} slot may be an empty
+#' zero-row matrix; use \code{\link{chol_solve}} rather than
+#' accessing slots directly.
+#'
+#' @slot factor Numeric matrix; the upper-triangular factor \code{R}
+#'   such that \code{t(R) \%*\% R} equals the source matrix.
+#'   May be \code{matrix(numeric(0), 0, 0)} when the factor lives
+#'   only on the device.
+#' @slot factor_obj Either an \code{adgeMatrix} holding the
+#'   GPU-resident factor, or \code{NULL} for CPU-only factors.
+#' @slot source_id Character string; the \code{object_id} of the
+#'   source \code{adgeMatrix}.
+#' @slot precision Character string; \code{"strict"} or \code{"fast"}.
+#' @slot backend Character string; the backend that computed the
+#'   factorization.
+#'
+#' @exportClass amChol
+#' @seealso \code{\link{chol_factor}}, \code{\link{chol_solve}},
+#'   \code{\link{chol_logdet}}
 setClass(
   "amChol",
   slots = list(
@@ -79,6 +103,24 @@ setMethod("show", "amChol", function(object) {
 
 as.matrix.amChol <- function(x, ...) .amatrix_amchol_factor_matrix(x)
 
+#' Compute the Cholesky factorization of an adgeMatrix
+#'
+#' Computes the upper-triangular Cholesky factor \code{R} of a
+#' symmetric positive-definite \code{adgeMatrix} \code{X} such that
+#' \code{t(R) \%*\% R == X}. Results are cached by \code{object_id};
+#' repeated calls with the same object return the cached factor.
+#'
+#' @param X An \code{adgeMatrix} that is symmetric positive definite.
+#'
+#' @return An \code{\linkS4class{amChol}} object.
+#'
+#' @examples
+#' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
+#' A <- adgeMatrix(m)
+#' fac <- chol_factor(A)
+#' fac
+#'
+#' @export
 chol_factor <- function(X) {
   if (!inherits(X, "adgeMatrix")) {
     stop("X must be an adgeMatrix (symmetric positive definite)", call. = FALSE)
@@ -362,6 +404,31 @@ chol_factor <- function(X) {
   B
 }
 
+#' Solve a linear system using a Cholesky factor
+#'
+#' Solves \code{X \%*\% x = B} where \code{X} is the symmetric
+#' positive-definite matrix whose Cholesky factorization is stored in
+#' \code{factor}. Dispatches to a GPU backend when the factor was
+#' computed in \code{"fast"} precision and a device-resident factor
+#' is available.
+#'
+#' @param factor An \code{\linkS4class{amChol}} object from
+#'   \code{\link{chol_factor}}.
+#' @param B Numeric vector or matrix; the right-hand side. The number
+#'   of rows must equal the dimension of the factor.
+#'
+#' @return Numeric vector or matrix \code{x} satisfying
+#'   \code{X \%*\% x == B}. Returns a vector when \code{B} is a
+#'   vector.
+#'
+#' @examples
+#' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
+#' A <- adgeMatrix(m)
+#' fac <- chol_factor(A)
+#' b <- rnorm(4)
+#' x <- chol_solve(fac, b)
+#'
+#' @export
 chol_solve <- function(factor, B) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
@@ -473,6 +540,23 @@ chol_solve_batches <- function(factor, B) {
   }, starts, rhs_ncols, rhs_vector)
 }
 
+#' Extract the diagonal of a Cholesky factor
+#'
+#' Returns the diagonal of the upper-triangular matrix \code{R} stored
+#' in an \code{\linkS4class{amChol}} object.
+#'
+#' @param factor An \code{\linkS4class{amChol}} object from
+#'   \code{\link{chol_factor}}.
+#'
+#' @return Numeric vector of length equal to the matrix dimension.
+#'
+#' @examples
+#' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
+#' A <- adgeMatrix(m)
+#' fac <- chol_factor(A)
+#' chol_diag(fac)
+#'
+#' @export
 chol_diag <- function(factor) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
@@ -480,6 +564,25 @@ chol_diag <- function(factor) {
   diag(.amatrix_amchol_factor_matrix(factor))
 }
 
+#' Log-determinant from a Cholesky factor
+#'
+#' Computes \code{log(det(X))} from the Cholesky factor of a
+#' symmetric positive-definite matrix \code{X} as
+#' \code{2 * sum(log(diag(R)))}, which avoids forming the full
+#' determinant and is numerically stable.
+#'
+#' @param factor An \code{\linkS4class{amChol}} object from
+#'   \code{\link{chol_factor}}.
+#'
+#' @return Scalar double; the log-determinant of the source matrix.
+#'
+#' @examples
+#' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
+#' A <- adgeMatrix(m)
+#' fac <- chol_factor(A)
+#' chol_logdet(fac)
+#'
+#' @export
 chol_logdet <- function(factor) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
@@ -487,6 +590,33 @@ chol_logdet <- function(factor) {
   2 * sum(log(diag(.amatrix_amchol_factor_matrix(factor))))
 }
 
+#' Solve a triangular linear system
+#'
+#' Solves \code{R \%*\% x = B} (or \code{t(R) \%*\% x = B} when
+#' \code{lower = TRUE}) for \code{x}, where \code{R} is a triangular
+#' matrix. Dispatches to a GPU backend when \code{R} is an
+#' \code{\linkS4class{amChol}} or \code{adgeMatrix} with a live
+#' resident key and a capable backend.
+#'
+#' @param R An \code{\linkS4class{amChol}}, \code{adgeMatrix}, or
+#'   numeric matrix holding the triangular factor. Upper triangular
+#'   by default.
+#' @param B Numeric vector or matrix; the right-hand side.
+#' @param lower Logical scalar; \code{FALSE} (default) treats
+#'   \code{R} as upper triangular, \code{TRUE} treats it as lower
+#'   triangular.
+#'
+#' @return Numeric vector or matrix \code{x} satisfying
+#'   \code{R \%*\% x == B} (or its transpose variant).
+#'   Returns a vector when \code{B} is a vector or single-column
+#'   matrix.
+#'
+#' @examples
+#' R <- chol(crossprod(matrix(rnorm(16), 4, 4)) + diag(4))
+#' b <- rnorm(4)
+#' x <- solve_triangular(R, b)
+#'
+#' @export
 solve_triangular <- function(R, B, lower = FALSE) {
   scalar_out <- is.vector(B) || (is.matrix(B) && ncol(B) == 1L)
   B_arg <- .amatrix_triangular_rhs_arg(B)
@@ -540,6 +670,31 @@ solve_triangular <- function(R, B, lower = FALSE) {
   if (scalar_out && ncol(x) == 1L) drop(x) else x
 }
 
+#' Evaluate a quadratic form using a Cholesky factor
+#'
+#' Computes \code{t(v) \%*\% solve(X) \%*\% v} (for a vector
+#' \code{v}) or \code{t(V) \%*\% solve(X) \%*\% V} (for a matrix
+#' \code{V}) efficiently via the Cholesky factor of \code{X}, without
+#' forming the inverse.
+#'
+#' @param factor An \code{\linkS4class{amChol}} object from
+#'   \code{\link{chol_factor}}.
+#' @param v Numeric vector or matrix. For a vector, the result is a
+#'   scalar; for a matrix with \code{p} columns, the result is a
+#'   \code{p x p} matrix.
+#'
+#' @return Scalar double (when \code{v} is a vector) or numeric matrix
+#'   of dimensions \code{ncol(v) x ncol(v)} containing the quadratic
+#'   form.
+#'
+#' @examples
+#' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
+#' A <- adgeMatrix(m)
+#' fac <- chol_factor(A)
+#' v <- rnorm(4)
+#' quad_form(fac, v)
+#'
+#' @export
 quad_form <- function(factor, v) {
   if (!inherits(factor, "amChol")) {
     stop("factor must be an amChol object", call. = FALSE)
@@ -556,6 +711,25 @@ quad_form <- function(factor, v) {
 # LU factorization  (general square systems; mirrors the amChol pattern)
 # ---------------------------------------------------------------------------
 
+#' LU factorization result for general square matrices
+#'
+#' Stores the original square matrix for use with LAPACK's
+#' \code{DGESV} routine. Unlike \code{\linkS4class{amChol}}, which
+#' caches the explicit triangular factor, \code{amLU} retains
+#' \code{A} and delegates factorization to \code{base::solve} at
+#' solve time.
+#'
+#' @slot A Numeric square matrix; the original matrix passed to
+#'   \code{\link{lu_factor}}.
+#' @slot source_id Character string; the \code{object_id} of the
+#'   source \code{adgeMatrix}, or \code{NA} for base matrices.
+#' @slot precision Character string; \code{"strict"} or \code{"fast"},
+#'   or \code{NA} for base matrices.
+#' @slot backend Character string; the preferred backend of the source
+#'   object, or \code{NA} for base matrices.
+#'
+#' @exportClass amLU
+#' @seealso \code{\link{lu_factor}}, \code{\link{lu_solve}}
 setClass(
   "amLU",
   slots = list(
@@ -581,6 +755,23 @@ setMethod("show", "amLU", function(object) {
   invisible(object)
 })
 
+#' Store a general square matrix for LU-based solving
+#'
+#' Wraps a square numeric matrix or \code{adgeMatrix} in an
+#' \code{\linkS4class{amLU}} object. The actual LU decomposition is
+#' performed by \code{base::solve} at solve time via LAPACK's
+#' \code{DGESV}.
+#'
+#' @param A A square numeric matrix or \code{adgeMatrix}.
+#'
+#' @return An \code{\linkS4class{amLU}} object.
+#'
+#' @examples
+#' m <- matrix(c(2, 1, 5, 3), nrow = 2)
+#' fac <- lu_factor(m)
+#' fac
+#'
+#' @export
 lu_factor <- function(A) {
   A_mat <- if (inherits(A, "adgeMatrix")) {
     m <- as.matrix(amatrix_materialize_host(A))
@@ -600,6 +791,28 @@ lu_factor <- function(A) {
   new("amLU", A = A_mat, source_id = src, precision = prec, backend = be)
 }
 
+#' Solve a linear system using an LU factor
+#'
+#' Solves \code{A \%*\% x = B} where \code{A} is the square matrix
+#' stored in \code{factor}, delegating to \code{base::solve} (LAPACK
+#' \code{DGESV}).
+#'
+#' @param factor An \code{\linkS4class{amLU}} object from
+#'   \code{\link{lu_factor}}.
+#' @param B Numeric vector or matrix; the right-hand side. The number
+#'   of rows must equal the dimension of \code{factor@A}.
+#'
+#' @return Numeric vector or matrix \code{x} satisfying
+#'   \code{A \%*\% x == B}. Returns a vector when \code{B} is a
+#'   vector or single-column matrix.
+#'
+#' @examples
+#' m <- matrix(c(2, 1, 5, 3), nrow = 2)
+#' fac <- lu_factor(m)
+#' b <- c(1, 2)
+#' lu_solve(fac, b)
+#'
+#' @export
 lu_solve <- function(factor, B) {
   if (!inherits(factor, "amLU")) {
     stop("factor must be an amLU object", call. = FALSE)

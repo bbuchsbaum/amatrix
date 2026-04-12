@@ -269,6 +269,34 @@
     .amatrix_backend_has_resident_key(backend, entry$resident_key, sparse = isTRUE(entry$sparse))
 }
 
+#' Query GPU residency state of an aMatrix object
+#'
+#' Returns a single-row data.frame describing whether \code{x} is
+#' currently uploaded to a GPU backend and, if so, which backend holds
+#' it and whether that binding is still live (the device buffer still
+#' exists).
+#'
+#' @param x An \code{aMatrix} object.
+#'
+#' @return A data.frame with one row and columns:
+#'   \describe{
+#'     \item{backend}{Character. Backend name, or \code{NA} when not
+#'       resident.}
+#'     \item{resident_key}{Character. Internal device buffer key, or
+#'       \code{NA}.}
+#'     \item{pinned_backend}{Character. Backend name when the binding
+#'       is confirmed live, otherwise \code{NA}.}
+#'     \item{live}{Logical. \code{TRUE} when the backend still holds
+#'       the buffer identified by \code{resident_key}.}
+#'   }
+#'
+#' @examples
+#' m <- adgeMatrix(matrix(1:4, 2, 2))
+#' amatrix_residency_info(m)
+#'
+#' @seealso \code{\link{amatrix_materialize_host}},
+#'   \code{\link{amatrix_memory_stats}}
+#' @export
 amatrix_residency_info <- function(x) {
   stopifnot(inherits(x, "aMatrix"))
   entry <- .amatrix_resident_entry(x)
@@ -347,6 +375,29 @@ amatrix_materialize_dense <- function(x) {
   stop("resident backend returned an unsupported dense materialization type")
 }
 
+#' Force materialization of an aMatrix to a host Matrix object
+#'
+#' Downloads any GPU-resident data and returns a standard
+#' \code{Matrix}-package object on the host. For \code{adgeMatrix}
+#' inputs the result is a \code{dgeMatrix}; for \code{adgCMatrix}
+#' inputs the result is a \code{dgCMatrix}; for \code{aTransposeView}
+#' the transposed dense host matrix is returned. Host-only objects are
+#' returned unchanged.
+#'
+#' @param x An \code{aMatrix} object (\code{adgeMatrix},
+#'   \code{adgCMatrix}, or \code{aTransposeView}).
+#'
+#' @return A \code{dgeMatrix}, \code{dgCMatrix}, or the original object
+#'   if no materialization is needed.
+#'
+#' @examples
+#' m <- adgeMatrix(matrix(1:6, 2, 3))
+#' host <- amatrix_materialize_host(m)
+#' class(host)
+#'
+#' @seealso \code{\link{amatrix_residency_info}},
+#'   \code{\link{amatrix_gc}}
+#' @export
 amatrix_materialize_host <- function(x) {
   if (inherits(x, "adgeMatrix")) {
     return(amatrix_materialize_dense(x))

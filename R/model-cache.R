@@ -27,13 +27,26 @@
 
 #' Get or set the model cache maximum size
 #'
-#' When \code{max_size} is \code{Inf} (default) the cache grows without bound.
-#' Setting a finite value enables LRU eviction: the least-recently-used entry
-#' is removed whenever a new entry would exceed the limit.
+#' \code{amatrix_cache_max_size} returns the current limit.
+#' \code{amatrix_set_cache_max_size} changes the limit and immediately
+#' evicts the least-recently-used entries if the cache exceeds the new
+#' bound. When \code{max_size} is \code{Inf} (the default) the cache
+#' grows without bound.
 #'
-#' @param max_size Positive numeric or \code{Inf}. Omit to read the current
-#'   value.
-#' @return The current (or newly set) max_size, invisibly when setting.
+#' @param max_size Positive numeric scalar or \code{Inf}; the maximum
+#'   number of factorizations to retain in the model cache.
+#'
+#' @return \code{amatrix_cache_max_size} returns a length-1 numeric
+#'   giving the current limit. \code{amatrix_set_cache_max_size}
+#'   returns the new limit invisibly.
+#'
+#' @examples
+#' old <- amatrix_cache_max_size()
+#' amatrix_set_cache_max_size(10)
+#' amatrix_cache_max_size()
+#' amatrix_set_cache_max_size(old)
+#'
+#' @export
 amatrix_cache_max_size <- function() {
   .amatrix_cache_max_size()
 }
@@ -44,6 +57,7 @@ amatrix_cache_max_size <- function() {
 }
 
 #' @rdname amatrix_cache_max_size
+#' @export
 amatrix_set_cache_max_size <- function(max_size) {
   stopifnot(is.numeric(max_size), length(max_size) == 1L, max_size >= 1L)
   .amatrix_state$cache_max_size <- max_size

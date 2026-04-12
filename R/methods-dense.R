@@ -1,9 +1,44 @@
+#' Matrix multiplication for adgeMatrix
+#'
+#' Dispatches \code{\%*\%} through the amatrix backend for dense
+#' \code{adgeMatrix} objects on the left-hand side, preserving GPU
+#' residency across the operation.
+#'
+#' @param x An \code{adgeMatrix}, \code{numeric} vector, or \code{matrix}.
+#' @param y A matrix-like object: \code{matrix}, \code{Matrix},
+#'   \code{adgeMatrix}, \code{adgCMatrix}, or \code{ANY}.
+#'
+#' @return An \code{adgeMatrix} (or \code{numeric} vector when \code{y}
+#'   is a vector and \code{x} is \code{adgeMatrix}), with the same backend
+#'   metadata as \code{x}.
+#'
+#' @examples
+#' A <- adgeMatrix(matrix(1:6, 2, 3))
+#' B <- matrix(1:3, 3, 1)
+#' A %*% B
+#'
+#' @rdname matmul-methods
+#' @aliases %*%,adgeMatrix,ANY-method
+#' @export
+NULL
 setMethod("%*%", signature(x = "adgeMatrix", y = "ANY"),       function(x, y) matmul(x, y))
+#' @rdname matmul-methods
+#' @aliases %*%,adgeMatrix,matrix-method
 setMethod("%*%", signature(x = "adgeMatrix", y = "matrix"),    function(x, y) matmul(x, y))
+#' @rdname matmul-methods
+#' @aliases %*%,adgeMatrix,Matrix-method
 setMethod("%*%", signature(x = "adgeMatrix", y = "Matrix"),    function(x, y) matmul(x, y))
+#' @rdname matmul-methods
+#' @aliases %*%,adgeMatrix,dgeMatrix-method
 setMethod("%*%", signature(x = "adgeMatrix", y = "dgeMatrix"), function(x, y) matmul(x, y))
+#' @rdname matmul-methods
+#' @aliases %*%,adgeMatrix,dgCMatrix-method
 setMethod("%*%", signature(x = "adgeMatrix", y = "dgCMatrix"), function(x, y) matmul(x, y))
+#' @rdname matmul-methods
+#' @aliases %*%,adgeMatrix,adgeMatrix-method
 setMethod("%*%", signature(x = "adgeMatrix", y = "adgeMatrix"),function(x, y) matmul(x, y))
+#' @rdname matmul-methods
+#' @aliases %*%,adgeMatrix,adgCMatrix-method
 setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"),function(x, y) matmul(x, y))
 
 # Left-hand numeric/matrix — required for irlba's `mult(v, A)` pattern and any
@@ -16,10 +51,14 @@ setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"),function(x, y) ma
 #
 # numeric %*% adgeMatrix: am_crossprod(A, x_col) = t(A) %*% x_col = n×1.
 # Values identical to x_row %*% A (1×n); drop()/t() in irlba normalise both.
+#' @rdname matmul-methods
+#' @aliases %*%,numeric,adgeMatrix-method
 setMethod("%*%", signature(x = "numeric", y = "adgeMatrix"), function(x, y) {
   am_crossprod(y, matrix(x, ncol = 1L))
 })
 
+#' @rdname matmul-methods
+#' @aliases %*%,matrix,adgeMatrix-method
 # matrix %*% adgeMatrix: x(k×m) %*% A(m×n) = t(am_crossprod(A, t(x))) = k×n.
 setMethod("%*%", signature(x = "matrix",  y = "adgeMatrix"), function(x, y) {
   # x(k×m) %*% y(m×n): wrap x as adgeMatrix and use the standard matmul path.
@@ -84,14 +123,64 @@ setAs("aTransposeView", "adgeMatrix", function(from) {
     precision         = from@precision)
 })
 
+#' Cross-product methods for adgeMatrix
+#'
+#' Compute \eqn{t(x) \%*\% y} (\code{crossprod}) or
+#' \eqn{x \%*\% t(y)} (\code{tcrossprod}) for \code{adgeMatrix} objects,
+#' dispatching through the amatrix backend to preserve GPU residency.
+#'
+#' @param x An \code{adgeMatrix}.
+#' @param y A matrix-like object, or \code{NULL} for the symmetric form
+#'   \eqn{t(x) \%*\% x} or \eqn{x \%*\% t(x)}.
+#' @param ... Further arguments passed to the underlying backend operation.
+#'
+#' @return An \code{adgeMatrix} containing the result.
+#'
+#' @examples
+#' A <- adgeMatrix(matrix(rnorm(12), 4, 3))
+#' crossprod(A)
+#' tcrossprod(A)
+#'
+#' @rdname crossprod-methods
+#' @aliases crossprod,adgeMatrix,ANY-method
 setMethod("crossprod", signature(x = "adgeMatrix", y = "ANY"), function(x, y = NULL, ...) am_crossprod(x, y = y, ...))
+#' @rdname crossprod-methods
+#' @aliases crossprod,adgeMatrix,missing-method
 setMethod("crossprod", signature(x = "adgeMatrix", y = "missing"), function(x, y, ...) am_crossprod(x, y = NULL, ...))
+#' @rdname crossprod-methods
+#' @aliases tcrossprod,adgeMatrix,ANY-method
 setMethod("tcrossprod", signature(x = "adgeMatrix", y = "ANY"), function(x, y = NULL, ...) am_tcrossprod(x, y = y, ...))
+#' @rdname crossprod-methods
+#' @aliases tcrossprod,adgeMatrix,missing-method
 setMethod("tcrossprod", signature(x = "adgeMatrix", y = "missing"), function(x, y, ...) am_tcrossprod(x, y = NULL, ...))
 
+#' Row and column summary methods for adgeMatrix
+#'
+#' Compute row or column sums and means for an \code{adgeMatrix}, dispatching
+#' through the amatrix backend when GPU acceleration is available.
+#'
+#' @param x An \code{adgeMatrix}.
+#' @param na.rm Logical; if \code{TRUE}, \code{NA} values are ignored.
+#' @param dims Integer; dimensions to sum over (passed to the backend).
+#'
+#' @return A numeric vector of length equal to the number of rows or columns.
+#'
+#' @examples
+#' A <- adgeMatrix(matrix(1:12, 3, 4))
+#' rowSums(A)
+#' colMeans(A)
+#'
+#' @rdname rowcol-summary-methods
+#' @aliases rowSums,adgeMatrix-method
 setMethod("rowSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) rowsums(x, na.rm = na.rm, dims = dims))
+#' @rdname rowcol-summary-methods
+#' @aliases colSums,adgeMatrix-method
 setMethod("colSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colsums(x, na.rm = na.rm, dims = dims))
+#' @rdname rowcol-summary-methods
+#' @aliases rowMeans,adgeMatrix-method
 setMethod("rowMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) rowmeans(x, na.rm = na.rm))
+#' @rdname rowcol-summary-methods
+#' @aliases colMeans,adgeMatrix-method
 setMethod("colMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colmeans(x, na.rm = na.rm))
 
 setMethod("cbind2", signature(x = "aMatrix", y = "aMatrix"), function(x, y, ...) {
@@ -174,25 +263,115 @@ setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", valu
   am_subassign(x, i, j, ..., value = value)
 })
 
+#' Solve a linear system for adgeMatrix
+#'
+#' Compute the solution to \eqn{a x = b} or the matrix inverse of \code{a}
+#' when \code{b} is missing, dispatching through the amatrix backend.
+#'
+#' @param a An \code{adgeMatrix} coefficient matrix.
+#' @param b A matrix or vector right-hand side, or missing for matrix
+#'   inversion.
+#' @param ... Further arguments passed to the backend.
+#'
+#' @return An \code{adgeMatrix} (or numeric vector when \code{b} is a
+#'   plain vector) containing the solution.
+#'
+#' @examples
+#' A <- adgeMatrix(crossprod(matrix(rnorm(9), 3, 3)) + 3 * diag(3))
+#' solve(A)
+#'
+#' @rdname solve-methods
+#' @aliases solve,adgeMatrix,missing-method
 setMethod("solve", signature(a = "adgeMatrix", b = "missing"), function(a, b, ...) am_solve(a, ...))
+#' @rdname solve-methods
+#' @aliases solve,adgeMatrix,ANY-method
 setMethod("solve", signature(a = "adgeMatrix", b = "ANY"), function(a, b, ...) am_solve(a, b = b, ...))
+
+#' Cholesky factorization for adgeMatrix
+#'
+#' Compute the Cholesky factor of a symmetric positive-definite
+#' \code{adgeMatrix}, dispatching through the amatrix backend.
+#'
+#' @param x A symmetric positive-definite \code{adgeMatrix}.
+#' @param ... Further arguments passed to the backend.
+#'
+#' @return An \code{adgeMatrix} containing the upper triangular Cholesky
+#'   factor.
+#'
+#' @examples
+#' S <- adgeMatrix(crossprod(matrix(rnorm(9), 3, 3)) + 3 * diag(3))
+#' R <- chol(S)
+#'
+#' @rdname chol-methods
+#' @aliases chol,adgeMatrix-method
 setMethod("chol", "adgeMatrix", function(x, ...) am_chol(x, ...))
 setMethod("qr", "adgeMatrix", function(x, ...) am_qr(x, ...))
 
+#' Singular value decomposition for adgeMatrix
+#'
+#' Compute the singular value decomposition of an \code{adgeMatrix},
+#' dispatching through the amatrix backend. A fallback method for plain
+#' \code{matrix} objects is also provided to preserve base R behaviour
+#' after the generic is promoted to S4.
+#'
+#' @param x An \code{adgeMatrix} or plain \code{matrix}.
+#' @param nu Number of left singular vectors to compute.
+#' @param nv Number of right singular vectors to compute.
+#' @param LINPACK Ignored; retained for signature compatibility.
+#' @param ... Further arguments passed to the backend.
+#'
+#' @return A list with components \code{d} (singular values), \code{u}
+#'   (left singular vectors, \code{nrow(x)} by \code{nu}), and \code{v}
+#'   (right singular vectors, \code{ncol(x)} by \code{nv}).
+#'
+#' @examples
+#' A <- adgeMatrix(matrix(rnorm(12), 4, 3))
+#' s <- svd(A)
+#' length(s$d)
+#'
+#' @rdname svd-methods
+#' @aliases svd,adgeMatrix-method
 setMethod("svd", "adgeMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
   am_svd(x, nu = nu, nv = nv, LINPACK = LINPACK, ...)
 })
 
+#' @rdname svd-methods
+#' @aliases svd,matrix-method
 # Fallback: keep base::svd working for plain matrix after we take the generic
 setMethod("svd", "matrix", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
   base::svd(x, nu = nu, nv = nv)
 })
 
+#' Eigendecomposition for adgeMatrix
+#'
+#' Compute eigenvalues and eigenvectors of an \code{adgeMatrix},
+#' dispatching through the amatrix backend for symmetric matrices when
+#' GPU acceleration is available. A fallback method for plain \code{matrix}
+#' preserves base R behaviour after the generic is promoted to S4.
+#'
+#' @param x An \code{adgeMatrix} or plain \code{matrix}.
+#' @param symmetric Logical indicating whether \code{x} is symmetric.
+#'   When missing, symmetry is detected automatically from the host copy.
+#' @param only.values Logical; if \code{TRUE} only eigenvalues are returned.
+#' @param EISPACK Ignored; retained for signature compatibility.
+#'
+#' @return A list with components \code{values} (numeric vector) and
+#'   \code{vectors} (matrix, omitted when \code{only.values = TRUE}).
+#'
+#' @examples
+#' S <- adgeMatrix(crossprod(matrix(rnorm(9), 3, 3)))
+#' ev <- eigen(S, symmetric = TRUE)
+#' length(ev$values)
+#'
+#' @rdname eigen-methods
+#' @aliases eigen,adgeMatrix-method
 setMethod("eigen", "adgeMatrix", function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
   sym <- if (missing(symmetric)) NULL else symmetric
   am_eigen(x, symmetric = sym, only.values = only.values, EISPACK = EISPACK)
 })
 
+#' @rdname eigen-methods
+#' @aliases eigen,matrix-method
 # Fallback: keep base::eigen working for plain matrix
 setMethod("eigen", "matrix", function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
   sym <- if (missing(symmetric)) isSymmetric(x) else symmetric

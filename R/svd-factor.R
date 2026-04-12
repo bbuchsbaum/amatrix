@@ -1,3 +1,38 @@
+#' Truncated SVD factorization result
+#'
+#' Stores the rank-\code{k} truncated singular value decomposition of
+#' an \code{aMatrix} as returned by \code{\link{svd_factor}}. Left and
+#' right singular vectors are kept as base R matrices so they are
+#' always host-accessible; optional \code{adgeMatrix} copies of
+#' \code{t(u)} and \code{v} may be present for GPU-accelerated
+#' projection.
+#'
+#' @slot u Numeric matrix of left singular vectors; \code{nrow(u)}
+#'   equals the number of rows of the source matrix and \code{ncol(u)}
+#'   equals \code{k}.
+#' @slot d Numeric vector of singular values of length \code{k}, in
+#'   descending order.
+#' @slot v Numeric matrix of right singular vectors; \code{nrow(v)}
+#'   equals the number of columns of the source matrix and
+#'   \code{ncol(v)} equals \code{k}.
+#' @slot k Integer; the requested rank.
+#' @slot method Character string; one of \code{"exact"},
+#'   \code{"rsvd"}, or \code{"subspace"}.
+#' @slot engine Character string identifying the low-level solver used
+#'   (e.g., \code{"exact_svd"}, \code{"irlba_svdr"},
+#'   \code{"backend_rsvd"}).
+#' @slot source_id Character string; the \code{object_id} of the
+#'   source \code{aMatrix}.
+#' @slot precision Character string; \code{"strict"} or \code{"fast"}.
+#' @slot backend Character string; the backend that computed the SVD.
+#' @slot ut_am Either an \code{adgeMatrix} holding \code{t(u)} for
+#'   GPU matrix-multiply routing, or \code{NULL} on CPU paths.
+#' @slot v_am Either an \code{adgeMatrix} holding \code{v} for GPU
+#'   matrix-multiply routing, or \code{NULL} on CPU paths.
+#'
+#' @exportClass amSVD
+#' @seealso \code{\link{svd_factor}}, \code{\link{svd_project}},
+#'   \code{\link{svd_reconstruct}}
 setClass(
   "amSVD",
   slots = list(
@@ -492,6 +527,35 @@ setMethod("show", "amSVD", function(object) {
   "cpu"
 }
 
+#' Compute a truncated SVD of an aMatrix
+#'
+#' Computes a rank-\code{k} truncated singular value decomposition of
+#' \code{X}, dispatching to the most suitable algorithm and backend
+#' based on matrix size, requested rank, and available hardware.
+#'
+#' @param X An \code{aMatrix} (typically \code{adgeMatrix} or
+#'   \code{adgCMatrix}).
+#' @param k Positive integer; the number of singular values and
+#'   vectors to compute. Defaults to \code{min(dim(X))}.
+#' @param method One of \code{"auto"} (default), \code{"exact"},
+#'   \code{"rsvd"}, or \code{"subspace"}. \code{"auto"} selects the
+#'   algorithm based on matrix dimensions and the available backend.
+#' @param n_oversamples Non-negative integer; extra random vectors
+#'   used to stabilize randomized algorithms. Ignored for
+#'   \code{method = "exact"}.
+#' @param n_iter Non-negative integer; number of power iterations for
+#'   the subspace method. Ignored for \code{method = "exact"}.
+#'
+#' @return An \code{\linkS4class{amSVD}} object containing slots
+#'   \code{u}, \code{d}, \code{v}, and metadata.
+#'
+#' @examples
+#' m <- matrix(rnorm(30), nrow = 6)
+#' A <- adgeMatrix(m)
+#' fac <- svd_factor(A, k = 3L)
+#' fac
+#'
+#' @export
 svd_factor <- function(X,
                           k = min(dim(X)),
                           method = c("auto", "exact", "rsvd", "subspace"),
@@ -590,6 +654,28 @@ svd_factor <- function(X,
   factor
 }
 
+#' Project new data onto SVD left singular vectors
+#'
+#' Computes \code{t(U) \%*\% Y}, where \code{U} is the matrix of left
+#' singular vectors stored in \code{factor}. Routes through a GPU
+#' backend when the factor was computed in \code{"fast"} precision and
+#' a device copy of \code{t(U)} is available.
+#'
+#' @param factor An \code{\linkS4class{amSVD}} object from
+#'   \code{\link{svd_factor}}.
+#' @param Y Numeric matrix or vector with \code{nrow(Y)} equal to
+#'   the number of rows of the original source matrix.
+#'
+#' @return Numeric matrix of dimensions \code{k x ncol(Y)} containing
+#'   the projected coordinates.
+#'
+#' @examples
+#' m <- matrix(rnorm(30), nrow = 6)
+#' A <- adgeMatrix(m)
+#' fac <- svd_factor(A, k = 2L)
+#' coords <- svd_project(fac, m)
+#'
+#' @export
 svd_project <- function(factor, Y) {
   if (!methods::is(factor, "amSVD")) {
     stop("factor must be an amSVD object", call. = FALSE)
@@ -619,6 +705,29 @@ svd_project <- function(factor, Y) {
   }
 }
 
+#' Reconstruct data from SVD coordinates
+#'
+#' Computes \code{V \%*\% (Z / d)}, mapping coordinates in the
+#' rank-\code{k} SVD subspace back to the original column space.
+#' Routes through a GPU backend when the factor was computed in
+#' \code{"fast"} precision and a device copy of \code{V} is available.
+#'
+#' @param factor An \code{\linkS4class{amSVD}} object from
+#'   \code{\link{svd_factor}}.
+#' @param Z Numeric matrix or vector with \code{nrow(Z)} equal to
+#'   \code{factor@k}.
+#'
+#' @return Numeric matrix of dimensions \code{ncol(X) x ncol(Z)},
+#'   where \code{X} is the original source matrix.
+#'
+#' @examples
+#' m <- matrix(rnorm(30), nrow = 6)
+#' A <- adgeMatrix(m)
+#' fac <- svd_factor(A, k = 2L)
+#' coords <- svd_project(fac, m)
+#' approx <- svd_reconstruct(fac, coords)
+#'
+#' @export
 svd_reconstruct <- function(factor, Z) {
   if (!methods::is(factor, "amSVD")) {
     stop("factor must be an amSVD object", call. = FALSE)
@@ -640,6 +749,29 @@ svd_reconstruct <- function(factor, Z) {
   }
 }
 
+#' Project and reconstruct data using a truncated SVD
+#'
+#' Convenience wrapper that calls \code{\link{svd_project}} followed
+#' by \code{\link{svd_reconstruct}}, yielding the rank-\code{k}
+#' least-squares approximation of \code{Y} in the column space of
+#' the original matrix.
+#'
+#' @param factor An \code{\linkS4class{amSVD}} object from
+#'   \code{\link{svd_factor}}.
+#' @param Y Numeric matrix or vector to project and reconstruct.
+#'   Must have \code{nrow(Y)} equal to the number of rows of the
+#'   original source matrix.
+#'
+#' @return Numeric matrix with the same dimensions as \code{Y},
+#'   containing the rank-\code{k} approximation.
+#'
+#' @examples
+#' m <- matrix(rnorm(30), nrow = 6)
+#' A <- adgeMatrix(m)
+#' fac <- svd_factor(A, k = 2L)
+#' approx <- pca_coef(fac, m)
+#'
+#' @export
 pca_coef <- function(factor, Y) {
   svd_reconstruct(factor, svd_project(factor, Y))
 }

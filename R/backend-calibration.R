@@ -15,28 +15,41 @@
 
 #' Calibrate GPU dispatch thresholds for this machine
 #'
-#' Runs micro-benchmarks for each (op, backend, size) combination and derives
-#' the minimum matrix size at which each GPU backend reliably beats CPU. The
-#' results are stored in the current session and optionally persisted to disk
-#' for automatic reuse in future sessions.
+#' Runs micro-benchmarks for each (op, backend, size) combination and
+#' derives the minimum matrix element count at which each GPU backend
+#' reliably outperforms CPU. Results are stored in the current session
+#' and optionally persisted to disk for reuse in future sessions.
 #'
-#' @param backend Character vector of backend names to benchmark. Defaults to
-#'   all available non-CPU backends.
-#' @param ops Character vector of operations to benchmark. Supported values:
-#'   \code{"matmul"} (alias for \code{"gemm"}), \code{"gemm"},
+#' @param backend Character vector of backend names to benchmark.
+#'   Defaults to all registered non-CPU backends that report
+#'   \code{available = TRUE}.
+#' @param ops Character vector of operations to benchmark. Supported
+#'   values: \code{"matmul"} (alias for \code{"gemm"}), \code{"gemm"},
 #'   \code{"gemv"}, \code{"spmv"}, \code{"spmm"}, \code{"crossprod"},
 #'   \code{"rowSums"}, \code{"colSums"}, \code{"qr"}, \code{"chol"},
 #'   \code{"solve"}, \code{"svd"}.
-#' @param sizes List of integer(2) vectors giving (nrow, ncol) test sizes.
-#' @param sparse_densities Numeric vector of target sparse densities used when
-#'   benchmarking \code{"spmv"} and \code{"spmm"}.
-#' @param n_reps Number of timed repetitions per cell (after 2 warm-up reps).
-#' @param margin Fraction by which GPU must beat CPU to count as a win (default
-#'   0.10 = GPU must be at least 10\% faster).
-#' @param persist Logical. Save calibration to the user cache directory so
-#'   future sessions load it automatically.
+#' @param sizes List of integer vectors of length 2 giving
+#'   \code{c(nrow, ncol)} test matrix dimensions.
+#' @param sparse_densities Numeric vector of target fill densities used
+#'   when benchmarking \code{"spmv"} and \code{"spmm"}.
+#' @param n_reps Positive integer. Number of timed repetitions per
+#'   benchmark cell, after 2 warm-up repetitions.
+#' @param margin Non-negative numeric less than 1. Fraction by which
+#'   GPU median time must beat CPU to count as a GPU win (default
+#'   \code{0.10} means GPU must be at least 10\% faster).
+#' @param persist Logical. If \code{TRUE} (default), save calibration
+#'   to the user cache directory so future sessions load it
+#'   automatically.
 #' @param quiet Logical. Suppress progress messages.
-#' @return Invisibly, the calibration list (thresholds + full results table).
+#'
+#' @return Invisibly, a list with elements \code{version},
+#'   \code{calibrated_at} (POSIXct), \code{thresholds} (nested list
+#'   keyed by backend then op), and \code{results} (data.frame of all
+#'   benchmark measurements).
+#'
+#' @seealso \code{\link{amatrix_calibration_info}},
+#'   \code{\link{amatrix_backend_plan}}
+#' @export
 amatrix_calibrate <- function(
   backend  = NULL,
   ops      = c("gemm", "gemv", "crossprod", "rowSums", "colSums", "qr", "chol", "solve", "svd"),
@@ -175,10 +188,22 @@ amatrix_calibrate <- function(
   invisible(calibration)
 }
 
-#' Inspect the current calibration
+#' Retrieve the current calibration state
 #'
-#' Returns the calibration list stored in the session (loaded from disk if not
-#' yet loaded). Returns \code{NULL} if no calibration is available.
+#' Returns the calibration data stored in the current session. If no
+#' calibration has been run yet, the function attempts to load a
+#' previously persisted calibration from the user cache directory.
+#' Returns \code{NULL} when no calibration is available.
+#'
+#' @return A list as returned by \code{\link{amatrix_calibrate}}, or
+#'   \code{NULL} if no calibration data exists for this session.
+#'
+#' @examples
+#' cal <- amatrix_calibration_info()
+#' is.null(cal) # TRUE when no calibration has been run
+#'
+#' @seealso \code{\link{amatrix_calibrate}}
+#' @export
 amatrix_calibration_info <- function() {
   .amatrix_load_calibration()
   .amatrix_state$calibration

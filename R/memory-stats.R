@@ -1,20 +1,33 @@
 # amatrix_memory_stats() — snapshot of GPU residency and model cache usage.
 # amatrix_gc()          — free dead residency entries and optionally clear cache.
 
-#' Report current GPU residency and model cache usage
+#' Report GPU residency and model cache usage
 #'
-#' Returns a list with two components:
-#' \describe{
-#'   \item{residency}{data.frame: one row per registered backend showing the
-#'     number of R objects currently GPU-resident and, if the backend exposes a
-#'     \code{memory_usage()} method, device bytes used / total.}
-#'   \item{model_cache}{list: \code{n_entries} = count of cached factors
-#'     (QR, Cholesky, SVD) in the session model cache.}
-#' }
+#' Returns a snapshot of GPU device memory usage and model cache
+#' occupancy for the current session. Backends that expose a
+#' \code{memory_usage()} method contribute device byte counts;
+#' backends without that method show \code{NA} for byte fields.
 #'
-#' Backends can optionally expose a \code{memory_usage()} method returning a
-#' list with \code{used} (bytes in use) and \code{total} (device capacity).
-#' Without that method \code{bytes_used} and \code{bytes_total} are \code{NA}.
+#' @return An object of class \code{amatrix_memory_stats}, which is a
+#'   list with two components:
+#'   \describe{
+#'     \item{residency}{data.frame with one row per registered backend
+#'       and columns \code{backend} (character), \code{resident_objects}
+#'       (integer count of GPU-resident R objects), \code{bytes_used}
+#'       (numeric, device bytes in use, or \code{NA}), and
+#'       \code{bytes_total} (numeric, total device capacity, or
+#'       \code{NA}).}
+#'     \item{model_cache}{List with \code{n_entries} (integer, number
+#'       of cached matrix factors) and \code{max_size} (integer or
+#'       \code{Inf}, the cache size limit).}
+#'   }
+#'
+#' @examples
+#' stats <- amatrix_memory_stats()
+#' print(stats)
+#'
+#' @seealso \code{\link{amatrix_gc}}, \code{\link{amatrix_residency_info}}
+#' @export
 amatrix_memory_stats <- function() {
   res_env <- .amatrix_state$residency
   keys    <- ls(envir = res_env, all.names = FALSE)
@@ -87,16 +100,31 @@ print.amatrix_memory_stats <- function(x, ...) {
   invisible(x)
 }
 
-#' Free dead residency entries and optionally flush the model cache
+#' Free stale GPU residency entries and optionally flush the model cache
 #'
-#' Dead entries are residency registry slots whose backend no longer reports
-#' the object as present (\code{resident_has(key)} returns \code{FALSE}).
-#' These arise when a backend unloads or is replaced between sessions.
+#' Scans the residency registry and removes entries whose backend no
+#' longer reports the associated device buffer as present. Such stale
+#' entries arise when a backend is unloaded or the device is reset
+#' between sessions. Optionally flushes all cached matrix factors (QR,
+#' Cholesky, SVD) from the session model cache.
 #'
-#' @param cache Logical. Also flush all model-cache entries (QR, Chol, SVD
-#'   factors). Default \code{FALSE}.
-#' @return Invisibly, a list with \code{dead_entries} (count of stale
-#'   residency slots removed) and \code{cache_entries_cleared}.
+#' @param cache Logical. If \code{TRUE}, also remove all model-cache
+#'   entries. Default \code{FALSE}.
+#'
+#' @return Invisibly, a list with two integer elements:
+#'   \describe{
+#'     \item{dead_entries}{Number of stale residency slots removed.}
+#'     \item{cache_entries_cleared}{Number of model-cache entries
+#'       flushed (0 when \code{cache = FALSE}).}
+#'   }
+#'
+#' @examples
+#' amatrix_gc()
+#' amatrix_gc(cache = TRUE)
+#'
+#' @seealso \code{\link{amatrix_memory_stats}},
+#'   \code{\link{amatrix_residency_info}}
+#' @export
 amatrix_gc <- function(cache = FALSE) {
   res_env <- .amatrix_state$residency
   keys    <- ls(envir = res_env, all.names = FALSE)

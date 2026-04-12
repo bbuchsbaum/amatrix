@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /Users/bbuchsbaum/code/amatrix && Rscript -e '\\nlibrary(amatrix)\\nset.seed(42)\\nX <- matrix(rnorm(12), 4, 3)\\nY <- matrix(rnorm(9),  3, 3)\\n\\n# Reference: base R\\nD_ref <- as.matrix(dis...",
-  "error": "Exit code 1\n\nAttaching package: ‘amatrix’\n\nThe following object is masked from ‘package:base’:\n\n    svd\n\nError in .am_tcrossprod_gpu(X_mat, Y_mat) : \n  af_matmul failed for tcrossprod\nCalls: am_dist -> .am_tcrossprod_gpu\nExecution halted",
-  "timestamp": "2026-04-05T21:14:05.067Z",
-  "retry_count": 1
-}

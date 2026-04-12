@@ -752,6 +752,44 @@ irlba_native <- function(A,
   as.matrix(.amatrix_host_arg(value))
 }
 
+#' Block Lanczos SVD via block Krylov iteration
+#'
+#' Computes a truncated SVD using a block Lanczos bidiagonalization. Each
+#' Krylov step issues one GPU GEMM per block rather than sequential GEMVs,
+#' significantly reducing kernel-launch overhead on accelerated backends.
+#'
+#' @param A Numeric matrix, \code{adgeMatrix}, or \code{adgCMatrix}. Plain
+#'   matrices are coerced to \code{adgeMatrix} using \code{mode} and
+#'   \code{backend}.
+#' @param nv Number of right singular vectors to return.
+#' @param nu Number of left singular vectors to return. Defaults to \code{nv}.
+#' @param block_size Integer block width for the Krylov iteration. When
+#'   \code{NULL} (default), a size is chosen automatically based on \code{nv}
+#'   and \code{nu}.
+#' @param n_steps Number of Krylov steps. When \code{NULL} (default), chosen
+#'   automatically.
+#' @param mode Execution mode passed to \code{adgeMatrix()} when coercing
+#'   plain matrices.
+#' @param backend Backend name passed to \code{adgeMatrix()} when coercing
+#'   plain matrices. Ignored when \code{A} is already an \code{aMatrix}.
+#'
+#' @return A named list with components:
+#'   \describe{
+#'     \item{u}{Numeric matrix \code{[m, nu]}: left singular vectors.}
+#'     \item{d}{Numeric vector of length \code{min(nu, nv)}: singular values
+#'       in decreasing order.}
+#'     \item{v}{Numeric matrix \code{[n, nv]}: right singular vectors.}
+#'     \item{iter}{Integer: number of Krylov steps performed.}
+#'     \item{mprod}{Integer: total matrix-vector products issued.}
+#'   }
+#'
+#' @examples
+#' A <- matrix(rnorm(200), nrow = 20)
+#' res <- block_lanczos(A, nv = 3L)
+#' length(res$d)
+#'
+#' @seealso \code{\link{rsvd}}, \code{\link{block_svd}}
+#' @export
 block_lanczos <- function(A,
                              nv = 5L,
                              nu = nv,

@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"Rscript -e \\\"\\ndevtools::load_all('/Users/bbuchsbaum/code/amatrix', quiet=TRUE)\\nA <- matrix(rnorm(9), 3, 3)\\ncat('class of A:', class(A), '\\\\n')\\ncat('inherits aMatrix:', inherits(A, 'aMa...",
-  "error": "Exit code 1\nCreating a new generic function for ‘svd’ in package ‘amatrix’\nCreating a generic function for ‘nrow’ from package ‘base’ in package ‘amatrix’\nCreating a generic function for ‘ncol’ from package ‘base’ in package ‘amatrix’\nCreating a generic function for ‘rowSums’ from package ‘base’ in package ‘amatrix’\nCreating a generic function for ‘colSums’ from package ‘base’ in package ‘amatrix’\nCreating a generic function for ‘diag’ from package ‘base’ in package ‘amatrix’\nCreating a generic ...",
-  "timestamp": "2026-04-06T17:32:30.820Z",
-  "retry_count": 1
-}

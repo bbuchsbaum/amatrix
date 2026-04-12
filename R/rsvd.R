@@ -21,6 +21,12 @@
 #'   constructing approximate matrix decompositions.
 #'   \emph{SIAM Review}, 53(2), 217-288.
 #'
+#' @examples
+#' A <- matrix(rnorm(200), nrow = 20)
+#' res <- rsvd(A, k = 3L)
+#' length(res$d)
+#'
+#' @seealso \code{\link{block_lanczos}}, \code{\link{eigh}}
 #' @export
 rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
   k             <- as.integer(k)

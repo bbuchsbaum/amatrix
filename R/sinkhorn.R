@@ -21,6 +21,14 @@
 #' @return By default, an \code{adgeMatrix}. With \code{return_info = TRUE}, a
 #'   list containing \code{result}, \code{iterations}, \code{converged},
 #'   \code{row_error}, \code{col_error}, \code{backend}, and \code{method}.
+#'
+#' @examples
+#' A <- abs(matrix(rnorm(16), nrow = 4)) + 0.1
+#' S <- sinkhorn(A, max_iter = 50L)
+#' # Row sums should be close to 1
+#' rowSums(as.matrix(S))
+#'
+#' @seealso \code{\link{dist_matrix}}
 #' @export
 sinkhorn <- function(
   A,

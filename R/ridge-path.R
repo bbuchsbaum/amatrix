@@ -1,3 +1,38 @@
+#' Compute a ridge regression solution path
+#'
+#' Fits ridge regression for every penalty value in \code{lambdas} via a
+#' single thin SVD of \code{X}, returning coefficients for all penalties
+#' at once.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of predictors, shape
+#'   \code{[n, p]}.
+#' @param Y Numeric matrix, vector, or \code{adgeMatrix} of responses,
+#'   shape \code{[n, q]}.
+#' @param lambdas Positive numeric vector of ridge penalty values.
+#'   Must satisfy \code{all(lambdas > 0)}.
+#' @param k Integer or \code{NULL}. Number of singular values to retain
+#'   in the truncated SVD. When \code{NULL}, defaults to
+#'   \code{min(nrow(X), ncol(X))}.
+#' @param ... Additional arguments forwarded to \code{svd_factor}.
+#'
+#' @return An object of class \code{"ridge_path"}, a named list
+#'   containing:
+#'   \describe{
+#'     \item{coef}{Numeric array of shape \code{[p, q, length(lambdas)]};
+#'       coefficient matrix for each penalty.}
+#'     \item{lambdas}{The input penalty vector.}
+#'     \item{svd}{The \code{amSVD} factor object used internally.}
+#'     \item{k}{Integer number of singular values actually used.}
+#'   }
+#'
+#' @examples
+#' X <- matrix(rnorm(60), nrow = 15)
+#' y <- rnorm(15)
+#' path <- ridge_path(X, y, lambdas = c(0.1, 1, 10))
+#' dim(path$coef)
+#'
+#' @seealso \code{\link{ridge_fit}}, \code{\link{svd_factor}}
+#' @export
 ridge_path <- function(X, Y, lambdas, k = NULL, ...) {
   stopifnot(is.numeric(lambdas), length(lambdas) >= 1L, all(lambdas > 0))
 

@@ -706,6 +706,34 @@
   .amatrix_dense_like(cov_host, X_centered)
 }
 
+#' Backend-dispatched covariance matrix
+#'
+#' Computes the (possibly weighted) sample or population covariance matrix of
+#' \code{X}. Sparse inputs use a memory-efficient path; dense inputs use a
+#' fused GPU kernel when available, otherwise fall back to CPU centering
+#' followed by a GPU cross-product.
+#'
+#' @param X Numeric matrix, \code{adgeMatrix}, or sparse \code{adgCMatrix} /
+#'   \code{sparseMatrix}, shape \code{[n, p]}.
+#' @param center Logical. When \code{TRUE} (default), columns are mean-centred
+#'   before computing the cross-product.
+#' @param sample Logical. When \code{TRUE} (default), divides by \code{n - 1}
+#'   (sample covariance); when \code{FALSE}, divides by \code{n}.
+#' @param weights Optional numeric vector of length \code{n} with non-negative
+#'   observation weights. When supplied, a weighted covariance is computed.
+#' @param block_size Optional integer. When set, the cross-product is computed
+#'   in column-blocks of this size to limit peak memory. Ignored for sparse
+#'   inputs.
+#'
+#' @return An \code{adgeMatrix} of shape \code{[p, p]}.
+#'
+#' @examples
+#' X <- matrix(rnorm(200), nrow = 40)
+#' C <- covariance(X)
+#' dim(C)
+#'
+#' @seealso \code{\link{many_lm}}
+#' @export
 covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_size = NULL) {
   # Sparse path: avoid densifying large sparse matrices.
   # Formula: cov(X) = (X^TX - n * mu * mu^T) / (n-1)
@@ -773,6 +801,31 @@ covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_si
   )
 }
 
+#' Compute a correlation matrix
+#'
+#' Computes the sample correlation matrix of the columns of \code{X},
+#' optionally with observation weights and column-blocked covariance
+#' accumulation.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of shape \code{[n, p]}.
+#' @param center Logical; when \code{TRUE} (default) column means are
+#'   subtracted before computing covariances.
+#' @param weights Numeric vector of length \code{n}, or \code{NULL}
+#'   for unweighted correlation.
+#' @param block_size Positive integer or \code{NULL}. When non-\code{NULL},
+#'   covariances are accumulated in blocks of this many columns to limit
+#'   memory usage.
+#'
+#' @return An \code{adgeMatrix} of shape \code{[p, p]}: the sample
+#'   correlation matrix with diagonal entries set to 1.
+#'
+#' @examples
+#' X <- matrix(rnorm(50), nrow = 10)
+#' R <- correlation(X)
+#' round(diag(as.matrix(R)), 6)
+#'
+#' @seealso \code{\link{covariance}}
+#' @export
 correlation <- function(X, center = TRUE, weights = NULL, block_size = NULL) {
   cov_arg <- covariance(X, center = center, sample = TRUE, weights = weights, block_size = block_size)
   cov_host <- as.matrix(amatrix_materialize_host(cov_arg))
@@ -790,6 +843,45 @@ correlation <- function(X, center = TRUE, weights = NULL, block_size = NULL) {
   )
 }
 
+#' Fit a single linear model
+#'
+#' Solves the ordinary least-squares problem \eqn{Y \approx X \beta} for a
+#' single design matrix \code{X} and one or more response columns \code{Y}.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of predictors, shape
+#'   \code{[n, p]}.
+#' @param Y Numeric matrix, vector, or \code{adgeMatrix} of responses,
+#'   shape \code{[n, q]}.
+#' @param intercept Logical. When \code{TRUE}, a column of ones is prepended
+#'   to \code{X} before fitting.
+#' @param include_fitted Logical. When \code{TRUE}, fitted values are
+#'   included in the returned object.
+#' @param include_residuals Logical. When \code{TRUE}, residuals are
+#'   included in the returned object.
+#' @param cache Logical. When \code{TRUE}, the \eqn{X^T X} or QR
+#'   factorization is cached for reuse across calls sharing the same \code{X}.
+#' @param method Solver method: \code{"normal"} (normal equations, default)
+#'   or \code{"qr"} (QR decomposition).
+#'
+#' @return An object of class \code{"lm_fit"}, a named list containing:
+#'   \describe{
+#'     \item{coefficients}{\code{adgeMatrix} of shape \code{[p, q]}.}
+#'     \item{fitted.values}{\code{adgeMatrix} of shape \code{[n, q]}, or
+#'       \code{NULL} when \code{include_fitted = FALSE}.}
+#'     \item{residuals}{\code{adgeMatrix} of shape \code{[n, q]}, or
+#'       \code{NULL} when \code{include_residuals = FALSE}.}
+#'     \item{rank}{Integer model rank.}
+#'     \item{df.residual}{Residual degrees of freedom.}
+#'   }
+#'
+#' @examples
+#' X <- matrix(rnorm(50), nrow = 10)
+#' y <- rnorm(10)
+#' fit <- lm_fit(X, y)
+#' coef(fit)
+#'
+#' @seealso \code{\link{many_lm}}, \code{\link{array_lm}}
+#' @export
 lm_fit <- function(
   X,
   Y,
@@ -822,6 +914,47 @@ lm_fit <- function(
   .amatrix_make_lm_fit(core, X_arg, intercept = intercept, call = match.call())
 }
 
+#' Fit a single ridge regression model
+#'
+#' Solves the penalized least-squares problem
+#' \eqn{\min_\beta \|Y - X\beta\|^2 + \lambda \|\beta\|^2} for a
+#' single penalty value \code{lambda}.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of predictors, shape
+#'   \code{[n, p]}.
+#' @param Y Numeric matrix, vector, or \code{adgeMatrix} of responses,
+#'   shape \code{[n, q]}.
+#' @param lambda Non-negative scalar ridge penalty.
+#' @param intercept Logical; when \code{TRUE} a column of ones is
+#'   prepended to \code{X} before fitting.
+#' @param penalize_intercept Logical; when \code{FALSE} (default) the
+#'   intercept coefficient is excluded from the penalty.
+#' @param include_fitted Logical; include fitted values in the result.
+#' @param include_residuals Logical; include residuals in the result.
+#' @param cache Logical; cache \eqn{X^T X} for reuse across calls
+#'   sharing the same \code{X}.
+#'
+#' @return An object of class \code{"ridge_fit"}, a named list
+#'   containing:
+#'   \describe{
+#'     \item{coefficients}{\code{adgeMatrix} of shape \code{[p, q]}.}
+#'     \item{fitted.values}{\code{adgeMatrix} of shape \code{[n, q]},
+#'       or \code{NULL} when \code{include_fitted = FALSE}.}
+#'     \item{residuals}{\code{adgeMatrix} of shape \code{[n, q]}, or
+#'       \code{NULL} when \code{include_residuals = FALSE}.}
+#'     \item{lambda}{The penalty value used.}
+#'     \item{rank}{Integer model rank.}
+#'     \item{df.residual}{Residual degrees of freedom.}
+#'   }
+#'
+#' @examples
+#' X <- matrix(rnorm(50), nrow = 10)
+#' y <- rnorm(10)
+#' fit <- ridge_fit(X, y, lambda = 1)
+#' coef(fit)
+#'
+#' @seealso \code{\link{ridge_path}}, \code{\link{lm_fit}}
+#' @export
 ridge_fit <- function(
   X,
   Y,
@@ -895,6 +1028,49 @@ ridge_fit <- function(
   )
 }
 
+#' Fit a weighted least squares model
+#'
+#' Solves the weighted least-squares problem
+#' \eqn{\min_\beta \sum_i w_i (y_i - x_i^T \beta)^2} using either the
+#' normal equations or a QR decomposition of the weight-scaled design.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of predictors, shape
+#'   \code{[n, p]}.
+#' @param Y Numeric matrix, vector, or \code{adgeMatrix} of responses,
+#'   shape \code{[n, q]}.
+#' @param weights Positive numeric vector of length \code{n};
+#'   observation weights.
+#' @param intercept Logical; when \code{TRUE} a column of ones is
+#'   prepended to \code{X} before fitting.
+#' @param include_fitted Logical; include fitted values in the result.
+#' @param include_residuals Logical; include residuals in the result.
+#' @param cache Logical; cache intermediate factorizations for reuse
+#'   across calls sharing the same \code{X} and \code{weights}.
+#' @param method Solver method: \code{"normal"} (weighted normal
+#'   equations, default) or \code{"qr"} (QR on the weight-scaled
+#'   design).
+#'
+#' @return An object of class \code{"wls_fit"}, a named list
+#'   containing:
+#'   \describe{
+#'     \item{coefficients}{\code{adgeMatrix} of shape \code{[p, q]}.}
+#'     \item{fitted.values}{\code{adgeMatrix} of shape \code{[n, q]},
+#'       or \code{NULL} when \code{include_fitted = FALSE}.}
+#'     \item{residuals}{\code{adgeMatrix} of shape \code{[n, q]}, or
+#'       \code{NULL} when \code{include_residuals = FALSE}.}
+#'     \item{rank}{Integer model rank.}
+#'     \item{df.residual}{Residual degrees of freedom.}
+#'   }
+#'
+#' @examples
+#' X <- matrix(rnorm(50), nrow = 10)
+#' y <- rnorm(10)
+#' w <- runif(10, 0.5, 2)
+#' fit <- wls_fit(X, y, weights = w)
+#' coef(fit)
+#'
+#' @seealso \code{\link{lm_fit}}, \code{\link{crossprod_weighted}}
+#' @export
 wls_fit <- function(
   X,
   Y,
@@ -989,6 +1165,52 @@ wls_fit <- function(
   list(rss = rss, sigma2 = sigma2)
 }
 
+#' Fit multiple linear models against a shared design matrix
+#'
+#' The flagship batch regression function. Solves \eqn{Y \approx X B} where
+#' \code{Y} is a matrix whose columns are independent response variables.
+#' When no GPU backend is active the normal-equations or QR path runs on CPU.
+#' With an active GPU backend the QR path dispatches the factorization to the
+#' device and keeps intermediate results resident to minimise host round-trips.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of predictors, shape
+#'   \code{[n, p]}.
+#' @param Y Numeric matrix or \code{adgeMatrix} of responses, shape
+#'   \code{[n, q]}. Each column is fitted independently against \code{X}.
+#' @param weights Optional numeric vector of length \code{n} with non-negative
+#'   observation weights. When supplied, weighted least squares is used.
+#' @param intercept Logical. When \code{TRUE}, a column of ones is prepended
+#'   to \code{X} before fitting.
+#' @param include_fitted Logical. When \code{TRUE}, fitted values are stored
+#'   in the returned object.
+#' @param include_residuals Logical. When \code{TRUE}, residuals are stored
+#'   in the returned object.
+#' @param cache Logical. When \code{TRUE}, the design-matrix factorization is
+#'   cached for reuse when \code{X} is the same across calls.
+#' @param method Solver: \code{"normal"} (normal equations) or \code{"qr"}
+#'   (QR decomposition). Ignored when \code{weights} is non-\code{NULL}
+#'   and the weighted path is selected.
+#'
+#' @return An object of class \code{"am_many_lm_fit"}, a named list
+#'   containing:
+#'   \describe{
+#'     \item{coefficients}{\code{adgeMatrix} of shape \code{[p, q]}.}
+#'     \item{fitted.values}{\code{adgeMatrix} \code{[n, q]} or \code{NULL}.}
+#'     \item{residuals}{\code{adgeMatrix} \code{[n, q]} or \code{NULL}.}
+#'     \item{rss}{Numeric vector of length \code{q}: residual sums of squares.}
+#'     \item{sigma2}{Numeric vector of length \code{q}: residual variances.}
+#'     \item{rank}{Integer model rank.}
+#'     \item{df.residual}{Residual degrees of freedom.}
+#'   }
+#'
+#' @examples
+#' X <- matrix(rnorm(100), nrow = 20)
+#' Y <- matrix(rnorm(60), nrow = 20)
+#' fit <- many_lm(X, Y, method = "qr")
+#' dim(coef(fit))
+#'
+#' @seealso \code{\link{lm_fit}}, \code{\link{array_lm}}
+#' @export
 many_lm <- function(
   X,
   Y,
@@ -1062,6 +1284,48 @@ many_lm <- function(
   }
 }
 
+#' Fit linear models with array-shaped response
+#'
+#' Wraps \code{\link{many_lm}} to accept a response \code{Y} with more than
+#' two dimensions (e.g. a 3-D array). The trailing dimensions are collapsed
+#' into columns for fitting and optionally restored in the output.
+#'
+#' @param X Numeric matrix or \code{adgeMatrix} of predictors, shape
+#'   \code{[n, p]}.
+#' @param Y Numeric array or matrix of responses. The first dimension must
+#'   equal \code{n} (observations). Additional dimensions are treated as
+#'   independent response variables.
+#' @param weights Optional numeric vector of length \code{n} with non-negative
+#'   observation weights.
+#' @param intercept Logical. When \code{TRUE}, a column of ones is prepended
+#'   to \code{X} before fitting.
+#' @param include_fitted Logical. When \code{TRUE}, fitted values are stored
+#'   in the returned object.
+#' @param include_residuals Logical. When \code{TRUE}, residuals are stored
+#'   in the returned object.
+#' @param cache Logical. When \code{TRUE}, the design-matrix factorization is
+#'   cached for reuse.
+#' @param method Solver: \code{"normal"} or \code{"qr"}.
+#' @param restore_array Logical. When \code{TRUE} (default), \code{rss},
+#'   \code{sigma2}, fitted values, and residuals are reshaped to match the
+#'   original trailing dimensions of \code{Y}.
+#'
+#' @return An object of class \code{"am_array_lm_fit"}, a named list
+#'   containing the same fields as \code{\link{many_lm}} plus:
+#'   \describe{
+#'     \item{response_dims}{Integer vector of trailing dimensions of \code{Y}.}
+#'     \item{rss}{Array or vector of residual sums of squares.}
+#'     \item{sigma2}{Array or vector of residual variances.}
+#'   }
+#'
+#' @examples
+#' X <- matrix(rnorm(50), nrow = 10)
+#' Y <- array(rnorm(10 * 3 * 4), dim = c(10, 3, 4))
+#' fit <- array_lm(X, Y)
+#' dim(fit$sigma2)
+#'
+#' @seealso \code{\link{many_lm}}, \code{\link{lm_fit}}
+#' @export
 array_lm <- function(
   X,
   Y,

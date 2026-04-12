@@ -1,3 +1,35 @@
+#' Collect full dispatch information for an aMatrix object
+#'
+#' Returns a snapshot of the dispatch state for an \code{aMatrix},
+#' including residency, preferred backend, policy, precision, and the
+#' per-operation dispatch matrix for a set of operations.
+#'
+#' @param x An \code{aMatrix} object.
+#' @param ops Character vector of operation names to include in the
+#'   dispatch matrix. Default covers the six core operations.
+#' @param y_map Named list mapping operation names to right-hand-side
+#'   objects used when planning binary operations such as
+#'   \code{"matmul"}.
+#'
+#' @return A named list with elements:
+#'   \describe{
+#'     \item{object_id}{Character. Internal object identifier.}
+#'     \item{preferred_backend}{Character. Preferred backend slot value.}
+#'     \item{pinned_backend}{Character or \code{NULL}. Backend to which
+#'       the object is currently GPU-resident.}
+#'     \item{policy}{Character. Dispatch policy slot value.}
+#'     \item{precision}{Character. Precision mode (\code{"strict"} or
+#'       \code{"fast"}).}
+#'     \item{residency}{data.frame. Output of
+#'       \code{\link{amatrix_residency_info}}.}
+#'     \item{plans}{data.frame. Output of
+#'       \code{\link{amatrix_backend_matrix}}.}
+#'   }
+#'
+#' @seealso \code{\link{amatrix_backend_plan}},
+#'   \code{\link{amatrix_backend_matrix}},
+#'   \code{\link{amatrix_explain}}
+#' @export
 amatrix_execution_info <- function(
   x,
   ops = c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums"),
@@ -37,6 +69,45 @@ amatrix_execution_info <- function(
   list(name = chosen$name, backend = .amatrix_get_backend(chosen$name))
 }
 
+#' Compute the dispatch plan for a single operation
+#'
+#' Evaluates each candidate backend in preference order and returns a
+#' structured plan describing which backend was chosen and why each
+#' candidate was accepted or rejected. The plan respects GPU residency,
+#' precision compatibility, and calibration thresholds.
+#'
+#' @param x An \code{aMatrix} object.
+#' @param op Character string naming the operation, e.g.
+#'   \code{"matmul"}, \code{"crossprod"}, \code{"svd"}.
+#' @param y Right-hand-side \code{aMatrix} or \code{NULL}. Used for
+#'   binary operations such as \code{"matmul"} to check compatibility
+#'   and calibration workload.
+#'
+#' @return A named list with elements:
+#'   \describe{
+#'     \item{op}{Character. The requested operation.}
+#'     \item{pinned_backend}{Character or \code{NULL}. Backend to which
+#'       \code{x} is currently GPU-resident.}
+#'     \item{preferred}{Character vector. Backends evaluated in order.}
+#'     \item{requested_precision}{Character. Precision mode of \code{x}.}
+#'     \item{chosen}{Character. Name of the chosen backend.}
+#'     \item{chosen_path}{Character. Either \code{"resident"} or
+#'       \code{"cold"}.}
+#'     \item{candidates}{List of per-candidate evaluation records, each
+#'       a named list with logical flags for \code{registered},
+#'       \code{available}, \code{precision_compatible},
+#'       \code{supported_cold}, \code{supported_resident},
+#'       \code{calibration_ok}, \code{supported}, and \code{chosen}.}
+#'   }
+#'
+#' @examples
+#' m <- adgeMatrix(matrix(1:6, 2, 3))
+#' amatrix_backend_plan(m, "matmul")
+#'
+#' @seealso \code{\link{amatrix_backend_matrix}},
+#'   \code{\link{amatrix_explain}},
+#'   \code{\link{amatrix_execution_info}}
+#' @export
 amatrix_backend_plan <- function(x, op, y = NULL) {
   pinned_backend <- .amatrix_live_resident_backend(x)
   preferred <- .amatrix_backend_preference(x, op = op)
@@ -149,6 +220,45 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
   )
 }
 
+#' Tabulate dispatch plans across multiple operations
+#'
+#' Runs \code{\link{amatrix_backend_plan}} for each requested operation
+#' and returns the results as a single data.frame, one row per
+#' operation. Useful for inspecting which backend will be used across an
+#' entire workload.
+#'
+#' @param x An \code{aMatrix} object.
+#' @param ops Character vector of operation names. Defaults to the
+#'   twelve standard operations.
+#' @param y_map Named list mapping operation names to right-hand-side
+#'   objects. Use to supply a \code{y} argument for binary operations
+#'   such as \code{"matmul"}.
+#'
+#' @return A data.frame with one row per operation and columns:
+#'   \describe{
+#'     \item{op}{Character. Operation name.}
+#'     \item{precision}{Character. Precision mode.}
+#'     \item{pinned_backend}{Character. Backend to which \code{x} is
+#'       GPU-resident, or \code{NA}.}
+#'     \item{preferred}{Character. Preference order string.}
+#'     \item{chosen}{Character. Selected backend.}
+#'     \item{chosen_path}{Character. \code{"resident"} or
+#'       \code{"cold"}.}
+#'     \item{resident_reuse}{Logical. Whether the resident path is
+#'       active.}
+#'     \item{cpu_fallback}{Logical. Whether CPU was chosen despite not
+#'       being first preference.}
+#'     \item{candidate_summary}{Character. Compact flag string for all
+#'       candidates.}
+#'   }
+#'
+#' @examples
+#' m <- adgeMatrix(matrix(1:6, 2, 3))
+#' amatrix_backend_matrix(m, ops = c("matmul", "crossprod"))
+#'
+#' @seealso \code{\link{amatrix_backend_plan}},
+#'   \code{\link{amatrix_execution_info}}
+#' @export
 amatrix_backend_matrix <- function(
   x,
   ops = c("matmul", "crossprod", "tcrossprod", "ewise", "rowSums", "colSums", "solve", "chol", "qr", "svd", "eigen", "diag"),
@@ -199,6 +309,33 @@ amatrix_backend_matrix <- function(
   do.call(rbind, rows)
 }
 
+#' Low-level backend dispatch for a single operation
+#'
+#' Resolves the best available backend for \code{op} on \code{x},
+#' attempts the GPU-resident path when applicable, and falls back to
+#' the cold path (materializing \code{x} to host) if needed. If the
+#' chosen backend does not implement \code{method}, the \code{fallback}
+#' function is called instead.
+#'
+#' @param x An \code{aMatrix} object.
+#' @param op Character string. Operation key used for backend selection
+#'   (e.g. \code{"matmul"}, \code{"svd"}).
+#' @param method Character string. Name of the backend list element to
+#'   call. Defaults to \code{op}; override when the backend method name
+#'   differs from the operation key.
+#' @param y Right-hand-side \code{aMatrix} or \code{NULL}. Passed to
+#'   the backend method and used during backend selection.
+#' @param args Named list of additional arguments forwarded to the
+#'   backend method on the cold path.
+#' @param fallback Zero-argument function called when the chosen
+#'   backend does not implement \code{method}.
+#'
+#' @return The result of the backend method, or the result of
+#'   \code{fallback()} if the method is unavailable.
+#'
+#' @seealso \code{\link{amatrix_backend_plan}},
+#'   \code{\link{amatrix_materialize_host}}
+#' @export
 amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fallback) {
   stopifnot(is.function(fallback))
   choice <- .amatrix_backend_for(x, op, y = y)

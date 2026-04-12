@@ -88,6 +88,25 @@
   stop("x must be a base matrix or dgCMatrix")
 }
 
+#' Construct an adgeMatrix from a matrix or dgeMatrix
+#'
+#' Wraps a base R matrix or \code{Matrix::dgeMatrix} in an
+#' \code{adgeMatrix}, attaching backend-dispatch metadata.
+#'
+#' @param x A base R \code{matrix}, \code{dgeMatrix}, or any
+#'   \code{denseMatrix} coercible to \code{dgeMatrix}.
+#' @param preferred_backend Single string; the preferred compute
+#'   backend. Defaults to \code{"cpu"}.
+#' @param policy Single string; backend dispatch policy. Defaults to
+#'   \code{amatrix_default_policy()}.
+#' @param precision Single string; either \code{"strict"} or
+#'   \code{"fast"}. Defaults to \code{amatrix_default_precision()}.
+#' @param src_id String recording the source object identifier.
+#'   Pass \code{""} (default) for new objects.
+#'
+#' @return An \code{adgeMatrix} object with the same data as \code{x}.
+#'
+#' @keywords internal
 new_adgeMatrix <- function(
   x,
   preferred_backend = "cpu",
@@ -134,10 +153,24 @@ new_adgeMatrix <- function(
   )
 }
 
-# Deferred-materialization variant: GPU result exists as a resident key but
-# the host copy is not yet downloaded.  @x holds a NaN sentinel (valid
-# dgeMatrix structurally) and the actual data lives only on the device until
-# the first host access triggers a transparent download.
+#' Construct a deferred adgeMatrix with GPU-only storage
+#'
+#' Creates an \code{adgeMatrix} whose host \code{@x} slot holds a
+#' \code{NaN} sentinel vector. The true data lives only on the device
+#' until the first host access, which triggers a transparent download.
+#'
+#' @param dim Integer vector of length 2 giving \code{c(nrow, ncol)}.
+#' @param dimnames List of length 2 with row and column names, or
+#'   \code{list(NULL, NULL)}.
+#' @param preferred_backend Single string naming the preferred backend.
+#' @param policy Single string; backend dispatch policy.
+#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#' @param src_id String recording the source object identifier.
+#'
+#' @return An \code{adgeMatrix} with \code{finalizer_env$host_deferred}
+#'   set to \code{TRUE}.
+#'
+#' @keywords internal
 new_adgeMatrix_deferred <- function(
   dim,
   dimnames = list(NULL, NULL),
@@ -167,6 +200,21 @@ new_adgeMatrix_deferred <- function(
   )
 }
 
+#' Construct an adgCMatrix from a sparse or dense matrix
+#'
+#' Wraps a \code{Matrix::dgCMatrix} or any sparse or dense matrix
+#' in an \code{adgCMatrix}, attaching backend-dispatch metadata.
+#'
+#' @param x A \code{dgCMatrix}, other \code{sparseMatrix}, or base R
+#'   \code{matrix} to convert.
+#' @param preferred_backend Single string; the preferred compute
+#'   backend. Defaults to \code{"cpu"}.
+#' @param policy Single string; backend dispatch policy.
+#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#'
+#' @return An \code{adgCMatrix} object.
+#'
+#' @keywords internal
 new_adgCMatrix <- function(
   x,
   preferred_backend = "cpu",
@@ -191,6 +239,39 @@ new_adgCMatrix <- function(
   )
 }
 
+#' Create a backend-aware dense matrix
+#'
+#' Converts a base R matrix or \code{Matrix::dgeMatrix} to an
+#' \code{adgeMatrix} with the specified backend, policy, and precision.
+#' This is the primary user-facing constructor for dense amatrix
+#' objects.
+#'
+#' @param x A base R \code{matrix}, \code{dgeMatrix}, or any
+#'   \code{denseMatrix} coercible to \code{dgeMatrix}.
+#' @param mode Single string shortcut accepted by
+#'   \code{.amatrix_resolve_mode()}; used to set \code{backend},
+#'   \code{policy}, and \code{precision} together. Pass \code{NULL}
+#'   to use the individual arguments instead.
+#' @param backend Alias for \code{preferred_backend}; ignored when
+#'   \code{preferred_backend} is non-\code{NULL}.
+#' @param preferred_backend Single string naming the preferred compute
+#'   backend, e.g. \code{"cpu"}, \code{"mlx"}, or \code{"metal"}.
+#' @param policy Single string; one of \code{"auto"}, \code{"cpu"},
+#'   \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
+#'   \code{"torch"}.
+#' @param precision Single string; \code{"strict"} for full
+#'   double-precision accuracy or \code{"fast"} to allow reduced
+#'   precision on GPU backends.
+#'
+#' @return An \code{adgeMatrix} with the data from \code{x} and the
+#'   requested backend metadata.
+#'
+#' @examples
+#' m <- matrix(1:6, nrow = 2)
+#' A <- adgeMatrix(m)
+#' A
+#'
+#' @export
 adgeMatrix <- function(
   x,
   mode             = NULL,
@@ -204,6 +285,35 @@ adgeMatrix <- function(
                  policy = params$policy, precision = params$precision)
 }
 
+#' Create a backend-aware sparse matrix
+#'
+#' Converts a sparse or dense matrix to an \code{adgCMatrix} with the
+#' specified backend, policy, and precision. This is the primary
+#' user-facing constructor for sparse amatrix objects.
+#'
+#' @param x A \code{dgCMatrix}, other \code{sparseMatrix}, or base R
+#'   \code{matrix}.
+#' @param mode Single string shortcut passed to
+#'   \code{.amatrix_resolve_mode()}. Pass \code{NULL} to use the
+#'   individual arguments.
+#' @param backend Alias for \code{preferred_backend}; ignored when
+#'   \code{preferred_backend} is non-\code{NULL}.
+#' @param preferred_backend Single string naming the preferred compute
+#'   backend.
+#' @param policy Single string; one of \code{"auto"}, \code{"cpu"},
+#'   \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
+#'   \code{"torch"}.
+#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#'
+#' @return An \code{adgCMatrix} with the data from \code{x} and the
+#'   requested backend metadata.
+#'
+#' @examples
+#' m <- matrix(c(1, 0, 0, 2), nrow = 2)
+#' S <- adgCMatrix(m)
+#' S
+#'
+#' @export
 adgCMatrix <- function(
   x,
   mode             = NULL,
@@ -217,6 +327,30 @@ adgCMatrix <- function(
                  policy = params$policy, precision = params$precision)
 }
 
+#' Coerce an object to adgeMatrix
+#'
+#' Converts a matrix-like object or a \code{resident_handle} to an
+#' \code{adgeMatrix}. When \code{x} is a \code{resident_handle},
+#' ownership of the GPU-resident buffer is transferred to the new
+#' \code{adgeMatrix} with no host-side copy.
+#'
+#' @param x A \code{resident_handle}, base R \code{matrix},
+#'   \code{dgeMatrix}, or any \code{denseMatrix}.
+#' @param mode Single string shortcut; see \code{\link{adgeMatrix}}.
+#' @param backend Alias for \code{preferred_backend}.
+#' @param preferred_backend Single string; preferred compute backend.
+#' @param policy Single string dispatch policy.
+#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#'
+#' @return An \code{adgeMatrix}. When \code{x} is a
+#'   \code{resident_handle} the host copy is deferred.
+#'
+#' @examples
+#' m <- matrix(1:6, nrow = 2)
+#' A <- as_adgeMatrix(m)
+#' dim(A)
+#'
+#' @export
 as_adgeMatrix <- function(
   x,
   mode             = NULL,
@@ -234,6 +368,22 @@ as_adgeMatrix <- function(
                  policy = params$policy, precision = params$precision)
 }
 
+#' Coerce an object to adgCMatrix
+#'
+#' Converts a sparse or dense matrix-like object to an
+#' \code{adgCMatrix} with the requested backend metadata.
+#'
+#' @param x A \code{dgCMatrix}, other \code{sparseMatrix}, or base R
+#'   \code{matrix}.
+#' @param mode Single string shortcut; see \code{\link{adgCMatrix}}.
+#' @param backend Alias for \code{preferred_backend}.
+#' @param preferred_backend Single string; preferred compute backend.
+#' @param policy Single string dispatch policy.
+#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#'
+#' @return An \code{adgCMatrix}.
+#'
+#' @export
 as_adgCMatrix <- function(
   x,
   mode             = NULL,

@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"Rscript --no-save -e \\\"\\nsuppressPackageStartupMessages({\\n  library(amatrix, lib.loc='/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/library')\\n  library(amatrix.mlx, lib.lo...",
-  "error": "Exit code 138\n  [rsvd] upload A: 0.5 ms\n  [rsvd] randn+sketch+sync: 0.2 ms\n  [rsvd] chol_qr(Y): 24.1 ms\n  [rsvd] B=Q^T@A+sync: 0.1 ms\n  [rsvd] BBt+eigh+eval: 63.3 ms\n  [rsvd] final mlx_eval: 0.9 ms\n  [rsvd] materialize U,S,V: 0.1 ms\n  [rsvd] upload A: 0.3 ms\n  [rsvd] randn+sketch+sync: 0.0 ms\n  [rsvd] chol_qr(Y): 1.6 ms\n\n *** caught bus error ***\naddress 0xe, cause 'invalid alignment'\n\nTraceback:\n 1: amatrix_mlx_rsvd(x, k = k, n_oversamples = n_oversamples, n_iter = n_iter)\n 2: bk$rsvd(x, k = k,...",
-  "timestamp": "2026-04-05T21:19:07.128Z",
-  "retry_count": 1
-}
