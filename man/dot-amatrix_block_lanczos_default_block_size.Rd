@@ -33,7 +33,7 @@ A list with components \code{d}, \code{u}, \code{v}, \code{iter},
 \description{
 Computes a truncated SVD by building a block Krylov subspace, issuing one
 GEMM per block step instead of sequential GEMVs. Large matrix products route
-through \code{\link{am_matmul}} / \code{\link{am_crossprod}}, so the dominant
+through \code{\link{matmul}} / \code{\link[base]{crossprod}}, so the dominant
 work executes on the active backend while the small block QR and projected
 SVD stay on CPU.
 }
@@ -45,5 +45,5 @@ still an approximation surface: use more block steps when you need higher
 fidelity on slowly decaying spectra.
 }
 \seealso{
-\code{\link{am_rsvd}}, \code{\link{am_irlba}}, \code{\link{am_block_svd}}
+\code{\link{rsvd}}, \code{\link{irlba}}, \code{\link{block_lanczos}}
 }

@@ -1,5 +1,5 @@
-# amatrix_memory_stats() — snapshot of GPU residency and model cache usage.
-# amatrix_gc()          — free dead residency entries and optionally clear cache.
+# amatrix_memory_stats() -- snapshot of GPU residency and model cache usage.
+# amatrix_gc()          -- free dead residency entries and optionally clear cache.
 
 #' Report GPU residency and model cache usage
 #'
@@ -78,7 +78,7 @@ amatrix_memory_stats <- function() {
 
 #' @export
 print.amatrix_memory_stats <- function(x, ...) {
-  cat("── amatrix memory stats ────────────────────────────────────────\n")
+  cat("-- amatrix memory stats ----------------------------------------\n")
 
   max_s <- x$model_cache$max_size
   max_label <- if (is.infinite(max_s)) "unlimited" else as.character(max_s)
@@ -96,7 +96,7 @@ print.amatrix_memory_stats <- function(x, ...) {
     cat(sprintf("    %-12s  %d resident object(s)%s\n",
       r$backend, r$resident_objects, bytes_str))
   }
-  cat("────────────────────────────────────────────────────────────────\n")
+  cat("----------------------------------------------------------------\n")
   invisible(x)
 }
 

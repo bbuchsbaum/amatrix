@@ -41,7 +41,7 @@ Returns a named list of metadata fields describing an \code{amQR}
 factor produced by \code{am_qr()}.
 }
 \examples{
-X <- matrix(rnorm(30), nrow = 6)
+X <- adgeMatrix(matrix(rnorm(30), nrow = 6))
 qf <- am_qr(X)
 info <- qr_info(qf)
 info$rank

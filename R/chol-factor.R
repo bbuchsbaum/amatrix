@@ -529,7 +529,7 @@ chol_solve_batches <- function(factor, B) {
   solved <- chol_solve(factor, rhs_packed)
   solved_mat <- as.matrix(.amatrix_host_arg(solved))
 
-  starts <- cumsum(c(1L, head(rhs_ncols, -1L)))
+  starts <- cumsum(c(1L, rhs_ncols[-length(rhs_ncols)]))
   Map(function(start, width, was_vector) {
     value <- solved_mat[, seq.int(start, length.out = width), drop = FALSE]
     if (isTRUE(was_vector) && width == 1L) {

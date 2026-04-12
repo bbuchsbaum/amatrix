@@ -721,8 +721,8 @@
 #'   dimensions \code{nrow(x)} by \code{ncol(y)}.
 #'
 #' @examples
-#' A <- matrix(1:6, 2, 3)
-#' B <- matrix(1:6, 3, 2)
+#' A <- adgeMatrix(matrix(1:6, 2, 3))
+#' B <- adgeMatrix(matrix(1:6, 3, 2))
 #' matmul(A, B)
 #'
 #' @export
@@ -889,8 +889,8 @@ am_tcrossprod <- function(x, y = NULL, ...) {
 #'   \code{ncol(op(B))}.
 #'
 #' @examples
-#' A <- matrix(1:6, 2, 3)
-#' B <- matrix(1:6, 2, 3)
+#' A <- adgeMatrix(matrix(1:6, 2, 3))
+#' B <- adgeMatrix(matrix(1:6, 2, 3))
 #' gemm(A, B, transA = TRUE)          # t(A) %*% B
 #' gemm(A, B, transB = TRUE)          # A %*% t(B)
 #'
@@ -933,7 +933,7 @@ gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
 #'   \code{ncol(x)} (\code{colsums}).
 #'
 #' @examples
-#' m <- matrix(1:12, 3, 4)
+#' m <- adgeMatrix(matrix(1:12, 3, 4))
 #' rowsums(m)
 #' colsums(m)
 #'
@@ -1080,7 +1080,7 @@ am_chol <- function(x, ...) {
 #'   for \code{adgCMatrix} input) containing the factorisation components.
 #'
 #' @examples
-#' m <- matrix(rnorm(12), 4, 3)
+#' m <- adgeMatrix(matrix(rnorm(12), 4, 3))
 #' qr_obj <- am_qr(m)
 #' qr.R(qr_obj)
 #'
@@ -1190,11 +1190,11 @@ am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) 
 #' Symmetric eigendecomposition
 #'
 #' Computes eigenvalues and eigenvectors of a real symmetric matrix by
-#' dispatching to the active backend via \code{\link{am_eigen}} with
+#' dispatching to the active backend via \code{\link[base]{eigen}} with
 #' \code{symmetric = TRUE}.
 #'
 #' @param x A real symmetric numeric matrix, \code{adgeMatrix}, or other
-#'   object accepted by \code{\link{am_eigen}}.
+#'   object accepted by \code{\link[base]{eigen}}.
 #'
 #' @return A list with components \code{values} (numeric vector of eigenvalues
 #'   in ascending order) and \code{vectors} (numeric matrix whose columns are
@@ -1202,7 +1202,7 @@ am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) 
 #'
 #' @examples
 #' S <- crossprod(matrix(rnorm(25), nrow = 5))
-#' ev <- eigh(S)
+#' ev <- eigh(adgeMatrix(S))
 #' length(ev$values)
 #'
 #' @seealso \code{\link{rsvd}}

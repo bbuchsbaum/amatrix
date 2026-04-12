@@ -27,7 +27,7 @@ Compute row or column sums of a matrix or \code{aMatrix}, dispatching
 to an accelerated backend when one is available.
 }
 \examples{
-m <- matrix(1:12, 3, 4)
+m <- adgeMatrix(matrix(1:12, 3, 4))
 rowsums(m)
 colsums(m)
 

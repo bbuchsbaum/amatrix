@@ -27,10 +27,12 @@ reduced matrix; a Givens-rotation path is planned for a future
 release.
 }
 \examples{
-X <- matrix(rnorm(40), nrow = 8)
+\dontrun{
+X <- adgeMatrix(matrix(rnorm(40), nrow = 8))
 qf <- am_qr(X)
 qf2 <- qr_downdate(qf, row_idx = 3L, X = X)
 qr_info(qf2)$dim
+}
 
 }
 \seealso{

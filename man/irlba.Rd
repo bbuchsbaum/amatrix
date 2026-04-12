@@ -37,7 +37,7 @@ Ignored if \code{A} is already an amatrix object.}
 
 \item{implementation}{Lanczos implementation to use. \code{"compat"}
 preserves the current \code{irlba::irlba()} wrapper behavior. \code{"block"}
-routes to \code{\link{am_block_lanczos}} for a GEMM-oriented approximation.}
+routes to \code{\link{block_lanczos}} for a GEMM-oriented approximation.}
 
 \item{block_size}{Block size passed to \code{am_block_lanczos()} when
 \code{implementation = "block"}. Defaults to a small MLX-friendly block
@@ -67,5 +67,5 @@ Do \strong{not} pass \code{mult=} — it is deprecated in irlba and forces a
 non-standard dispatch path. Pass an \code{adgeMatrix} instead.
 }
 \seealso{
-\code{\link{adgeMatrix}}, \code{\link{am_svd}}
+\code{\link{adgeMatrix}}, \code{\link{svd_factor}}
 }

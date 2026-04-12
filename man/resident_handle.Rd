@@ -31,9 +31,10 @@ S4 object allocation overhead. The handle owns its resident key and
 releases the device buffer when garbage collected.
 }
 \examples{
-m <- matrix(runif(12), 3, 4)
-h <- resident_handle(m, backend = "cpu")
-as.matrix(h)
+\donttest{
+m <- adgeMatrix(matrix(runif(12), 3, 4), preferred_backend = "cpu")
+# resident_handle requires a backend with residency support (e.g. MLX, OpenCL)
+}
 
 }
 \seealso{

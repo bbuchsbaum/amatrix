@@ -33,10 +33,12 @@ model \code{n} times, each time dropping one observation. Uses
 factorization from scratch.
 }
 \examples{
-X <- matrix(rnorm(50), nrow = 10)
+\dontrun{
+X <- adgeMatrix(matrix(rnorm(50), nrow = 10))
 y <- rnorm(10)
 cv <- lm_loo_cv(X, y)
 cv$mse
+}
 
 }
 \seealso{

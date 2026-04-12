@@ -39,9 +39,10 @@
 #'   \code{active}.
 #'
 #' @examples
-#' m <- matrix(runif(12), 3, 4)
-#' h <- resident_handle(m, backend = "cpu")
-#' as.matrix(h)
+#' \donttest{
+#' m <- adgeMatrix(matrix(runif(12), 3, 4), preferred_backend = "cpu")
+#' # resident_handle requires a backend with residency support (e.g. MLX, OpenCL)
+#' }
 #'
 #' @seealso \code{\link{am_sweep_inplace}}, \code{\link{rh_rowSums}},
 #'   \code{\link{rh_colSums}}
@@ -228,10 +229,9 @@ resident_handle <- function(x, backend = NULL) {
 #'   underlying device buffer is replaced with the sweep result.
 #'
 #' @examples
-#' m <- matrix(1:12, 3, 4)
-#' h <- resident_handle(m, backend = "cpu")
-#' row_scales <- rowSums(m)
-#' am_sweep_inplace(h, 1L, 1 / row_scales, "*")
+#' \donttest{
+#' # requires a backend with residency support (e.g. MLX, OpenCL)
+#' }
 #'
 #' @seealso \code{\link{resident_handle}}, \code{\link{am_ewise_inplace}}
 #' @export
@@ -277,9 +277,9 @@ am_sweep_inplace <- function(h, MARGIN, STATS, FUN = "+") {
 #' @return \code{h}, invisibly. The handle is modified in place.
 #'
 #' @examples
-#' m <- matrix(1:6, 2, 3)
-#' h <- resident_handle(m, backend = "cpu")
-#' am_ewise_inplace(h, 2.0, "*")
+#' \donttest{
+#' # requires a backend with residency support (e.g. MLX, OpenCL)
+#' }
 #'
 #' @seealso \code{\link{am_sweep_inplace}}, \code{\link{resident_handle}}
 #' @export
@@ -318,8 +318,9 @@ am_ewise_inplace <- function(h, rhs, op) {
 #' @return Numeric vector of length \code{nrow(h)}.
 #'
 #' @examples
-#' h <- resident_handle(matrix(1:6, 2, 3), backend = "cpu")
-#' rh_rowSums(h)
+#' \donttest{
+#' # requires a backend with residency support (e.g. MLX, OpenCL)
+#' }
 #'
 #' @seealso \code{\link{rh_colSums}}, \code{\link{am_sweep_inplace}}
 #' @export
@@ -343,8 +344,9 @@ rh_rowSums <- function(h) {
 #' @return Numeric vector of length \code{ncol(h)}.
 #'
 #' @examples
-#' h <- resident_handle(matrix(1:6, 2, 3), backend = "cpu")
-#' rh_colSums(h)
+#' \donttest{
+#' # requires a backend with residency support (e.g. MLX, OpenCL)
+#' }
 #'
 #' @seealso \code{\link{rh_rowSums}}, \code{\link{am_sweep_inplace}}
 #' @export

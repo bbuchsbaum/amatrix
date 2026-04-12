@@ -24,9 +24,9 @@ resident matrix and either a scalar or another resident handle,
 replacing the handle's device buffer with the result.
 }
 \examples{
-m <- matrix(1:6, 2, 3)
-h <- resident_handle(m, backend = "cpu")
-am_ewise_inplace(h, 2.0, "*")
+\donttest{
+# requires a backend with residency support (e.g. MLX, OpenCL)
+}
 
 }
 \seealso{

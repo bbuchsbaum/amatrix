@@ -20,7 +20,7 @@ Computes the QR decomposition of a matrix or \code{aMatrix}, routing to
 a backend-specific implementation when available.
 }
 \examples{
-m <- matrix(rnorm(12), 4, 3)
+m <- adgeMatrix(matrix(rnorm(12), 4, 3))
 qr_obj <- am_qr(m)
 qr.R(qr_obj)
 

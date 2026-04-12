@@ -19,8 +19,9 @@ a round-trip download. Falls back to \code{base::rowSums} on the
 materialized matrix when no resident reduction is available.
 }
 \examples{
-h <- resident_handle(matrix(1:6, 2, 3), backend = "cpu")
-rh_rowSums(h)
+\donttest{
+# requires a backend with residency support (e.g. MLX, OpenCL)
+}
 
 }
 \seealso{

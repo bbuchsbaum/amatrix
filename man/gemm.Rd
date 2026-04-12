@@ -36,8 +36,8 @@ Computes \code{alpha * op(A) \%*\% op(B) + beta * C}, where
 operation for the chosen transpose combination.
 }
 \examples{
-A <- matrix(1:6, 2, 3)
-B <- matrix(1:6, 2, 3)
+A <- adgeMatrix(matrix(1:6, 2, 3))
+B <- adgeMatrix(matrix(1:6, 2, 3))
 gemm(A, B, transA = TRUE)          # t(A) \%*\% B
 gemm(A, B, transB = TRUE)          # A \%*\% t(B)
 

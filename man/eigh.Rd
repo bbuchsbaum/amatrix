@@ -8,7 +8,7 @@ eigh(x)
 }
 \arguments{
 \item{x}{A real symmetric numeric matrix, \code{adgeMatrix}, or other
-object accepted by \code{\link{am_eigen}}.}
+object accepted by \code{\link[base]{eigen}}.}
 }
 \value{
 A list with components \code{values} (numeric vector of eigenvalues
@@ -17,12 +17,12 @@ A list with components \code{values} (numeric vector of eigenvalues
 }
 \description{
 Computes eigenvalues and eigenvectors of a real symmetric matrix by
-dispatching to the active backend via \code{\link{am_eigen}} with
+dispatching to the active backend via \code{\link[base]{eigen}} with
 \code{symmetric = TRUE}.
 }
 \examples{
 S <- crossprod(matrix(rnorm(25), nrow = 5))
-ev <- eigh(S)
+ev <- eigh(adgeMatrix(S))
 length(ev$values)
 
 }

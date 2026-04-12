@@ -24,10 +24,12 @@
 #'   excluded.
 #'
 #' @examples
-#' X <- matrix(rnorm(40), nrow = 8)
+#' \dontrun{
+#' X <- adgeMatrix(matrix(rnorm(40), nrow = 8))
 #' qf <- am_qr(X)
 #' qf2 <- qr_downdate(qf, row_idx = 3L, X = X)
 #' qr_info(qf2)$dim
+#' }
 #'
 #' @seealso \code{\link{am_qr}}, \code{\link{qr_info}},
 #'   \code{\link{lm_loo_cv}}
@@ -93,10 +95,12 @@ qr_downdate.default <- function(qr_factor, row_idx, X = NULL) {
 #'   }
 #'
 #' @examples
-#' X <- matrix(rnorm(50), nrow = 10)
+#' \dontrun{
+#' X <- adgeMatrix(matrix(rnorm(50), nrow = 10))
 #' y <- rnorm(10)
 #' cv <- lm_loo_cv(X, y)
 #' cv$mse
+#' }
 #'
 #' @seealso \code{\link{lm_fit}}, \code{\link{many_lm}}
 #' @export

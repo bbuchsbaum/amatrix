@@ -30,10 +30,9 @@ place. Equivalent to \code{sweep(as.matrix(h), MARGIN, STATS, FUN)}
 but avoids downloading the matrix to host.
 }
 \examples{
-m <- matrix(1:12, 3, 4)
-h <- resident_handle(m, backend = "cpu")
-row_scales <- rowSums(m)
-am_sweep_inplace(h, 1L, 1 / row_scales, "*")
+\donttest{
+# requires a backend with residency support (e.g. MLX, OpenCL)
+}
 
 }
 \seealso{

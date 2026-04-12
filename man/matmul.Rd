@@ -21,8 +21,8 @@ Plain numeric vectors supplied as \code{y} are promoted to a column matrix
 and the result is dropped back to a vector.
 }
 \examples{
-A <- matrix(1:6, 2, 3)
-B <- matrix(1:6, 3, 2)
+A <- adgeMatrix(matrix(1:6, 2, 3))
+B <- adgeMatrix(matrix(1:6, 3, 2))
 matmul(A, B)
 
 }

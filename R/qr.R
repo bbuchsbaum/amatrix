@@ -402,7 +402,7 @@ setOldClass(c("amQR", "amDenseQR"))
 #'   }
 #'
 #' @examples
-#' X <- matrix(rnorm(30), nrow = 6)
+#' X <- adgeMatrix(matrix(rnorm(30), nrow = 6))
 #' qf <- am_qr(X)
 #' info <- qr_info(qf)
 #' info$rank

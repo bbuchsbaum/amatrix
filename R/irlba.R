@@ -16,7 +16,7 @@
 #'   Ignored if \code{A} is already an amatrix object.
 #' @param implementation Lanczos implementation to use. \code{"compat"}
 #'   preserves the current \code{irlba::irlba()} wrapper behavior. \code{"block"}
-#'   routes to \code{\link{am_block_lanczos}} for a GEMM-oriented approximation.
+#'   routes to \code{\link{block_lanczos}} for a GEMM-oriented approximation.
 #' @param block_size Block size passed to \code{am_block_lanczos()} when
 #'   \code{implementation = "block"}. Defaults to a small MLX-friendly block
 #'   size derived from the requested rank.
@@ -39,7 +39,7 @@
 #' Do \strong{not} pass \code{mult=} — it is deprecated in irlba and forces a
 #' non-standard dispatch path. Pass an \code{adgeMatrix} instead.
 #'
-#' @seealso \code{\link{adgeMatrix}}, \code{\link{am_svd}}
+#' @seealso \code{\link{adgeMatrix}}, \code{\link{svd_factor}}
 #' @export
 irlba <- function(A,
                      nv = 5,
@@ -110,7 +110,7 @@ irlba <- function(A,
 #' @return A list with components \code{d}, \code{u}, \code{v}, \code{iter},
 #'   \code{mprod}, compatible with \code{irlba::irlba()}.
 #'
-#' @seealso \code{\link{am_irlba}}, \code{\link{adgeMatrix}}
+#' @seealso \code{\link{irlba}}, \code{\link{adgeMatrix}}
 #' @export
 irlba_native <- function(A,
                              nv    = 5L,
@@ -263,7 +263,7 @@ irlba_native <- function(A,
 #'
 #' Computes a truncated SVD by building a block Krylov subspace, issuing one
 #' GEMM per block step instead of sequential GEMVs. Large matrix products route
-#' through \code{\link{am_matmul}} / \code{\link{am_crossprod}}, so the dominant
+#' through \code{\link{matmul}} / \code{\link[base]{crossprod}}, so the dominant
 #' work executes on the active backend while the small block QR and projected
 #' SVD stay on CPU.
 #'
@@ -291,7 +291,7 @@ irlba_native <- function(A,
 #' still an approximation surface: use more block steps when you need higher
 #' fidelity on slowly decaying spectra.
 #'
-#' @seealso \code{\link{am_rsvd}}, \code{\link{am_irlba}}, \code{\link{am_block_svd}}
+#' @seealso \code{\link{rsvd}}, \code{\link{irlba}}, \code{\link{block_lanczos}}
 #' @export
 .amatrix_block_lanczos_default_block_size <- function(k) {
   k <- as.integer(k)
