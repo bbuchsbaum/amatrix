@@ -99,10 +99,15 @@ available backend. GPU backends are auto-skipped when not installed.
 
 Backends are probed systematically from the checkout:
 - `cpu`
-- `mlx`
 - `opencl`
-- `arrayfire` when explicitly enabled for benchmark runs
 - `metal` for sparse products only
+- `arrayfire` only when explicitly enabled for benchmark runs and not hard-gated by platform safety policy
+
+`mlx` is intentionally excluded from the canonical per-group worker harness by
+default because isolated worker launch is still unstable on Apple Silicon.
+Benchmark MLX with dedicated top-level runners such as
+`tools/benchmark-mlx-native-rsvd.R`, or explicitly re-enable worker-mode MLX
+only for crash-probing via `AMATRIX_BENCHMARK_MLX_WORKERS=1`.
 
 Each backend/op family runs in its own `Rscript` worker. That isolates hard
 backend failures: a segfault or native abort is recorded as a `crash` incident

@@ -51,14 +51,23 @@ parse_args <- function(args) {
 
 relaunch_safe_master_if_needed <- function(args) {
   raw_args <- commandArgs(trailingOnly = FALSE)
-  direct_file_arg <- grep("^--file=", raw_args, value = TRUE)
-  direct_file_entry <- length(direct_file_arg) > 0L
+  direct_file_paths <- sub("^--file=", "", grep("^--file=", raw_args, value = TRUE))
+  if (length(direct_file_paths) == 0L) {
+    script_like_paths <- raw_args[basename(raw_args) == "benchmark-regression.R"]
+    if (length(script_like_paths) > 0L) {
+      direct_file_paths <- script_like_paths
+    } else {
+      existing_paths <- raw_args[file.exists(raw_args)]
+      direct_file_paths <- existing_paths[basename(existing_paths) == "benchmark-regression.R"]
+    }
+  }
+  direct_file_entry <- !("-e" %in% raw_args) || length(direct_file_paths) > 0L
 
   if (!direct_file_entry || isTRUE(args$worker) || isTRUE(args$safe_main)) {
     return(invisible(FALSE))
   }
 
-  script_path <- normalizePath(sub("^--file=", "", direct_file_arg[[1L]]), winslash = "/", mustWork = TRUE)
+  script_path <- normalizePath(direct_file_paths[[1L]], winslash = "/", mustWork = TRUE)
   repo_root <- normalizePath(dirname(dirname(script_path)), winslash = "/", mustWork = TRUE)
   expr <- sprintf(
     "setwd(%s); source(%s, local = globalenv())",
@@ -66,16 +75,10 @@ relaunch_safe_master_if_needed <- function(args) {
     r_string_literal(script_path)
   )
   relaunch_args <- c("-e", expr, "--args", "--safe-main", commandArgs(trailingOnly = TRUE))
-  relaunch_cmd <- paste(
-    c(
-      shQuote(file.path(R.home("bin"), "Rscript")),
-      vapply(relaunch_args, shQuote, character(1), USE.NAMES = FALSE)
-    ),
-    collapse = " "
-  )
+  quoted_relaunch_args <- vapply(relaunch_args, shQuote, character(1), USE.NAMES = FALSE)
   warned_status <- NULL
   relaunch_output <- withCallingHandlers(
-    system(paste(relaunch_cmd, "2>&1"), intern = TRUE),
+    system2(file.path(R.home("bin"), "Rscript"), quoted_relaunch_args, stdout = TRUE, stderr = TRUE),
     warning = function(w) {
       warned_status <<- attr(w, "status") %||% warned_status
       invokeRestart("muffleWarning")
@@ -119,11 +122,63 @@ initialize_regression_benchmark_context <- local({
 canonical_backend_specs <- function(include_arrayfire = .benchmark_arrayfire_requested()) {
   available_benchmark_backends(
     include_cpu = TRUE,
-    include_mlx = TRUE,
+    include_mlx = benchmark_worker_mlx_enabled(),
     include_metal = TRUE,
     include_opencl = TRUE,
-    include_arrayfire = include_arrayfire
+    include_arrayfire = benchmark_worker_arrayfire_enabled(include_arrayfire)
   )
+}
+
+benchmark_running_on_apple_silicon <- function() {
+  identical(Sys.info()[["sysname"]], "Darwin") &&
+    grepl("arm64|aarch64", R.version$arch, ignore.case = TRUE)
+}
+
+benchmark_worker_mlx_enabled <- function() {
+  identical(Sys.getenv("AMATRIX_BENCHMARK_MLX_WORKERS", unset = ""), "1")
+}
+
+benchmark_worker_arrayfire_enabled <- function(include_arrayfire = .benchmark_arrayfire_requested()) {
+  if (!isTRUE(include_arrayfire)) {
+    return(FALSE)
+  }
+
+  if (benchmark_running_on_apple_silicon() &&
+      !identical(Sys.getenv("AMATRIX_BENCHMARK_ARRAYFIRE_UNSAFE", unset = ""), "1")) {
+    return(FALSE)
+  }
+
+  TRUE
+}
+
+benchmark_worker_backend_allowed <- function(backend_name, include_arrayfire = .benchmark_arrayfire_requested()) {
+  if (identical(backend_name, "mlx")) {
+    return(benchmark_worker_mlx_enabled())
+  }
+
+  if (identical(backend_name, "arrayfire")) {
+    return(benchmark_worker_arrayfire_enabled(include_arrayfire))
+  }
+
+  TRUE
+}
+
+benchmark_worker_backend_block_reason <- function(backend_name, include_arrayfire = .benchmark_arrayfire_requested()) {
+  if (benchmark_worker_backend_allowed(backend_name, include_arrayfire = include_arrayfire)) {
+    return(NA_character_)
+  }
+
+  if (identical(backend_name, "mlx")) {
+    return("MLX is disabled in canonical regression workers; use tools/benchmark-mlx-native-rsvd.R or set AMATRIX_BENCHMARK_MLX_WORKERS=1")
+  }
+
+  if (identical(backend_name, "arrayfire") &&
+      benchmark_running_on_apple_silicon() &&
+      !identical(Sys.getenv("AMATRIX_BENCHMARK_ARRAYFIRE_UNSAFE", unset = ""), "1")) {
+    return("ArrayFire is disabled on Apple benchmark workers unless AMATRIX_BENCHMARK_ARRAYFIRE_UNSAFE=1")
+  }
+
+  sprintf("backend '%s' is disabled in canonical regression workers", backend_name)
 }
 
 filter_backend_specs <- function(specs, names = NULL) {
@@ -138,6 +193,10 @@ filter_backend_specs <- function(specs, names = NULL) {
 prime_requested_backend <- function(backend_name, include_arrayfire = .benchmark_arrayfire_requested()) {
   if (identical(backend_name, "cpu")) {
     return(invisible(TRUE))
+  }
+
+  if (!benchmark_worker_backend_allowed(backend_name, include_arrayfire = include_arrayfire)) {
+    return(invisible(FALSE))
   }
 
   specs <- .benchmark_optional_backend_specs(include_arrayfire = include_arrayfire)
@@ -990,6 +1049,12 @@ expand_group_rows <- function(group) {
 
 run_group <- function(group) {
   backend_name <- group$requested_backend
+  if (!benchmark_worker_backend_allowed(backend_name)) {
+    rows <- expand_group_rows(group)
+    rows$status <- "unavailable"
+    rows$error_message <- benchmark_worker_backend_block_reason(backend_name)
+    return(rows)
+  }
   backend <- tryCatch(amatrix:::.amatrix_get_backend(backend_name), error = function(e) NULL)
   if (is.null(backend) || !isTRUE(backend$available())) {
     rows <- expand_group_rows(group)
@@ -1129,23 +1194,107 @@ summarize_results <- function(results) {
     NA_real_,
     display$cpu_reference_ms / display$median_ms
   )
-  display$dispatch_state <- ifelse(
-    display$status != "ok",
-    display$status,
-    ifelse(
-      display$requested_backend == "cpu",
-      "cpu_baseline",
-      ifelse(
-        is.na(display$dispatch_backend),
-        "unknown_dispatch",
-        ifelse(
-          display$dispatch_backend == display$requested_backend,
-          "accelerated",
-          ifelse(display$dispatch_backend == "cpu", "cpu_fallback", "rerouted")
-        )
-      )
-    )
-  )
+  display$selected_backend <- display$dispatch_backend
+  display$availability_state <- vapply(seq_len(nrow(display)), function(idx) {
+    requested_backend <- display$requested_backend[[idx]]
+    support_reason <- display$requested_support_reason[[idx]]
+    status <- display$status[[idx]]
+
+    if (identical(requested_backend, "cpu")) {
+      return("cpu_baseline")
+    }
+    if (identical(status, "unavailable") || identical(support_reason, "backend unavailable")) {
+      return("unavailable")
+    }
+    if (identical(support_reason, "backend not registered")) {
+      return("unregistered")
+    }
+    "available"
+  }, character(1))
+  display$support_state <- vapply(seq_len(nrow(display)), function(idx) {
+    requested_backend <- display$requested_backend[[idx]]
+    support_reason <- display$requested_support_reason[[idx]]
+    requested_supported <- display$requested_supported[[idx]]
+
+    if (identical(requested_backend, "cpu")) {
+      return("cpu_baseline")
+    }
+    if (identical(support_reason, "backend unavailable")) {
+      return("backend_unavailable")
+    }
+    if (identical(support_reason, "backend not registered")) {
+      return("backend_unregistered")
+    }
+    if (identical(support_reason, "precision incompatible")) {
+      return("precision_incompatible")
+    }
+    if (identical(support_reason, "dispatch plan unavailable")) {
+      return("unknown")
+    }
+    if (isTRUE(requested_supported)) {
+      return("supported")
+    }
+    if (identical(support_reason, "calibration rejected")) {
+      return("calibration_rejected")
+    }
+    if (identical(support_reason, "op unsupported") || identical(support_reason, "resident op unsupported")) {
+      return("unsupported")
+    }
+    if (isFALSE(requested_supported)) {
+      return("unsupported")
+    }
+    "unknown"
+  }, character(1))
+  display$execution_state <- ifelse(display$status == "ok", "executed", display$status)
+  display$routing_state <- vapply(seq_len(nrow(display)), function(idx) {
+    status <- display$status[[idx]]
+    requested_backend <- display$requested_backend[[idx]]
+    dispatch_backend <- display$dispatch_backend[[idx]]
+
+    if (!identical(status, "ok")) {
+      return("not_run")
+    }
+    if (identical(requested_backend, "cpu")) {
+      return("cpu_baseline")
+    }
+    if (is.na(dispatch_backend)) {
+      return("unknown_dispatch")
+    }
+    if (identical(dispatch_backend, requested_backend)) {
+      return("accelerated")
+    }
+    if (identical(dispatch_backend, "cpu")) {
+      return("cpu_fallback")
+    }
+    "rerouted"
+  }, character(1))
+  display$performance_state <- vapply(seq_len(nrow(display)), function(idx) {
+    status <- display$status[[idx]]
+    requested_backend <- display$requested_backend[[idx]]
+    dispatch_backend <- display$dispatch_backend[[idx]]
+    speedup_vs_cpu <- display$speedup_vs_cpu[[idx]]
+
+    if (!identical(status, "ok")) {
+      return("not_run")
+    }
+    if (identical(requested_backend, "cpu")) {
+      return("cpu_baseline")
+    }
+    if (is.na(dispatch_backend) || !identical(dispatch_backend, requested_backend)) {
+      return("not_accelerated")
+    }
+    if (is.na(speedup_vs_cpu)) {
+      return("accelerated_unknown_speed")
+    }
+    if (speedup_vs_cpu > 1 + 1e-8) {
+      return("accelerated_faster_than_cpu")
+    }
+    if (abs(speedup_vs_cpu - 1) <= 1e-8) {
+      return("accelerated_at_cpu")
+    }
+    "accelerated_slower_than_cpu"
+  }, character(1))
+  display$dispatch_state <- display$routing_state
   display
 }
 
@@ -1281,6 +1430,31 @@ run_master <- function(args) {
         paste(missing_backends, collapse = ", ")
       )
     }
+  }
+
+  worker_allowed <- vapply(
+    backend_names,
+    benchmark_worker_backend_allowed,
+    logical(1),
+    include_arrayfire = args$include_arrayfire
+  )
+  blocked_backends <- backend_names[!worker_allowed]
+  if (length(blocked_backends) > 0L) {
+    blocked_detail <- vapply(
+      blocked_backends,
+      benchmark_worker_backend_block_reason,
+      character(1),
+      include_arrayfire = args$include_arrayfire
+    )
+    message(
+      "Skipping worker-ineligible backends in canonical harness: ",
+      paste(sprintf("%s (%s)", blocked_backends, blocked_detail), collapse = ", ")
+    )
+    backend_names <- backend_names[worker_allowed]
+  }
+
+  if (length(backend_names) == 0L) {
+    stop("No worker-eligible backends selected for canonical benchmark harness", call. = FALSE)
   }
 
   groups <- group_plan(backend_names, suites = args$suites)

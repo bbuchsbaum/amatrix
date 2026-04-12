@@ -202,6 +202,31 @@ test_that("opencl bridge boundary is callable in scaffold mode", {
   expect_equal(backend$resident_materialize("tri"), backsolve(chol(spd), rhs), tolerance = 1e-12)
 })
 
+test_that("opencl deferred resident chol reports non-SPD failure at materialization", {
+  backend <- amatrix_opencl_backend()
+  bad <- matrix(c(1, 2, 2, 1), nrow = 2L)
+
+  old <- options(
+    amatrix.opencl.available = TRUE,
+    amatrix.opencl.factor_gpu = TRUE
+  )
+  on.exit(options(old), add = TRUE)
+
+  skip_if_not(isTRUE(amatrix_opencl_native_available(force = TRUE)), "native OpenCL backend not available")
+  skip_if_not(isTRUE(amatrix_opencl_bridge_info()$clblast), "CLBlast support not available")
+
+  backend$resident_store("bad_spd", bad)
+  on.exit(backend$resident_drop("bad_spd"), add = TRUE)
+  on.exit(backend$resident_drop("bad_chol"), add = TRUE)
+
+  backend$chol_resident("bad_spd", "bad_chol")
+  expect_true(backend$resident_has("bad_chol"))
+  expect_error(
+    backend$resident_materialize("bad_chol"),
+    "Cholesky factorization failed validation"
+  )
+})
+
 test_that("opencl sparse routing is threshold-gated and host-backed", {
   backend <- amatrix_opencl_backend()
   sparse <- amatrix::adgCMatrix(
