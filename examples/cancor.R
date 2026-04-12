@@ -29,6 +29,11 @@ suppressPackageStartupMessages({
     amatrix.mlx::amatrix_mlx_register()
   if (requireNamespace("amatrix.arrayfire", quietly = TRUE))
     amatrix.arrayfire::amatrix_arrayfire_register()
+  if (requireNamespace("amatrix.opencl", quietly = TRUE)) {
+    Sys.setenv(AMATRIX_OPENCL_PROBE_GPU = "1")
+    options(amatrix.enable_opencl = TRUE)
+    amatrix.opencl::amatrix_opencl_register()
+  }
 })
 
 # ── 1.  Implementation ────────────────────────────────────────────────────────
@@ -153,6 +158,9 @@ if (requireNamespace("amatrix.mlx", quietly = TRUE) &&
 if (requireNamespace("amatrix.arrayfire", quietly = TRUE) &&
     isTRUE(try(amatrix.arrayfire::amatrix_arrayfire_is_available(), silent = TRUE)))
   backends_to_test <- c(backends_to_test, "arrayfire")
+if (requireNamespace("amatrix.opencl", quietly = TRUE) &&
+    isTRUE(try(amatrix.opencl::amatrix_opencl_is_available(), silent = TRUE)))
+  backends_to_test <- c(backends_to_test, "opencl")
 
 for (cfg in list(
   list(n = 500L,  p = 80L,  q = 60L,  k = 8L,  label = "small  (n=500,  p=80,  q=60)"),
