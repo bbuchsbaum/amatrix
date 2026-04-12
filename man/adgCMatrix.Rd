@@ -19,7 +19,8 @@ adgCMatrix(
 
 \item{mode}{Single string shortcut passed to
 \code{.amatrix_resolve_mode()}. Pass \code{NULL} to use the
-individual arguments.}
+individual arguments. \code{mode = "fast"} prefers an available
+fast-capable accelerator automatically, with CPU fallback.}
 
 \item{backend}{Alias for \code{preferred_backend}; ignored when
 \code{preferred_backend} is non-\code{NULL}.}

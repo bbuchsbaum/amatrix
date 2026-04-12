@@ -1132,10 +1132,11 @@ amatrix_mlx_backend <- function() {
         return(FALSE)
       }
 
-      # NOTE: .amatrix_mlx_forced_available() is intentionally NOT checked
-      # here as an early return — it only affects the available() gate, not
-      # per-op dimension thresholds. Each op below checks its own threshold
-      # to avoid dispatching tiny matrices to the GPU.
+      # Test and benchmarking workflows use the availability override to force
+      # MLX dispatch below the normal size thresholds.
+      if (.amatrix_mlx_forced_available()) {
+        return(TRUE)
+      }
 
       if (identical(op, "matmul")) {
         return(.amatrix_mlx_meets_threshold(x, thresholds$matmul_min_dim))
@@ -1372,6 +1373,7 @@ amatrix_mlx_backend <- function() {
 }
 
 amatrix_mlx_register <- function(overwrite = TRUE) {
-  amatrix_register_backend("mlx", amatrix_mlx_backend(), overwrite = overwrite)
+  register_backend <- getExportedValue("amatrix", "amatrix_register_backend")
+  register_backend("mlx", amatrix_mlx_backend(), overwrite = overwrite)
   invisible("mlx")
 }

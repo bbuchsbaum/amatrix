@@ -38,7 +38,7 @@ fit$sigma2[1:3]
 On a machine with an available accelerator backend, the workflow stays the same and only the constructor metadata changes.
 
 ```r
-X_fast <- adgeMatrix(X, mode = "fast", backend = "mlx")
+X_fast <- adgeMatrix(X, mode = "fast")
 fit_fast <- many_lm(X_fast, Y, method = "qr", cache = TRUE)
 ```
 
@@ -54,6 +54,28 @@ amatrix_explain(X_am, "qr")
 
 If no accelerator backend is available, the same code still runs on CPU.
 
+For library code, the default per-object path is to wrap at the boundary with `mode = "fast"` and then keep the rest of the code generic:
+
+```r
+X_am <- as_adgeMatrix(X, mode = "fast")
+fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+```
+
+That asks `amatrix` to prefer an available fast-capable accelerator automatically and otherwise fall back to CPU. You do not need to hardcode `"mlx"` or set session-global defaults first.
+
+If a caller wants to flip defaults for one local block instead of one object, use `with_amatrix()`:
+
+```r
+with_amatrix(policy = "auto", precision = "fast", {
+  X_am <- as_adgeMatrix(X)
+  fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+})
+```
+
+Persistent session setters such as `amatrix_set_default_policy()` and `amatrix_set_default_precision()` are still available for power users who genuinely want session-wide behavior, for example from `.Rprofile`.
+
+For especially hot repeated paths, you can still bind resident storage explicitly with `amatrix_bind_resident()`, but that should be an optimization step rather than the default package-author workflow.
+
 ## When is it worth using?
 
 - one design matrix and many response columns
@@ -65,7 +87,7 @@ If no accelerator backend is available, the same code still runs on CPU.
 
 - `adgeMatrix(x)` uses the conservative default path and is safe on CPU-only machines.
 - `adgeMatrix(x, mode = "exact")` pins execution to strict CPU semantics.
-- `adgeMatrix(x, mode = "fast", backend = "mlx")` allows reduced-precision accelerator execution when the backend supports it.
+- `adgeMatrix(x, mode = "fast")` requests reduced-precision execution and prefers an available fast-capable accelerator automatically, with CPU fallback when none is available.
 
 ## Installation
 

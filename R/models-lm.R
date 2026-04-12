@@ -250,16 +250,21 @@
 .amatrix_ridge_penalized_xtx <- function(XtX, lambda, penalize_intercept = FALSE, has_intercept = FALSE) {
   stopifnot(inherits(XtX, "adgeMatrix"))
 
-  xtx_host <- as.matrix(amatrix_materialize_host(XtX))
-  diag_len <- min(nrow(xtx_host), ncol(xtx_host))
-  diag_index <- cbind(seq_len(diag_len), seq_len(diag_len))
-  xtx_host[diag_index] <- xtx_host[diag_index] + as.double(lambda)
-
-  if (isTRUE(has_intercept) && !isTRUE(penalize_intercept) && diag_len >= 1L) {
-    xtx_host[1L, 1L] <- xtx_host[1L, 1L] - as.double(lambda)
+  penalty <- diag(as.double(lambda), ncol(XtX))
+  if (isTRUE(has_intercept) && !isTRUE(penalize_intercept) && ncol(XtX) >= 1L) {
+    penalty[1L, 1L] <- 0
   }
 
-  .amatrix_rewrap_like(XtX, xtx_host)
+  ewise(
+    "+",
+    XtX,
+    adgeMatrix(
+      penalty,
+      preferred_backend = XtX@preferred_backend,
+      policy = XtX@policy,
+      precision = XtX@precision
+    )
+  )
 }
 
 .amatrix_lm_cache_value <- function(X_arg, cache = TRUE, need_xtx = TRUE, need_qr = FALSE, cache_key = NULL) {

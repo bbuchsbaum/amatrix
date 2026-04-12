@@ -186,13 +186,31 @@ The points fall close to the identity line, which matches the high `r2` values f
 The CPU path above is the safest default because it runs everywhere. On a machine with an available accelerator backend, the code shape stays the same and you only change the constructor metadata:
 
 ```{r fast-backend-example, eval = FALSE}
-X_fast <- adgeMatrix(X, mode = "fast", backend = "mlx")
+X_fast <- adgeMatrix(X, mode = "fast")
 fit_fast <- many_lm(X_fast, Y, method = "qr", cache = TRUE)
 
 coef(fit_fast)
 ```
 
-Use `amatrix_backend_status()` to see which backends are available on your machine, and `amatrix_explain()` when you want a fuller explanation of why a specific operation did or did not leave CPU.
+If you are writing library code, the default path is still to wrap once at the boundary and keep the rest of the code generic:
+
+```{r fast-library-path, eval = FALSE}
+X_am <- as_adgeMatrix(X, mode = "fast")
+fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+```
+
+That per-object path does not require session-global setters or a hardcoded backend name. `amatrix` will prefer an available fast-capable accelerator automatically and fall back to CPU when none is available.
+
+If a caller wants to flip defaults for one local block instead of one object, use `with_amatrix()`:
+
+```{r with-amatrix-example, eval = FALSE}
+with_amatrix(policy = "auto", precision = "fast", {
+  X_am <- as_adgeMatrix(X)
+  fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+})
+```
+
+Use `amatrix_bind_resident()` only when you need to optimize a particularly hot repeated path.
 
 ## Where next?
 

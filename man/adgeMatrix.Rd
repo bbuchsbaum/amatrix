@@ -20,7 +20,10 @@ adgeMatrix(
 \item{mode}{Single string shortcut accepted by
 \code{.amatrix_resolve_mode()}; used to set \code{backend},
 \code{policy}, and \code{precision} together. Pass \code{NULL}
-to use the individual arguments instead.}
+to use the individual arguments instead. In particular,
+\code{mode = "fast"} requests reduced precision and prefers an
+available fast-capable accelerator automatically, with CPU
+fallback when none is available.}
 
 \item{backend}{Alias for \code{preferred_backend}; ignored when
 \code{preferred_backend} is non-\code{NULL}.}

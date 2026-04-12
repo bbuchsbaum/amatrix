@@ -1129,6 +1129,7 @@ amatrix_arrayfire_backend <- function() {
 }
 
 amatrix_arrayfire_register <- function(overwrite = TRUE) {
-  amatrix_register_backend("arrayfire", amatrix_arrayfire_backend(), overwrite = overwrite)
+  register_backend <- getExportedValue("amatrix", "amatrix_register_backend")
+  register_backend("arrayfire", amatrix_arrayfire_backend(), overwrite = overwrite)
   invisible("arrayfire")
 }

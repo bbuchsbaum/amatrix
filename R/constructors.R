@@ -27,7 +27,7 @@
   dim,
   dimnames = NULL,
   factors = list(),
-  preferred_backend = "cpu",
+  preferred_backend = .amatrix_default_preferred_backend(policy, precision),
   policy = amatrix_default_policy(),
   precision = amatrix_default_precision(),
   src_id = ""
@@ -79,7 +79,7 @@
     return(as(base, "dgCMatrix"))
   }
   if (is.matrix(x)) {
-    base <- Matrix(x, sparse = TRUE)
+    base <- Matrix::Matrix(x, sparse = TRUE)
     if (!inherits(base, "generalMatrix")) {
       base <- as(base, "generalMatrix")
     }
@@ -109,7 +109,7 @@
 #' @keywords internal
 new_adgeMatrix <- function(
   x,
-  preferred_backend = "cpu",
+  preferred_backend = .amatrix_default_preferred_backend(policy, precision),
   policy = amatrix_default_policy(),
   precision = amatrix_default_precision(),
   src_id = ""
@@ -174,7 +174,7 @@ new_adgeMatrix <- function(
 new_adgeMatrix_deferred <- function(
   dim,
   dimnames = list(NULL, NULL),
-  preferred_backend = "cpu",
+  preferred_backend = .amatrix_default_preferred_backend(policy, precision),
   policy = amatrix_default_policy(),
   precision = amatrix_default_precision(),
   src_id = ""
@@ -217,7 +217,7 @@ new_adgeMatrix_deferred <- function(
 #' @keywords internal
 new_adgCMatrix <- function(
   x,
-  preferred_backend = "cpu",
+  preferred_backend = .amatrix_default_preferred_backend(policy, precision),
   policy = amatrix_default_policy(),
   precision = amatrix_default_precision()
 ) {
@@ -251,7 +251,10 @@ new_adgCMatrix <- function(
 #' @param mode Single string shortcut accepted by
 #'   \code{.amatrix_resolve_mode()}; used to set \code{backend},
 #'   \code{policy}, and \code{precision} together. Pass \code{NULL}
-#'   to use the individual arguments instead.
+#'   to use the individual arguments instead. In particular,
+#'   \code{mode = "fast"} requests reduced precision and prefers an
+#'   available fast-capable accelerator automatically, with CPU
+#'   fallback when none is available.
 #' @param backend Alias for \code{preferred_backend}; ignored when
 #'   \code{preferred_backend} is non-\code{NULL}.
 #' @param preferred_backend Single string naming the preferred compute
@@ -295,7 +298,8 @@ adgeMatrix <- function(
 #'   \code{matrix}.
 #' @param mode Single string shortcut passed to
 #'   \code{.amatrix_resolve_mode()}. Pass \code{NULL} to use the
-#'   individual arguments.
+#'   individual arguments. \code{mode = "fast"} prefers an available
+#'   fast-capable accelerator automatically, with CPU fallback.
 #' @param backend Alias for \code{preferred_backend}; ignored when
 #'   \code{preferred_backend} is non-\code{NULL}.
 #' @param preferred_backend Single string naming the preferred compute

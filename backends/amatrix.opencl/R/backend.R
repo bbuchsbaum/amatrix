@@ -103,6 +103,31 @@
   sprintf("%s:%d", prefix, counter)
 }
 
+.amatrix_opencl_has_live_resident_operand <- function(x, y = NULL) {
+  live_x <- tryCatch(amatrix:::.amatrix_live_resident_backend(x), error = function(e) NULL)
+  if (identical(live_x, "opencl")) {
+    return(TRUE)
+  }
+
+  if (inherits(y, "aMatrix")) {
+    live_y <- tryCatch(amatrix:::.amatrix_live_resident_backend(y), error = function(e) NULL)
+    if (identical(live_y, "opencl")) {
+      return(TRUE)
+    }
+  }
+
+  FALSE
+}
+
+.amatrix_opencl_allow_implicit_resident <- function(op, x, y = NULL) {
+  if (!(op %in% c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise"))) {
+    return(TRUE)
+  }
+
+  isTRUE(getOption("amatrix.defer_host", FALSE)) ||
+    .amatrix_opencl_has_live_resident_operand(x, y = y)
+}
+
 .amatrix_opencl_factor_gpu_enabled <- function() {
   isTRUE(getOption("amatrix.opencl.factor_gpu", FALSE))
 }
@@ -1329,6 +1354,9 @@ amatrix_opencl_backend <- function() {
       if (inherits(x, "adgCMatrix")) {
         return(.amatrix_opencl_sparse_product_supported(op, x, y = y))
       }
+      if (!.amatrix_opencl_allow_implicit_resident(op, x, y = y)) {
+        return(FALSE)
+      }
       if (op %in% c("solve", "chol")) {
         return(
           .amatrix_opencl_factor_gpu_enabled() &&
@@ -1535,6 +1563,7 @@ amatrix_opencl_backend <- function() {
 }
 
 amatrix_opencl_register <- function(overwrite = TRUE) {
-  amatrix_register_backend("opencl", amatrix_opencl_backend(), overwrite = overwrite)
+  register_backend <- getExportedValue("amatrix", "amatrix_register_backend")
+  register_backend("opencl", amatrix_opencl_backend(), overwrite = overwrite)
   invisible("opencl")
 }

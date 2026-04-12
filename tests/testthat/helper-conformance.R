@@ -348,6 +348,17 @@ optional_backend_namespace <- function(package) {
   if (!is.null(repo_dir) &&
       dir.exists(repo_dir) &&
       requireNamespace("pkgload", quietly = TRUE)) {
+    if (package %in% loadedNamespaces()) {
+      ns <- asNamespace(package)
+      ns_path <- tryCatch(getNamespaceInfo(ns, "path"), error = function(e) NULL)
+      if (!is.null(ns_path) &&
+          identical(
+            normalizePath(ns_path, winslash = "/", mustWork = FALSE),
+            normalizePath(repo_dir, winslash = "/", mustWork = FALSE)
+          )) {
+        return(ns)
+      }
+    }
     pkgload::load_all(repo_dir, quiet = TRUE, helpers = FALSE, export_all = FALSE)
     if (package %in% loadedNamespaces()) {
       return(asNamespace(package))

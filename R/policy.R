@@ -2,6 +2,47 @@
 .amatrix_valid_precisions <- c("strict", "fast")
 .amatrix_valid_modes      <- c("exact", "balanced", "fast")
 
+.amatrix_default_preferred_backend <- function(
+  policy = amatrix_default_policy(),
+  precision = amatrix_default_precision()
+) {
+  if (is.null(policy) || !nzchar(policy) || identical(policy, "auto")) {
+    if (identical(precision, "fast")) {
+      return(.amatrix_default_fast_backend())
+    }
+
+    return("cpu")
+  }
+
+  policy
+}
+
+.amatrix_auto_fast_backend_order <- function() {
+  c("mlx", "metal", "arrayfire", "opencl", "torch")
+}
+
+.amatrix_default_fast_backend <- function() {
+  registered <- setdiff(amatrix_backend_names(), "cpu")
+  ordered <- unique(c(
+    intersect(.amatrix_auto_fast_backend_order(), registered),
+    setdiff(registered, .amatrix_auto_fast_backend_order())
+  ))
+
+  for (backend_name in ordered) {
+    backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
+    if (is.null(backend) || !isTRUE(backend$available())) {
+      next
+    }
+
+    modes <- tryCatch(unique(backend$precision_modes()), error = function(e) character())
+    if ("fast" %in% modes) {
+      return(backend_name)
+    }
+  }
+
+  "cpu"
+}
+
 # Resolve mode= + backend= into the (preferred_backend, policy, precision) triple
 # used by the internal constructors.
 #
@@ -15,6 +56,7 @@
 .amatrix_resolve_mode <- function(mode, backend, preferred_backend, policy, precision) {
   if (!is.null(mode)) {
     mode <- match.arg(mode, .amatrix_valid_modes)
+    pol <- if (!is.null(policy)) policy else amatrix_default_policy()
     derived_precision <- switch(mode,
       exact    = "strict",
       balanced = "strict",
@@ -23,18 +65,19 @@
     derived_backend <- switch(mode,
       exact    = "cpu",             # hard-pinned: exact means CPU semantics
       balanced = "cpu",             # M8: auto-route to GPU where float64-safe; currently CPU-pinned
-      fast     = "cpu"              # backend= needed to route to GPU
+      fast     = .amatrix_default_preferred_backend(pol, "fast")
     )
     pb  <- if (!is.null(preferred_backend)) preferred_backend else if (!is.null(backend)) backend else derived_backend
-    pol <- if (!is.null(policy)) policy else amatrix_default_policy()
     pre <- if (!is.null(precision)) precision else derived_precision
     return(list(preferred_backend = pb, policy = pol, precision = pre))
   }
   # No mode: honour explicit args or fall back to package defaults.
+  pol <- if (!is.null(policy)) policy else amatrix_default_policy()
+  pre <- if (!is.null(precision)) precision else amatrix_default_precision()
   list(
-    preferred_backend = if (!is.null(preferred_backend)) preferred_backend else if (!is.null(backend)) backend else "cpu",
-    policy            = if (!is.null(policy)) policy else amatrix_default_policy(),
-    precision         = if (!is.null(precision)) precision else amatrix_default_precision()
+    preferred_backend = if (!is.null(preferred_backend)) preferred_backend else if (!is.null(backend)) backend else .amatrix_default_preferred_backend(pol, pre),
+    policy            = pol,
+    precision         = pre
   )
 }
 
@@ -179,6 +222,49 @@ amatrix_set_default_precision <- function(precision) {
   }
   .amatrix_state$default_precision <- precision
   invisible(precision)
+}
+
+#' Evaluate code with temporary amatrix defaults
+#'
+#' Temporarily overrides the session-default dispatch policy and/or
+#' precision mode for the duration of \code{code}, then restores the
+#' previous values on exit, even when \code{code} errors.
+#'
+#' @param policy Optional temporary policy. Must be one of
+#'   \code{"auto"}, \code{"cpu"}, \code{"mlx"}, \code{"metal"},
+#'   \code{"arrayfire"}, or \code{"torch"}.
+#' @param precision Optional temporary precision. Must be either
+#'   \code{"strict"} or \code{"fast"}.
+#' @param code Expression to evaluate under the temporary defaults.
+#'
+#' @return The result of evaluating \code{code}.
+#'
+#' @examples
+#' with_amatrix(policy = "auto", precision = "fast", {
+#'   adgeMatrix(matrix(1:4, nrow = 2))
+#' })
+#'
+#' @seealso \code{\link{adgeMatrix}},
+#'   \code{\link{amatrix_set_default_policy}},
+#'   \code{\link{amatrix_set_default_precision}}
+#' @export
+with_amatrix <- function(policy = NULL, precision = NULL, code) {
+  old_policy <- amatrix_default_policy()
+  old_precision <- amatrix_default_precision()
+
+  on.exit({
+    amatrix_set_default_policy(old_policy)
+    amatrix_set_default_precision(old_precision)
+  }, add = TRUE)
+
+  if (!is.null(policy)) {
+    amatrix_set_default_policy(policy)
+  }
+  if (!is.null(precision)) {
+    amatrix_set_default_precision(precision)
+  }
+
+  force(code)
 }
 
 .amatrix_backend_preference <- function(x, op = NULL) {

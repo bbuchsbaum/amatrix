@@ -30,6 +30,89 @@ test_that("precision defaults can be configured explicitly", {
   expect_equal(x@precision, "fast")
 })
 
+test_that("session defaults can steer backend choice for plain constructors", {
+  old_policy <- amatrix_default_policy()
+  old_precision <- amatrix_default_precision()
+  on.exit({
+    amatrix_set_default_policy(old_policy)
+    amatrix_set_default_precision(old_precision)
+  }, add = TRUE)
+
+  counter <- new.env(parent = emptyenv())
+
+  with_registered_backend("mlx", make_recording_backend(counter, supported_ops = c("matmul"), precision_modes = "fast"), {
+    amatrix_set_default_policy("mlx")
+    amatrix_set_default_precision("fast")
+
+    x <- adgeMatrix(matrix(1:4, nrow = 2))
+    plan <- amatrix_backend_plan(x, "matmul", y = diag(2))
+
+    expect_equal(x@preferred_backend, "mlx")
+    expect_equal(x@policy, "mlx")
+    expect_equal(x@precision, "fast")
+    expect_identical(plan$preferred, c("mlx", "cpu"))
+    expect_identical(plan$chosen, "mlx")
+  })
+})
+
+test_that("fast mode prefers an available accelerator without session setters", {
+  old_policy <- amatrix_default_policy()
+  old_precision <- amatrix_default_precision()
+  on.exit({
+    amatrix_set_default_policy(old_policy)
+    amatrix_set_default_precision(old_precision)
+  }, add = TRUE)
+
+  with_registered_backend("mlx", make_recording_backend(counter = new.env(parent = emptyenv()), supported_ops = c("matmul"), precision_modes = "fast"), {
+    amatrix_set_default_policy("auto")
+    amatrix_set_default_precision("strict")
+
+    x <- adgeMatrix(matrix(1:4, nrow = 2), mode = "fast")
+    plan <- amatrix_backend_plan(x, "matmul", y = diag(2))
+
+    expect_equal(x@preferred_backend, "mlx")
+    expect_equal(x@policy, "auto")
+    expect_equal(x@precision, "fast")
+    expect_identical(plan$preferred, c("mlx", "auto", "cpu"))
+    expect_identical(plan$chosen, "mlx")
+  })
+})
+
+test_that("with_amatrix restores defaults on normal exit and error", {
+  old_policy <- amatrix_default_policy()
+  old_precision <- amatrix_default_precision()
+  on.exit({
+    amatrix_set_default_policy(old_policy)
+    amatrix_set_default_precision(old_precision)
+  }, add = TRUE)
+
+  amatrix_set_default_policy("auto")
+  amatrix_set_default_precision("strict")
+
+  x <- with_registered_backend("mlx", make_recording_backend(counter = new.env(parent = emptyenv()), supported_ops = c("matmul"), precision_modes = "fast"), {
+    with_amatrix(policy = "auto", precision = "fast", {
+      expect_equal(amatrix_default_policy(), "auto")
+      expect_equal(amatrix_default_precision(), "fast")
+      adgeMatrix(matrix(1:4, nrow = 2))
+    })
+  })
+
+  expect_equal(x@preferred_backend, "mlx")
+  expect_equal(x@precision, "fast")
+  expect_equal(amatrix_default_policy(), "auto")
+  expect_equal(amatrix_default_precision(), "strict")
+
+  expect_error(
+    with_amatrix(policy = "cpu", precision = "fast", {
+      stop("boom")
+    }),
+    "boom"
+  )
+
+  expect_equal(amatrix_default_policy(), "auto")
+  expect_equal(amatrix_default_precision(), "strict")
+})
+
 test_that("core operations route through fallback and preserve semantics", {
   x <- adgeMatrix(matrix(1:4, nrow = 2))
   y <- x %*% diag(2)

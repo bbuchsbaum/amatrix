@@ -6,7 +6,7 @@
 \usage{
 new_adgCMatrix(
   x,
-  preferred_backend = "cpu",
+  preferred_backend = .amatrix_default_preferred_backend(policy, precision),
   policy = amatrix_default_policy(),
   precision = amatrix_default_precision()
 )

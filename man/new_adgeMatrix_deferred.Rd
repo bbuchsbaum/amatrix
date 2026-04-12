@@ -7,7 +7,7 @@
 new_adgeMatrix_deferred(
   dim,
   dimnames = list(NULL, NULL),
-  preferred_backend = "cpu",
+  preferred_backend = .amatrix_default_preferred_backend(policy, precision),
   policy = amatrix_default_policy(),
   precision = amatrix_default_precision(),
   src_id = ""

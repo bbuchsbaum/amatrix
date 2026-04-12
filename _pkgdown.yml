@@ -1,0 +1,4 @@
+template:
+  package: albersdown
+  bootstrap: 5.0
+url: https://bbuchsbaum.github.io/amatrix/
