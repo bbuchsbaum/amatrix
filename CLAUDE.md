@@ -10,22 +10,57 @@ Summary:
 
 ## Issue Tracking
 
-Use `br` (`beads_rust`) for local issue tracking in this repo.
+Use `bd` (beads) for local issue tracking in this repo.
 
 - The project-local workspace is `.beads/`.
 - The issue prefix for this repo is `amatrix`, so new issues must be `amatrix-*`.
-- Do not use `bd` in this repo.
-- `br` is non-invasive: after changing issue state, run `br sync --flush-only`, then `git add .beads/` so the JSONL and SQLite state stay in version control.
-- If the workspace looks inconsistent, run `br doctor` before making further changes.
+- After changing issue state, run `bd sync` to commit beads changes to git.
+- If the workspace looks inconsistent, run `bd doctor` before making further changes.
 
-> **N.B.** `br close`/`br update` can fail with `FOREIGN KEY constraint failed` on certain issues — this is a bug in the `fsqlite` custom runtime, not a real constraint violation. Workaround: close directly via `sqlite3`, then `br sync --flush-only --force && git add .beads/`:
-> ```bash
-> sqlite3 .beads/beads.db "PRAGMA foreign_keys = ON; BEGIN; \
->   UPDATE issues SET status='closed', closed_at=CURRENT_TIMESTAMP, \
->     close_reason='done', updated_at=CURRENT_TIMESTAMP, closed_by_session='manual' \
->     WHERE id='<issue-id>'; \
->   INSERT INTO events (issue_id, event_type, actor, old_value, new_value) \
->     VALUES ('<issue-id>', 'status_changed', 'bbuchsbaum', 'open', 'closed'); \
->   COMMIT;"
-> br sync --flush-only --force && git add .beads/
-> ```
+
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+## Beads Issue Tracker
+
+This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+### Quick Reference
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --claim  # Claim work
+bd close <id>         # Complete work
+```
+
+### Rules
+
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Run `bd prime` for detailed command reference and session close protocol
+- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+
+## Session Completion
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   bd dolt push
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds
+<!-- END BEADS INTEGRATION -->

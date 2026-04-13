@@ -14,3 +14,5 @@ src/*.o
 src/*.so
 backends/*/src/*.o
 backends/*/src/*.so
+/doc/
+/Meta/
