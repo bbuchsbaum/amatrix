@@ -345,7 +345,12 @@ new_result_row <- function(...) {
     density = NA_real_,
     density_bucket = NA_character_,
     reps = NA_integer_,
-    median_ms = NA_real_
+    median_ms = NA_real_,
+    mean_ms = NA_real_,
+    sd_ms = NA_real_,
+    p05_ms = NA_real_,
+    p95_ms = NA_real_,
+    n_reps = NA_integer_
   )
   values <- modifyList(defaults, list(...))
   as.data.frame(values, stringsAsFactors = FALSE)
@@ -368,7 +373,15 @@ benchmark_time_ms <- function(fn, reps = 7L, warmup = 1L) {
     (proc.time()[["elapsed"]] - start) * 1000
   }, numeric(1))
 
-  median(timings)
+  list(
+    median  = stats::median(timings),
+    mean    = mean(timings),
+    sd      = if (length(timings) > 1L) stats::sd(timings) else 0,
+    p05     = unname(stats::quantile(timings, 0.05, names = FALSE, na.rm = TRUE)),
+    p95     = unname(stats::quantile(timings, 0.95, names = FALSE, na.rm = TRUE)),
+    n_reps  = length(timings),
+    samples = timings
+  )
 }
 
 make_dense_operand <- function(host, backend) {
@@ -670,7 +683,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
     stop(sprintf("unknown dense variant '%s'", variant), call. = FALSE)
   )
 
-  median_ms <- benchmark_time_ms(runner, reps = reps)
+  timing <- benchmark_time_ms(runner, reps = reps)
 
   new_result_row(
     suite = result_meta$suite,
@@ -690,7 +703,12 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
     density = 0,
     density_bucket = "dense",
     reps = reps,
-    median_ms = median_ms
+    median_ms = timing$median,
+    mean_ms = timing$mean,
+    sd_ms = timing$sd,
+    p05_ms = timing$p05,
+    p95_ms = timing$p95,
+    n_reps = timing$n_reps
   )
 }
 
@@ -735,7 +753,7 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
       list(
         dispatch = dispatch,
         reps = NA_integer_,
-        median_ms = NA_real_,
+        timing = NULL,
         unsupported = TRUE
       )
     } else {
@@ -771,10 +789,11 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
       stop(sprintf("unknown sparse variant '%s'", variant), call. = FALSE)
     )
 
+    timing <- benchmark_time_ms(runner, reps = reps)
     list(
       dispatch = dispatch,
       reps = reps,
-      median_ms = benchmark_time_ms(runner, reps = reps)
+      timing = timing
     )
     } # end else (supported path)
   })
@@ -804,7 +823,7 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
     ))
   }
   reps <- sparse_result$reps
-  median_ms <- sparse_result$median_ms
+  timing <- sparse_result$timing
   density_value <- amatrix:::.amatrix_sparse_density(case$X_host)
 
   new_result_row(
@@ -825,7 +844,12 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
     density = density_value,
     density_bucket = amatrix:::.amatrix_sparse_density_bucket(density_value),
     reps = reps,
-    median_ms = median_ms
+    median_ms = timing$median %||% NA_real_,
+    mean_ms = timing$mean %||% NA_real_,
+    sd_ms = timing$sd %||% NA_real_,
+    p05_ms = timing$p05 %||% NA_real_,
+    p95_ms = timing$p95 %||% NA_real_,
+    n_reps = timing$n_reps %||% NA_integer_
   )
 }
 
@@ -952,12 +976,13 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
       stop(sprintf("unknown sparse iterative variant '%s'", variant), call. = FALSE)
     )
 
+    timing <- benchmark_time_ms(runner, reps = reps)
     list(
       requested_supported = requested_supported,
       requested_support_reason = requested_support_reason,
       dispatch_backend = dispatch_backend,
       reps = reps,
-      median_ms = benchmark_time_ms(runner, reps = reps)
+      timing = timing
     )
   })
 
@@ -981,7 +1006,12 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
     density = density_value,
     density_bucket = amatrix:::.amatrix_sparse_density_bucket(density_value),
     reps = iterative_result$reps,
-    median_ms = iterative_result$median_ms
+    median_ms = iterative_result$timing$median %||% NA_real_,
+    mean_ms = iterative_result$timing$mean %||% NA_real_,
+    sd_ms = iterative_result$timing$sd %||% NA_real_,
+    p05_ms = iterative_result$timing$p05 %||% NA_real_,
+    p95_ms = iterative_result$timing$p95 %||% NA_real_,
+    n_reps = iterative_result$timing$n_reps %||% NA_integer_
   )
 }
 
