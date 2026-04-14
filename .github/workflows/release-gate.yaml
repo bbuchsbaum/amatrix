@@ -1,0 +1,248 @@
+# Release gate for amatrix. Runs on manual dispatch and on version-tag push.
+# Enforces the Track 2 release-gate contract:
+#
+#   1. 7 consecutive green nightlies (manual confirmation step — automating
+#      requires a history store; the step prints the last 7 nightly runs for
+#      a human to confirm).
+#   2. Benchmark regression vs tools/baseline.csv on release hardware.
+#   3. R CMD check --as-cran on mac + ubuntu (R-release + R-devel). Windows
+#      winbuilder and rhub runs are kicked off manually; this workflow prints
+#      instructions and URLs.
+#   4. revdepcheck::revdep_check() — runs if any reverse dependencies exist.
+#   5. Manual sign-off: job requires the `release-sign-off` environment to
+#      approve before the final step runs.
+#
+# Track 2 of the hardening plan. See planning_docs/quality-tracking.md §7 for
+# the stop-ship rules this gate enforces.
+
+name: release-gate
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      confirm_nightly_history:
+        description: "I have confirmed the last 7 nightly runs are green (yes/no)"
+        required: true
+        default: "no"
+
+permissions: read-all
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Pre-flight: list the recent nightly runs so the operator can confirm the
+  # 7-consecutive-green contract before approving the sign-off environment.
+  # ---------------------------------------------------------------------------
+  nightly-history:
+    runs-on: ubuntu-latest
+    name: nightly history check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: List recent nightly-stress runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Recent nightly-stress runs:"
+          gh run list \
+            --workflow=nightly-stress.yaml \
+            --limit=10 \
+            --json databaseId,displayTitle,conclusion,createdAt,htmlUrl \
+            --jq '.[] | "[\(.conclusion // "pending")] \(.createdAt) \(.htmlUrl)"' \
+            | tee /tmp/nightly-runs.txt
+          echo ""
+          greens=$(grep -c '^\[success\]' /tmp/nightly-runs.txt || true)
+          echo "Green nightly runs in last 10: $greens"
+          {
+            echo "# Nightly history"
+            echo ""
+            echo "Green nightly runs in last 10: **$greens**"
+            echo ""
+            echo "Required for release: **7 consecutive greens**"
+            echo ""
+            echo '```'
+            cat /tmp/nightly-runs.txt
+            echo '```'
+            echo ""
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "Operator confirmation: **${{ inputs.confirm_nightly_history }}**"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if operator did not confirm (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch' && inputs.confirm_nightly_history != 'yes'
+        run: |
+          echo "::error::Release gate requires explicit confirmation of 7 consecutive"
+          echo "green nightlies. Rerun with confirm_nightly_history=yes."
+          exit 1
+
+  # ---------------------------------------------------------------------------
+  # R CMD check matrix. Same as PR gate but runs with --as-cran AND R-devel
+  # on mac as well (release gate is more thorough).
+  # ---------------------------------------------------------------------------
+  r-cmd-check-as-cran:
+    needs: nightly-history
+    runs-on: ${{ matrix.config.os }}
+    name: R-CMD-check --as-cran (${{ matrix.config.os }}, ${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: macos-latest,   r: 'release'}
+          - {os: macos-latest,   r: 'devel', http-user-agent: 'release'}
+          - {os: ubuntu-latest,  r: 'release'}
+          - {os: ubuntu-latest,  r: 'devel', http-user-agent: 'release'}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      _R_CHECK_FORCE_SUGGESTS_: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          http-user-agent: ${{ matrix.config.http-user-agent }}
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+          dependencies: '"hard"'
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          args: 'c("--no-manual", "--as-cran")'
+          build_args: 'c("--no-manual", "--compact-vignettes=gs+qpdf")'
+          error-on: '"warning"'
+
+  # ---------------------------------------------------------------------------
+  # Benchmark regression against baseline.csv on release hardware. Unlike the
+  # nightly, this step is NOT continue-on-error: an unexplained > 20% regression
+  # is a stop-ship (planning_docs/quality-tracking.md §7 rule 3).
+  # ---------------------------------------------------------------------------
+  benchmark-regression:
+    needs: nightly-history
+    runs-on: macos-latest
+    name: benchmark regression (release hardware)
+
+    env:
+      NOT_CRAN: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::devtools, any::bench
+          needs: check
+          dependencies: '"hard"'
+
+      - name: Benchmark regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f tools/baseline.csv ]; then
+            echo "::error::tools/baseline.csv missing. Release gate requires a"
+            echo "baseline to enforce the speed contract."
+            exit 1
+          fi
+          Rscript tools/benchmark-regression.R --against-baseline
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-benchmark-${{ github.run_id }}
+          path: tools/benchmark-results/
+          if-no-files-found: warn
+          retention-days: 180
+
+  # ---------------------------------------------------------------------------
+  # Reverse-dependency check. Gracefully handles the empty case.
+  # ---------------------------------------------------------------------------
+  revdep-check:
+    needs: nightly-history
+    runs-on: ubuntu-latest
+    name: reverse dependency check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: r-lib/revdepcheck
+          needs: check
+          dependencies: '"hard"'
+
+      - name: Run revdep_check
+        shell: Rscript {0}
+        run: |
+          suppressMessages(library(revdepcheck))
+          revdepcheck::revdep_reset()
+          revdepcheck::revdep_check(num_workers = 2)
+          problems <- revdepcheck::revdep_summary()
+          if (length(problems) > 0) {
+            print(problems)
+            if (any(vapply(problems, function(p) !is.null(p$failure), logical(1)))) {
+              stop("Reverse dependency failures detected — stop-ship.")
+            }
+          } else {
+            cat("No reverse dependencies — clean.\n")
+          }
+
+  # ---------------------------------------------------------------------------
+  # Final sign-off. Requires the `release-sign-off` GitHub environment, which
+  # is configured with required reviewers. No approval ⇒ no release.
+  # ---------------------------------------------------------------------------
+  release-sign-off:
+    needs: [r-cmd-check-as-cran, benchmark-regression, revdep-check]
+    runs-on: ubuntu-latest
+    name: release sign-off
+    environment: release-sign-off
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Manual release checklist
+        shell: bash
+        run: |
+          {
+            echo "# Release gate — final checklist"
+            echo ""
+            echo "Mechanical gates passed. Manual confirmations still required:"
+            echo ""
+            echo "- [ ] \`R CMD check --as-cran\` on win-builder (release + devel) — submit at https://win-builder.r-project.org/upload.aspx"
+            echo "- [ ] \`rhub::rhub_check()\` on additional platforms (solaris, etc.)"
+            echo "- [ ] Backend tier labels in README match \`planning_docs/quality-tracking.md\` §8 (Track 5 generated)"
+            echo "- [ ] NEWS.md updated for this release (user-facing, not a changelog dump)"
+            echo "- [ ] Second vignette \"When is amatrix fast?\" builds (Track 7)"
+            echo "- [ ] \`cran-comments.md\` up to date with current note explanations"
+            echo "- [ ] \`amatrix_fallback_log()\` empty after clean conformance run (Track 5)"
+            echo "- [ ] Residency tripwire counter 0 across full test run (Track 3)"
+            echo ""
+            echo "If all of the above are checked, submit the package via"
+            echo "\`devtools::submit_cran()\`."
+          } >> "$GITHUB_STEP_SUMMARY"

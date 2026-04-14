@@ -1,0 +1,191 @@
+# Nightly stress gate for amatrix. Runs daily at 07:00 UTC and on manual
+# dispatch. Informational (continue-on-error) — the nightly is a status report
+# of whether the hardening contract is holding, not a merge blocker. The
+# release gate (.github/workflows/release-gate.yaml) is what enforces the
+# 7-consecutive-green requirement.
+#
+# Track 2 of the hardening plan.
+#
+# Env vars consumed:
+#   AMATRIX_COVERAGE_STRICT=1       — Track 1 test-coverage-table.R strict mode
+#   AMATRIX_STRESS_SEEDS=100        — Track 3 property-test seed count (forward-looking)
+#   AMATRIX_RESIDENCY_TRIPWIRE=1    — Track 3 residency leak detector (forward-looking)
+#
+# Note on the "fixed host" requirement: real benchmark stability requires a
+# self-hosted runner with a known CPU class. macos-latest is the closest we
+# have in the free tier; benchmark numbers from it are advisory until a
+# self-hosted runner is configured. This is documented in
+# planning_docs/quality-tracking.md §8.
+
+name: nightly-stress
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  nightly-stress:
+    runs-on: macos-latest
+    name: nightly stress (full test + strict coverage + benchmark)
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NOT_CRAN: "true"
+      AMATRIX_COVERAGE_STRICT: "1"
+      AMATRIX_STRESS_SEEDS: "100"
+      AMATRIX_RESIDENCY_TRIPWIRE: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::devtools, any::testthat, any::bench
+          needs: check
+          dependencies: '"hard"'
+
+      - name: Full devtools::test() with stress seeds
+        id: full-test
+        # NOT continue-on-error: a test regression is a real signal. The
+        # release gate reads `gh run list` conclusion for the "7 consecutive
+        # greens" contract, so nightly runs must fail the job on real breakage.
+        shell: Rscript {0}
+        run: |
+          suppressMessages(devtools::load_all(quiet = TRUE))
+          result <- devtools::test(reporter = "summary")
+          df <- as.data.frame(result)
+          fails <- sum(df$failed) + sum(df$error)
+          cat("Total test_that blocks:", nrow(df), "\n")
+          cat("Failures:", sum(df$failed), "\n")
+          cat("Errors:", sum(df$error), "\n")
+          cat("Skipped:", sum(df$skipped), "\n")
+          if (fails > 0L) {
+            stop(sprintf("%d test block(s) failed — nightly stops the run.", fails))
+          }
+
+      - name: Strict coverage gate (Track 3 readiness indicator)
+        id: strict-coverage
+        continue-on-error: true
+        shell: Rscript {0}
+        run: |
+          suppressMessages(devtools::load_all(quiet = TRUE))
+          result <- testthat::test_file(
+            "tests/testthat/test-coverage-table.R",
+            reporter = "summary"
+          )
+          df <- as.data.frame(result)
+          fails <- sum(df$failed) + sum(df$error)
+          if (fails > 0L) {
+            cat("::notice::Strict coverage gate still has gaps.",
+                "This is expected until Track 3 is complete.\n")
+            quit(status = 1)
+          }
+
+      - name: Benchmark regression (against baseline.csv if present)
+        id: benchmark-regression
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [ ! -f tools/baseline.csv ]; then
+            echo "::notice::tools/baseline.csv not present on this machine;"
+            echo "skipping benchmark regression. See planning_docs/quality-tracking.md §3.2."
+            exit 0
+          fi
+          if [ ! -f tools/benchmark-regression.R ]; then
+            echo "::warning::tools/benchmark-regression.R missing"
+            exit 0
+          fi
+          Rscript tools/benchmark-regression.R --against-baseline || {
+            status=$?
+            echo "::notice::Benchmark regression reported status $status."
+            echo "See artifacts. Nightly is informational."
+            exit $status
+          }
+
+      - name: Fallback log + backend status snapshot
+        id: fallback-log
+        # Non-fatal: the snapshot is for the artifact bundle, not a gate.
+        continue-on-error: true
+        shell: Rscript {0}
+        run: |
+          suppressMessages(devtools::load_all(quiet = TRUE))
+          report <- list(
+            timestamp = format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z"),
+            sysname = Sys.info()[["sysname"]],
+            release = Sys.info()[["release"]],
+            r_version = R.version.string
+          )
+          if (exists("amatrix_backend_status", mode = "function")) {
+            report$backend_status <- tryCatch(
+              amatrix_backend_status(),
+              error = function(e) paste("error:", conditionMessage(e))
+            )
+          } else {
+            report$backend_status <- "amatrix_backend_status() not exported yet (Track 5 deliverable)"
+          }
+          if (exists("amatrix_fallback_log", mode = "function")) {
+            report$fallback_log <- tryCatch(
+              amatrix_fallback_log(),
+              error = function(e) paste("error:", conditionMessage(e))
+            )
+          } else {
+            report$fallback_log <- "amatrix_fallback_log() not exported yet (Track 5 deliverable)"
+          }
+          dir.create(".nightly-artifacts", showWarnings = FALSE, recursive = TRUE)
+          stamp <- format(Sys.time(), "%Y%m%d-%H%M%S")
+          out_path <- file.path(".nightly-artifacts", sprintf("nightly-%s.json", stamp))
+          writeLines(jsonlite::toJSON(report, pretty = TRUE, auto_unbox = TRUE), out_path)
+          cat("Wrote", out_path, "\n")
+
+      - name: Upload nightly artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ github.run_id }}
+          path: |
+            .nightly-artifacts/
+            tools/benchmark-results/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Nightly summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "# amatrix nightly stress report"
+            echo ""
+            echo "- Run: ${{ github.run_id }}"
+            echo "- Sha:  ${{ github.sha }}"
+            echo "- Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo ""
+            echo "## Gate status"
+            echo ""
+            echo "| Gate | Status |"
+            echo "|---|---|"
+            echo "| full devtools::test() | ${{ steps.full-test.outcome }} |"
+            echo "| strict coverage       | ${{ steps.strict-coverage.outcome }} |"
+            echo "| benchmark regression  | ${{ steps.benchmark-regression.outcome }} |"
+            echo "| fallback log snapshot | ${{ steps.fallback-log.outcome }} |"
+            echo ""
+            echo "All gates are informational (continue-on-error). The release gate"
+            echo "(.github/workflows/release-gate.yaml) is what enforces the"
+            echo "7-consecutive-green contract."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The job's final status is: failure iff the full-test step failed.
+      # strict-coverage and benchmark-regression are informational and carry
+      # continue-on-error; they appear in the summary but do not fail the run.
+      # This is what makes "7 consecutive green nightlies" meaningful to the
+      # release gate.

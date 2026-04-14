@@ -1,4 +1,9 @@
-# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
+# PR gate for amatrix — runs on every push / pull_request. See also:
+#   - .github/workflows/nightly-stress.yaml  (scheduled heavy gate)
+#   - .github/workflows/release-gate.yaml    (manual release gate)
+# Track 2 of the hardening plan defines the three-lane gate system.
+#
+# Budget target: < 15 minutes total.
 on:
   push:
     branches: [main, master]
@@ -54,3 +59,103 @@ jobs:
           # bridge to optional backend sister packages). Documented in
           # cran-comments.md.
           error-on: '"warning"'
+
+  # ---------------------------------------------------------------------------
+  # Fast PR gates: run alongside R-CMD-check on Linux only. These enforce the
+  # Track 2 PR-gate contract: coverage table integrity, smoke install-load,
+  # baseline purity, and (when Track 3 lands it) dispatch audit hermeticity.
+  # ---------------------------------------------------------------------------
+  fast-gates:
+    runs-on: ubuntu-latest
+    name: fast-gates (coverage / smoke / dispatch-audit / baseline-purity)
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NOT_CRAN: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history for the baseline-purity diff against origin/main.
+          fetch-depth: 0
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::devtools, any::testthat
+          needs: check
+          dependencies: '"hard"'
+
+      - name: Coverage-table gate (Track 1 machinery)
+        # No load_all needed — test reads NAMESPACE and the quality doc only.
+        shell: Rscript {0}
+        run: |
+          result <- testthat::test_file(
+            "tests/testthat/test-coverage-table.R",
+            reporter = "summary"
+          )
+          df <- as.data.frame(result)
+          if (any(df$failed > 0L) || any(df$error)) {
+            stop("Coverage-table gate failed — see output above.")
+          }
+
+      - name: Dispatch audit gate (Track 3 machinery, optional until delivered)
+        run: |
+          if [ -f tools/audit-dispatch.R ]; then
+            echo "Running tools/audit-dispatch.R"
+            Rscript tools/audit-dispatch.R
+          else
+            echo "tools/audit-dispatch.R not present yet (Track 3 deliverable)."
+            echo "Skipping dispatch audit gate."
+          fi
+
+      - name: Smoke install-load gate
+        run: |
+          if [ -f tools/smoke-install-load.R ]; then
+            Rscript tools/smoke-install-load.R
+          else
+            echo "::warning::tools/smoke-install-load.R not found"
+          fi
+
+      - name: Baseline purity gate (regression normalization ban)
+        # Baseline updates must land in dedicated commits. A PR that modifies
+        # both R/ and tools/baseline.csv in the same changeset is rejected so
+        # that regressions cannot be silently absorbed by a mixed commit.
+        # See planning_docs/quality-tracking.md §7 rule 3.
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Determine the base ref to diff against.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_ref="origin/${{ github.base_ref }}"
+          else
+            # push event on main — compare to HEAD~1.
+            base_ref="HEAD~1"
+          fi
+          echo "Comparing changed files against $base_ref"
+          changed=$(git diff --name-only "$base_ref"...HEAD || true)
+          if [ -z "$changed" ]; then
+            echo "No changed files detected; skipping."
+            exit 0
+          fi
+          echo "Changed files:"
+          echo "$changed"
+          touches_baseline=$(echo "$changed" | grep -E '^tools/baseline\.csv$' || true)
+          touches_r=$(echo "$changed" | grep -E '^R/' || true)
+          if [ -n "$touches_baseline" ] && [ -n "$touches_r" ]; then
+            echo ""
+            echo "::error::Baseline purity gate failed."
+            echo "This changeset modifies both tools/baseline.csv AND files under R/."
+            echo "Baseline updates must land in a dedicated commit (no R/ changes),"
+            echo "with a written explanation in the commit message. See"
+            echo "planning_docs/quality-tracking.md §7 rule 3."
+            exit 1
+          fi
+          echo "Baseline purity gate OK."
