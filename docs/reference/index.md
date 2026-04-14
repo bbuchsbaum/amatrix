@@ -1,0 +1,305 @@
+# Package index
+
+## All functions
+
+- [`KronMatrix-class`](https://bbuchsbaum.github.io/amatrix/reference/KronMatrix-class.md)
+  : Lazy Kronecker product of two matrices
+- [`aMatrix-class`](https://bbuchsbaum.github.io/amatrix/reference/aMatrix-class.md)
+  : Virtual base class for backend-aware matrices
+- [`aTransposeView-class`](https://bbuchsbaum.github.io/amatrix/reference/aTransposeView-class.md)
+  : Lazy transpose view of an adgeMatrix
+- [`addmm()`](https://bbuchsbaum.github.io/amatrix/reference/addmm.md) :
+  Scaled matrix multiply with optional bias: alpha\*(A%\*%B) + beta\*C
+- [`adgCMatrix-class`](https://bbuchsbaum.github.io/amatrix/reference/adgCMatrix-class.md)
+  : Sparse column-compressed matrix with backend-dispatch metadata
+- [`adgCMatrix()`](https://bbuchsbaum.github.io/amatrix/reference/adgCMatrix.md)
+  : Create a backend-aware sparse matrix
+- [`adgeMatrix-class`](https://bbuchsbaum.github.io/amatrix/reference/adgeMatrix-class.md)
+  : Dense general matrix with backend-dispatch metadata
+- [`adgeMatrix()`](https://bbuchsbaum.github.io/amatrix/reference/adgeMatrix.md)
+  : Create a backend-aware dense matrix
+- [`amChol-class`](https://bbuchsbaum.github.io/amatrix/reference/amChol-class.md)
+  : Cholesky factorization result
+- [`amLU-class`](https://bbuchsbaum.github.io/amatrix/reference/amLU-class.md)
+  : LU factorization result for general square matrices
+- [`amSVD-class`](https://bbuchsbaum.github.io/amatrix/reference/amSVD-class.md)
+  : Truncated SVD factorization result
+- [`am_rowargmax()`](https://bbuchsbaum.github.io/amatrix/reference/am_argreduce.md)
+  [`am_rowargmin()`](https://bbuchsbaum.github.io/amatrix/reference/am_argreduce.md)
+  [`am_colargmax()`](https://bbuchsbaum.github.io/amatrix/reference/am_argreduce.md)
+  [`am_colargmin()`](https://bbuchsbaum.github.io/amatrix/reference/am_argreduce.md)
+  : Row and column argmax/argmin
+- [`am_ewise_inplace()`](https://bbuchsbaum.github.io/amatrix/reference/am_ewise_inplace.md)
+  : In-place elementwise operation on a resident handle
+- [`am_qr()`](https://bbuchsbaum.github.io/amatrix/reference/am_qr.md) :
+  QR decomposition of an amatrix object
+- [`am_scatter_mean()`](https://bbuchsbaum.github.io/amatrix/reference/am_scatter_mean.md)
+  : Scatter mean by group labels
+- [`am_sweep()`](https://bbuchsbaum.github.io/amatrix/reference/am_sweep.md)
+  : Backend-dispatched sweep
+- [`am_sweep_inplace()`](https://bbuchsbaum.github.io/amatrix/reference/am_sweep_inplace.md)
+  : In-place broadcast sweep on a resident handle
+- [`amatrix_backend_capabilities()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_capabilities.md)
+  : Query the capabilities of a registered backend
+- [`amatrix_backend_features()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_features.md)
+  : Query the features of a registered backend
+- [`amatrix_backend_matrix()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_matrix.md)
+  : Tabulate dispatch plans across multiple operations
+- [`amatrix_backend_names()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_names.md)
+  : List names of all registered backends
+- [`amatrix_backend_plan()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_plan.md)
+  : Compute the dispatch plan for a single operation
+- [`amatrix_backend_precision_modes()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_precision_modes.md)
+  : Query the precision modes supported by a registered backend
+- [`amatrix_backend_status()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_status.md)
+  : Summarise the status of registered backends
+- [`amatrix_bind_resident()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_bind_resident.md)
+  : Bind an amatrix Object to Resident Backend Storage
+- [`amatrix_cache_max_size()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_cache_max_size.md)
+  [`amatrix_set_cache_max_size()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_cache_max_size.md)
+  : Get or set the model cache maximum size
+- [`amatrix_calibrate()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_calibrate.md)
+  : Calibrate GPU dispatch thresholds for this machine
+- [`amatrix_calibration_info()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_calibration_info.md)
+  : Retrieve the current calibration state
+- [`amatrix_compile_product()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_compile_product.md)
+  : Compile a Reusable Matrix-Product Plan
+- [`amatrix_default_policy()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_default_policy.md)
+  : Get the session-level default dispatch policy
+- [`amatrix_default_precision()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_default_precision.md)
+  : Get the session-level default precision mode
+- [`amatrix_dispatch_op()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_dispatch_op.md)
+  : Low-level backend dispatch for a single operation
+- [`amatrix_execution_info()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_execution_info.md)
+  : Collect full dispatch information for an aMatrix object
+- [`amatrix_explain()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_explain.md)
+  : Explain dispatch decisions for an aMatrix operation
+- [`amatrix_gc()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_gc.md)
+  : Free stale GPU residency entries and optionally flush the model
+  cache
+- [`amatrix_materialize_host()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_materialize_host.md)
+  : Force materialization of an aMatrix to a host Matrix object
+- [`amatrix_memory_stats()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_memory_stats.md)
+  : Report GPU residency and model cache usage
+- [`amatrix_prepare_operands()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_prepare_operands.md)
+  : Prepare Operands for a Repeated Matrix Product
+- [`amatrix_register_backend()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_register_backend.md)
+  : Register a backend with the amatrix dispatch system
+- [`amatrix_residency_info()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_residency_info.md)
+  : Query GPU residency state of an aMatrix object
+- [`amatrix_resident_backend_for()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_resident_backend_for.md)
+  : Choose a Residency-Capable Accelerator Backend
+- [`amatrix_set_default_policy()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_set_default_policy.md)
+  : Set the session-level default dispatch policy
+- [`amatrix_set_default_precision()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_set_default_precision.md)
+  : Set the session-level default precision mode
+- [`amatrix_warm()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_warm.md)
+  : Warm up GPU backends to eliminate cold-start latency
+- [`array_lm()`](https://bbuchsbaum.github.io/amatrix/reference/array_lm.md)
+  : Fit linear models with array-shaped response
+- [`as_adgCMatrix()`](https://bbuchsbaum.github.io/amatrix/reference/as_adgCMatrix.md)
+  : Coerce an object to adgCMatrix
+- [`as_adgeMatrix()`](https://bbuchsbaum.github.io/amatrix/reference/as_adgeMatrix.md)
+  : Coerce an object to adgeMatrix
+- [`as_adgeMatrix.resident_handle()`](https://bbuchsbaum.github.io/amatrix/reference/as_adgeMatrix.resident_handle.md)
+  : Convert a resident handle back to an adgeMatrix
+- [`batch_chol()`](https://bbuchsbaum.github.io/amatrix/reference/batch_chol.md)
+  : Batch Cholesky factorization
+- [`batch_crossprod()`](https://bbuchsbaum.github.io/amatrix/reference/batch_crossprod.md)
+  : Batch crossproduct
+- [`batch_solve()`](https://bbuchsbaum.github.io/amatrix/reference/batch_solve.md)
+  : Batch triangular solve
+- [`block_lanczos()`](https://bbuchsbaum.github.io/amatrix/reference/block_lanczos.md)
+  [`block_svd()`](https://bbuchsbaum.github.io/amatrix/reference/block_lanczos.md)
+  : Block Lanczos SVD via block Krylov iteration
+- [`chol(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/chol-methods.md)
+  : Cholesky factorization for adgeMatrix
+- [`chol(`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/chol-sparse-methods.md)
+  : Cholesky factorization for adgCMatrix
+- [`chol_diag()`](https://bbuchsbaum.github.io/amatrix/reference/chol_diag.md)
+  : Extract the diagonal of a Cholesky factor
+- [`chol_factor()`](https://bbuchsbaum.github.io/amatrix/reference/chol_factor.md)
+  : Compute the Cholesky factorization of an adgeMatrix
+- [`chol_logdet()`](https://bbuchsbaum.github.io/amatrix/reference/chol_logdet.md)
+  : Log-determinant from a Cholesky factor
+- [`chol_solve()`](https://bbuchsbaum.github.io/amatrix/reference/chol_solve.md)
+  : Solve a linear system using a Cholesky factor
+- [`chol_solve_batches()`](https://bbuchsbaum.github.io/amatrix/reference/chol_solve_batches.md)
+  : Solve many right-hand-side batches with one Cholesky factor
+- [`as.matrix(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/coerce-methods.md)
+  [`as.matrix(`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/coerce-methods.md)
+  [`as.matrix(`*`<aTransposeView>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/coerce-methods.md)
+  [`as.numeric(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/coerce-methods.md)
+  [`as.vector(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/coerce-methods.md)
+  [`as.array(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/coerce-methods.md)
+  [`as.array(`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/coerce-methods.md)
+  : Coerce amatrix objects to base R types
+- [`correlation()`](https://bbuchsbaum.github.io/amatrix/reference/correlation.md)
+  : Compute a correlation matrix
+- [`covariance()`](https://bbuchsbaum.github.io/amatrix/reference/covariance.md)
+  : Backend-dispatched covariance matrix
+- [`crossprod(`*`<adgeMatrix>`*`,`*`<ANY>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-methods.md)
+  [`crossprod(`*`<adgeMatrix>`*`,`*`<missing>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-methods.md)
+  [`tcrossprod(`*`<adgeMatrix>`*`,`*`<ANY>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-methods.md)
+  [`tcrossprod(`*`<adgeMatrix>`*`,`*`<missing>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-methods.md)
+  : Cross-product methods for adgeMatrix
+- [`crossprod(`*`<adgCMatrix>`*`,`*`<missing>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`crossprod(`*`<adgCMatrix>`*`,`*`<ANY>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`crossprod(`*`<adgCMatrix>`*`,`*`<matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`crossprod(`*`<adgCMatrix>`*`,`*`<Matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`crossprod(`*`<adgCMatrix>`*`,`*`<dgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`crossprod(`*`<adgCMatrix>`*`,`*`<dgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`crossprod(`*`<adgCMatrix>`*`,`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`crossprod(`*`<adgCMatrix>`*`,`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`tcrossprod(`*`<adgCMatrix>`*`,`*`<missing>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`tcrossprod(`*`<adgCMatrix>`*`,`*`<ANY>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`tcrossprod(`*`<adgCMatrix>`*`,`*`<matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`tcrossprod(`*`<adgCMatrix>`*`,`*`<Matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`tcrossprod(`*`<adgCMatrix>`*`,`*`<dgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`tcrossprod(`*`<adgCMatrix>`*`,`*`<dgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`tcrossprod(`*`<adgCMatrix>`*`,`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  [`tcrossprod(`*`<adgCMatrix>`*`,`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.md)
+  : Cross-product methods for adgCMatrix
+- [`crossprod_add_diag()`](https://bbuchsbaum.github.io/amatrix/reference/crossprod_add_diag.md)
+  : Cross-product plus diagonal perturbation
+- [`crossprod_weighted()`](https://bbuchsbaum.github.io/amatrix/reference/crossprod_weighted.md)
+  : Weighted cross-product X'WX
+- [`dist_matrix()`](https://bbuchsbaum.github.io/amatrix/reference/dist_matrix.md)
+  : GPU-accelerated pairwise distance matrix
+- [`dot()`](https://bbuchsbaum.github.io/amatrix/reference/dot.md) :
+  Inner product of two vectors or matrices
+- [`eigen(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/eigen-methods.md)
+  : Eigendecomposition for adgeMatrix
+- [`eigen(`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/eigen-sparse-methods.md)
+  : Eigendecomposition for adgCMatrix
+- [`eigh()`](https://bbuchsbaum.github.io/amatrix/reference/eigh.md) :
+  Symmetric eigendecomposition
+- [`ewise()`](https://bbuchsbaum.github.io/amatrix/reference/ewise.md) :
+  Element-wise operations
+- [`gemm()`](https://bbuchsbaum.github.io/amatrix/reference/gemm.md) :
+  Generalised matrix multiply (BLAS DGEMM interface)
+- [`irlba()`](https://bbuchsbaum.github.io/amatrix/reference/irlba.md) :
+  GPU-accelerated truncated SVD via irlba
+- [`irlba_native()`](https://bbuchsbaum.github.io/amatrix/reference/irlba_native.md)
+  : GPU-native truncated SVD via Lanczos bidiagonalization
+- [`kernel_matrix()`](https://bbuchsbaum.github.io/amatrix/reference/kernel_matrix.md)
+  : GPU-accelerated pairwise kernel matrix
+- [`kron()`](https://bbuchsbaum.github.io/amatrix/reference/kron.md) :
+  Eager Kronecker product
+- [`kron_matrix()`](https://bbuchsbaum.github.io/amatrix/reference/kron_matrix.md)
+  : Construct a lazy Kronecker product
+- [`lm_fit()`](https://bbuchsbaum.github.io/amatrix/reference/lm_fit.md)
+  : Fit a single linear model
+- [`lm_loo_cv()`](https://bbuchsbaum.github.io/amatrix/reference/lm_loo_cv.md)
+  : Leave-one-out cross-validation for linear models
+- [`lu_factor()`](https://bbuchsbaum.github.io/amatrix/reference/lu_factor.md)
+  : Store a general square matrix for LU-based solving
+- [`lu_solve()`](https://bbuchsbaum.github.io/amatrix/reference/lu_solve.md)
+  : Solve a linear system using an LU factor
+- [`many_lm()`](https://bbuchsbaum.github.io/amatrix/reference/many_lm.md)
+  : Fit multiple linear models against a shared design matrix
+- [`mat_sqrt()`](https://bbuchsbaum.github.io/amatrix/reference/mat_fun.md)
+  [`mat_pow()`](https://bbuchsbaum.github.io/amatrix/reference/mat_fun.md)
+  [`mat_log()`](https://bbuchsbaum.github.io/amatrix/reference/mat_fun.md)
+  : Matrix functions via symmetric eigendecomposition
+- [`` `%*%`( ``*`<adgeMatrix>`*`,`*`<matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
+  [`` `%*%`( ``*`<adgeMatrix>`*`,`*`<Matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
+  [`` `%*%`( ``*`<adgeMatrix>`*`,`*`<dgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
+  [`` `%*%`( ``*`<adgeMatrix>`*`,`*`<dgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
+  [`` `%*%`( ``*`<adgeMatrix>`*`,`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
+  [`` `%*%`( ``*`<adgeMatrix>`*`,`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
+  [`` `%*%`( ``*`<numeric>`*`,`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
+  : Matrix multiplication for adgeMatrix
+- [`` `%*%`( ``*`<adgCMatrix>`*`,`*`<ANY>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-sparse-methods.md)
+  [`` `%*%`( ``*`<adgCMatrix>`*`,`*`<matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-sparse-methods.md)
+  [`` `%*%`( ``*`<adgCMatrix>`*`,`*`<Matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-sparse-methods.md)
+  [`` `%*%`( ``*`<adgCMatrix>`*`,`*`<dgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-sparse-methods.md)
+  [`` `%*%`( ``*`<adgCMatrix>`*`,`*`<dgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-sparse-methods.md)
+  [`` `%*%`( ``*`<adgCMatrix>`*`,`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-sparse-methods.md)
+  [`` `%*%`( ``*`<adgCMatrix>`*`,`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-sparse-methods.md)
+  : Matrix multiplication for adgCMatrix
+- [`matmul()`](https://bbuchsbaum.github.io/amatrix/reference/matmul.md)
+  : Matrix multiplication
+- [`pairwise_sqdist_argmin()`](https://bbuchsbaum.github.io/amatrix/reference/pairwise_sqdist_argmin.md)
+  : Nearest-centroid assignment via fused squared-distance computation
+- [`pca_coef()`](https://bbuchsbaum.github.io/amatrix/reference/pca_coef.md)
+  : Project and reconstruct data using a truncated SVD
+- [`qr_downdate()`](https://bbuchsbaum.github.io/amatrix/reference/qr_downdate.md)
+  : QR downdate after removing one row
+- [`qr_info()`](https://bbuchsbaum.github.io/amatrix/reference/qr_info.md)
+  : Inspect an amQR factorization object
+- [`quad_form()`](https://bbuchsbaum.github.io/amatrix/reference/quad_form.md)
+  : Evaluate a quadratic form using a Cholesky factor
+- [`resident_handle()`](https://bbuchsbaum.github.io/amatrix/reference/resident_handle.md)
+  : Create a mutable GPU-resident handle
+- [`rh_colSums()`](https://bbuchsbaum.github.io/amatrix/reference/rh_colSums.md)
+  : Column sums of a GPU-resident handle
+- [`rh_rowSums()`](https://bbuchsbaum.github.io/amatrix/reference/rh_rowSums.md)
+  : Row sums of a GPU-resident handle
+- [`ridge_fit()`](https://bbuchsbaum.github.io/amatrix/reference/ridge_fit.md)
+  : Fit a single ridge regression model
+- [`ridge_path()`](https://bbuchsbaum.github.io/amatrix/reference/ridge_path.md)
+  : Compute a ridge regression solution path
+- [`rowSums(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/rowcol-summary-methods.md)
+  [`colSums(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/rowcol-summary-methods.md)
+  [`rowMeans(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/rowcol-summary-methods.md)
+  [`colMeans(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/rowcol-summary-methods.md)
+  : Row and column summary methods for adgeMatrix
+- [`rowSums(`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/rowcol-summary-sparse-methods.md)
+  [`colSums(`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/rowcol-summary-sparse-methods.md)
+  [`rowMeans(`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/rowcol-summary-sparse-methods.md)
+  [`colMeans(`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/rowcol-summary-sparse-methods.md)
+  : Row and column summary methods for adgCMatrix
+- [`rowmeans()`](https://bbuchsbaum.github.io/amatrix/reference/rowmeans.md)
+  [`colmeans()`](https://bbuchsbaum.github.io/amatrix/reference/rowmeans.md)
+  : Row and column means
+- [`rowscale()`](https://bbuchsbaum.github.io/amatrix/reference/rowscale.md)
+  [`colscale()`](https://bbuchsbaum.github.io/amatrix/reference/rowscale.md)
+  : Row and column diagonal scaling
+- [`rowsums()`](https://bbuchsbaum.github.io/amatrix/reference/rowsums.md)
+  [`colsums()`](https://bbuchsbaum.github.io/amatrix/reference/rowsums.md)
+  : Row and column sums
+- [`rsvd()`](https://bbuchsbaum.github.io/amatrix/reference/rsvd.md) :
+  GPU-native randomized SVD (Halko et al. 2011)
+- [`segment_mean()`](https://bbuchsbaum.github.io/amatrix/reference/segment_mean.md)
+  : Segment mean by group labels
+- [`segment_sum()`](https://bbuchsbaum.github.io/amatrix/reference/segment_sum.md)
+  : Segment sum by group labels
+- [`sinkhorn()`](https://bbuchsbaum.github.io/amatrix/reference/sinkhorn.md)
+  : Doubly-stochastic scaling via Sinkhorn-Knopp iterations
+- [`solve(`*`<adgeMatrix>`*`,`*`<missing>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/solve-methods.md)
+  [`solve(`*`<adgeMatrix>`*`,`*`<ANY>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/solve-methods.md)
+  : Solve a linear system for adgeMatrix
+- [`solve(`*`<adgCMatrix>`*`,`*`<missing>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/solve-sparse-methods.md)
+  [`solve(`*`<adgCMatrix>`*`,`*`<ANY>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/solve-sparse-methods.md)
+  : Solve a linear system for adgCMatrix
+- [`solve_triangular()`](https://bbuchsbaum.github.io/amatrix/reference/solve_triangular.md)
+  : Solve a triangular linear system
+- [`svd(`*`<adgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/svd-methods.md)
+  : Singular value decomposition for adgeMatrix
+- [`svd(`*`<adgCMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/svd-sparse-methods.md)
+  : Singular value decomposition for adgCMatrix
+- [`svd_factor()`](https://bbuchsbaum.github.io/amatrix/reference/svd_factor.md)
+  : Compute a truncated SVD of an aMatrix
+- [`svd_project()`](https://bbuchsbaum.github.io/amatrix/reference/svd_project.md)
+  : Project new data onto SVD left singular vectors
+- [`svd_reconstruct()`](https://bbuchsbaum.github.io/amatrix/reference/svd_reconstruct.md)
+  : Reconstruct data from SVD coordinates
+- [`sym()`](https://bbuchsbaum.github.io/amatrix/reference/sym.md) :
+  Symmetrise a matrix
+- [`tcrossprod_weighted()`](https://bbuchsbaum.github.io/amatrix/reference/tcrossprod_weighted.md)
+  : Weighted outer cross-product XWX'
+- [`trace()`](https://bbuchsbaum.github.io/amatrix/reference/trace.md) :
+  Matrix trace
+- [`trace_estim()`](https://bbuchsbaum.github.io/amatrix/reference/trace_estim.md)
+  : Stochastic trace estimator (Hutchinson)
+- [`with_amatrix()`](https://bbuchsbaum.github.io/amatrix/reference/with_amatrix.md)
+  : Evaluate code with temporary amatrix defaults
+- [`wls_fit()`](https://bbuchsbaum.github.io/amatrix/reference/wls_fit.md)
+  : Fit a weighted least squares model
+- [`woodbury_logdet()`](https://bbuchsbaum.github.io/amatrix/reference/woodbury_logdet.md)
+  : Log-determinant via the Woodbury matrix determinant lemma
+- [`woodbury_solve()`](https://bbuchsbaum.github.io/amatrix/reference/woodbury_solve.md)
+  : Solve a linear system using the Woodbury matrix identity
+- [`xty_weighted()`](https://bbuchsbaum.github.io/amatrix/reference/xty_weighted.md)
+  : Weighted cross-product X'Wy

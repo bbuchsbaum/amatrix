@@ -1,0 +1,9 @@
+pandoc: 3.7.0.2
+pkgdown: 2.2.0
+pkgdown_sha: ~
+articles:
+  amatrix: amatrix.html
+last_built: 2026-04-12T22:00Z
+urls:
+  reference: https://bbuchsbaum.github.io/amatrix/reference
+  article: https://bbuchsbaum.github.io/amatrix/articles
