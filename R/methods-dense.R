@@ -463,6 +463,7 @@ setMethod("Math", "adgeMatrix", function(x) {
 setReplaceMethod("diag", "adgeMatrix", function(x, value) {
   host_x <- amatrix_materialize_host(x)
   base::diag(host_x) <- value
+  .amatrix_cache_invalidate_object(x@object_id)
   .amatrix_rewrap_value(x, host_x)
 })
 

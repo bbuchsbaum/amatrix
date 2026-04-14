@@ -107,6 +107,47 @@ amatrix_set_cache_max_size <- function(max_size) {
   invisible(NULL)
 }
 
+.amatrix_cache_remove <- function(cache_key) {
+  cache_env <- .amatrix_state$model_cache
+  atime_env <- .amatrix_state$cache_atime
+
+  if (exists(cache_key, envir = cache_env, inherits = FALSE)) {
+    rm(list = cache_key, envir = cache_env)
+  }
+  if (!is.null(atime_env) && exists(cache_key, envir = atime_env, inherits = FALSE)) {
+    rm(list = cache_key, envir = atime_env)
+  }
+
+  invisible(cache_key)
+}
+
+.amatrix_cache_invalidate_object <- function(object_id) {
+  if (!is.character(object_id) || length(object_id) != 1L || !nzchar(object_id)) {
+    return(invisible(character()))
+  }
+
+  cache_keys <- ls(envir = .amatrix_state$model_cache, all.names = FALSE)
+  if (length(cache_keys) == 0L) {
+    return(invisible(character()))
+  }
+
+  prefixes <- c(
+    paste0("chol:", object_id),
+    paste0("svd:", object_id, ":"),
+    paste0("lm|", object_id, "|")
+  )
+  matches <- unique(unlist(lapply(prefixes, function(prefix) {
+    cache_keys[startsWith(cache_keys, prefix)]
+  }), use.names = FALSE))
+
+  if (length(matches) == 0L) {
+    return(invisible(character()))
+  }
+
+  vapply(matches, .amatrix_cache_remove, invisible(character(1)), USE.NAMES = FALSE)
+  invisible(matches)
+}
+
 .amatrix_cache_clear <- function() {
   cache_keys <- ls(envir = .amatrix_state$model_cache, all.names = FALSE)
   if (length(cache_keys) > 0L) {

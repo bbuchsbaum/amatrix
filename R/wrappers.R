@@ -1102,6 +1102,7 @@ am_subassign <- function(x, i, j, ..., value) {
   } else {
     host_x[i, j, ...] <- host_value
   }
+  .amatrix_cache_invalidate_object(x@object_id)
   .amatrix_rewrap_value(x, host_x)
 }
 
@@ -2851,11 +2852,11 @@ dist_matrix <- function(X, Y = NULL,
 #'
 #' Kernels:
 #' \describe{
-#'   \item{linear}{k(x,y) = x·y}
-#'   \item{rbf}{k(x,y) = exp(-||x-y||² / (2σ²))}
-#'   \item{polynomial}{k(x,y) = (coef + x·y)^degree}
-#'   \item{cosine}{k(x,y) = x·y / (||x|| ||y||)}
-#'   \item{laplacian}{k(x,y) = exp(-||x-y|| / σ)}
+#'   \item{linear}{\eqn{k(x,y) = x^\top y}}
+#'   \item{rbf}{\eqn{k(x,y) = \exp(-\|x - y\|^2 / (2 \sigma^2))}}
+#'   \item{polynomial}{\eqn{k(x,y) = (\mathrm{coef} + x^\top y)^{\mathrm{degree}}}}
+#'   \item{cosine}{\eqn{k(x,y) = (x^\top y) / (\|x\| \|y\|)}}
+#'   \item{laplacian}{\eqn{k(x,y) = \exp(-\|x - y\| / \sigma)}}
 #' }
 #'
 #' @param X Numeric matrix or \code{adgeMatrix}, shape [m, p].
@@ -2863,7 +2864,7 @@ dist_matrix <- function(X, Y = NULL,
 #' @param kernel Kernel type string (see Details).
 #' @param sigma Bandwidth for \code{"rbf"} and \code{"laplacian"}.
 #' @param degree Polynomial degree for \code{"polynomial"}.
-#' @param coef Constant term for \code{"polynomial"}: (coef + x·y)^degree.
+#' @param coef Constant term for \code{"polynomial"}: \eqn{(\mathrm{coef} + x^\top y)^{\mathrm{degree}}}.
 #' @param preferred_backend Optional backend name to override the default
 #'   dispatch (e.g., \code{"mlx"}, \code{"opencl"}).
 #' @param zero_diag When \code{TRUE} and \code{Y} is \code{NULL}, set the
@@ -3055,7 +3056,7 @@ batch_solve <- function(Ls, B) {
 
 #' Eager Kronecker product
 #'
-#' Computes \code{A ⊗ B} and returns the result as an \code{adgeMatrix}.
+#' Computes the Kronecker product \eqn{A \otimes B} and returns the result as an \code{adgeMatrix}.
 #' Accepts plain matrices or any \code{aMatrix} subclass.
 #' For a lazy variant that avoids forming the full product see
 #' \code{\link{kron_matrix}}.
