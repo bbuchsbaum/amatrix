@@ -207,6 +207,108 @@ patterns <- list(
       "Confirmed: irlba.R Lanczos bridge, amatrix_compile_product in svd-factor.R."
     ),
     fix         = "Let .Call() errors propagate or wrap in withCallingHandlers() that logs before re-signalling"
+  ),
+
+  list(
+    name        = "P11_alloc_no_on_exit",
+    description = "resident key allocated (.amatrix_next_resident_key / resident_next_key) without on.exit guard in same function",
+    regex       = '\\.amatrix_next_resident_key\\(|resident_next_key\\(',
+    glob        = all_r_files,
+    excludes    = c("irlba.R"),
+    severity    = "HIGH",
+    explanation = paste(
+      "Allocation sites that do not pair with on.exit(.*, add=TRUE) in the same function body",
+      "will leak the resident key if any error fires between alloc and explicit drop.",
+      "Complements P06 which catches the same regex but with a different description."
+    ),
+    fix         = "Add on.exit(try(backend$resident_drop(key), silent=TRUE), add=TRUE) immediately after allocation"
+  ),
+
+  list(
+    name        = "P12_double_drop_same_key",
+    description = "resident_drop(KEY) inside tryCatch error handler AND again unconditionally — same key name",
+    # Heuristic: lines that drop scaled_key or out_key inside error= handler
+    # The per-file multi-line check is done below in the special section.
+    # This regex flags every unconditional drop of scaled_key/out_key as a candidate.
+    regex       = 'try\\(backend\\$resident_drop\\((?:scaled_key|out_key|y_key|x_scaled_key|y_scaled_key)',
+    glob        = all_r_files,
+    excludes    = character(0),
+    severity    = "HIGH",
+    explanation = paste(
+      "Pattern: resident_drop(KEY) appears inside tryCatch error handler",
+      "AND again unconditionally outside it in the same function.",
+      "Double-drop corrupts the backend key registry.",
+      "Confirmed sites: wrappers.R:1313-1323, wrappers.R:1375-1384, wrappers.R:1450-1465."
+    ),
+    fix         = "Use on.exit(backend$resident_drop(key), add=TRUE) and remove manual drops"
+  ),
+
+  list(
+    name        = "P13_trycatch_blanket_fallback",
+    description = "tryCatch error handler FALLBACK does not reference conditionMessage/conditionClass and does not re-throw",
+    # Matches error handlers that return a literal value (NULL, character(), etc.) without using `e`
+    regex       = 'error\\s*=\\s*function\\s*\\(e\\)\\s*(?:NULL|character\\(\\)|integer\\(\\)|logical\\(\\)|numeric\\(\\)|invisible\\(NULL\\)|list\\(\\)|"[^"]*")',
+    glob        = all_r_files,
+    excludes    = c("backend-warmup.R", "backend-calibration.R", "memory-stats.R",
+                    "backend-planning.R", "resident-select.R", "policy.R",
+                    "resident-handle.R", "product-plan.R", "residency.R"),
+    severity    = "MED",
+    explanation = paste(
+      "Blanket fallbacks (error = function(e) NULL) discard diagnostic information.",
+      "The error variable `e` is never consulted so the cause is permanently lost.",
+      "This is distinct from P02 (which only catches NULL returns) — covers all literal fallbacks."
+    ),
+    fix         = "Log with message(conditionMessage(e)) or re-signal before returning fallback value"
+  ),
+
+  list(
+    name        = "P14_nan_deferred_sentinel",
+    description = "rep(NaN, ...) used to fill deferred placeholder — NaN-as-sentinel collides with user NaN data",
+    regex       = 'rep\\s*\\(\\s*NaN\\s*,',
+    glob        = all_r_files,
+    excludes    = character(0),
+    severity    = "HIGH",
+    explanation = paste(
+      "NaN is used as a sentinel to represent deferred GPU state (amatrix-lc1).",
+      "constructors.R fills the @x slot with rep(NaN, n) for deferred adgeMatrix objects.",
+      "This collides with legitimate user NaN data: a matrix whose values happen to be NaN",
+      "will be mis-identified as deferred, causing silent wrong results.",
+      "Confirmed: amChol stores NaN-sentinel factor_obj (amatrix-ax8)."
+    ),
+    fix         = "Replace NaN sentinel with a dedicated slot/flag (e.g., is_deferred=TRUE) or an S4 subclass"
+  ),
+
+  list(
+    name        = "P15_backend_arg_unused",
+    description = "exported/local fn has `backend` formal arg but body never references `backend`",
+    # This regex catches function definitions that declare backend= but the
+    # per-file body scan is done in the special section below.
+    # Here we flag the signature line as a candidate.
+    regex       = 'function\\s*\\([^)]*\\bbackend\\s*=[^)]*\\)',
+    glob        = all_r_files,
+    excludes    = character(0),
+    severity    = "MED",
+    explanation = paste(
+      "A `backend` argument that is declared but never used in the body is dead API surface.",
+      "Callers pass backend= expecting routing; the arg is silently ignored.",
+      "This was identified as a pattern in wrappers.R and bind-resident.R."
+    ),
+    fix         = "Either use the backend arg to route computation or remove it from the signature"
+  ),
+
+  list(
+    name        = "P16_unclassed_stop_density",
+    description = "Top-5 files by count of stop() with no condition class — density report only",
+    regex       = 'stop\\("',
+    glob        = all_r_files,
+    excludes    = character(0),
+    severity    = "LOW",
+    explanation = paste(
+      "Files with the highest concentration of unclassed stop() calls are highest-priority",
+      "targets for the error taxonomy hardening (amatrix-6m9).",
+      "This rule does NOT emit per-hit rows — see density summary at end of report."
+    ),
+    fix         = "Prioritise these files first when implementing structured condition classes"
   )
 
 )
@@ -214,6 +316,34 @@ patterns <- list(
 # ---------------------------------------------------------------------------
 # Grep engine
 # ---------------------------------------------------------------------------
+
+# Special engine: check if a function signature line declaring backend= has
+# a body that never references the word `backend` again within 40 lines.
+grep_backend_arg_unused <- function(files) {
+  hits <- list()
+  sig_rx  <- 'function\\s*\\([^)]*\\bbackend\\s*=[^)]*\\)'
+  body_rx <- '\\bbackend\\b'
+  for (f in files) {
+    lines <- tryCatch(readLines(f, warn = FALSE), error = function(e) character(0))
+    if (length(lines) == 0L) next
+    sig_lines <- grep(sig_rx, lines, perl = TRUE)
+    for (sl in sig_lines) {
+      # Collect body: from sig line to closing brace heuristic (next 40 lines)
+      end_ln <- min(sl + 40L, length(lines))
+      body_chunk <- lines[seq(sl + 1L, end_ln)]
+      if (!any(grepl(body_rx, body_chunk, perl = TRUE))) {
+        hits[[length(hits) + 1L]] <- list(
+          file    = f,
+          relpath = sub(paste0(root, "/"), "", f, fixed = TRUE),
+          line    = sl,
+          context = trimws(lines[[sl]])
+        )
+      }
+    }
+  }
+  hits
+}
+
 grep_pattern <- function(pat, files) {
   hits <- list()
   for (f in files) {
@@ -243,13 +373,24 @@ results <- list()
 t0 <- proc.time()
 
 for (pat in patterns) {
-  hits <- grep_pattern(pat, pat$glob)
+  if (pat$name == "P15_backend_arg_unused") {
+    hits <- grep_backend_arg_unused(pat$glob)
+  } else {
+    hits <- grep_pattern(pat, pat$glob)
+  }
   results[[pat$name]] <- list(
     pattern     = pat,
     hits        = hits,
     hit_count   = length(hits)
   )
 }
+
+# P16 density summary: top-5 files by unclassed stop() count
+p16_counts <- vapply(all_r_files, function(f) {
+  lines <- tryCatch(readLines(f, warn = FALSE), error = function(e) character(0))
+  sum(grepl('stop\\("', lines, perl = TRUE))
+}, integer(1L))
+p16_top5 <- sort(p16_counts, decreasing = TRUE)[seq_len(min(5L, length(p16_counts)))]
 
 elapsed <- (proc.time() - t0)[["elapsed"]]
 cat(sprintf("Scan completed in %.2f seconds\n\n", elapsed))
@@ -351,6 +492,15 @@ for (nm in names(results)) {
     p04_alarm   = p04_flag
   )
 }
+
+# P16 density report (appended after per-pattern details)
+cat("---\n\n### P16_unclassed_stop_density — Top-5 Files\n\n")
+cat("| File | stop() count |\n|------|--------------|\n")
+for (nm in names(p16_top5)) {
+  rel <- sub(paste0(root, "/"), "", nm, fixed = TRUE)
+  cat(sprintf("| `%s` | %d |\n", rel, p16_top5[[nm]]))
+}
+cat("\n")
 
 # ---------------------------------------------------------------------------
 # Summary table

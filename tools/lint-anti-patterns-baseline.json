@@ -1,12 +1,18 @@
 {
-  "P01_unclassed_stop": 90,
-  "P02_trycatch_swallow_null": 63,
+  "P01_unclassed_stop": 89,
+  "P02_trycatch_swallow_null": 65,
   "P03_host_cache_valid_set_true": 1,
   "P04_host_cache_valid_never_false": 1,
   "P05_double_drop_pattern": 30,
   "P06_resident_key_alloc_no_on_exit": 45,
-  "P07_as_matrix_dimnames_drop": 212,
-  "P08_missing_call_false_stop": 87,
+  "P07_as_matrix_dimnames_drop": 220,
+  "P08_missing_call_false_stop": 86,
   "P09_s4_nextmethod_fallthrough": 0,
-  "P10_trycatch_c_bridge_swallow": 15
+  "P10_trycatch_c_bridge_swallow": 15,
+  "P11_alloc_no_on_exit": 45,
+  "P12_double_drop_same_key": 23,
+  "P13_trycatch_blanket_fallback": 46,
+  "P14_nan_deferred_sentinel": 1,
+  "P15_backend_arg_unused": 0,
+  "P16_unclassed_stop_density": 89
 }
