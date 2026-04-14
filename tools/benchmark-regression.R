@@ -1690,6 +1690,20 @@ run_master <- function(args) {
 
   output_paths <- write_outputs(results, args$output_dir)
 
+  history_path <- getOption(
+    "amatrix.benchmark_history_path",
+    file.path(dirname(args$baseline), "benchmark-history.csv")
+  )
+  tryCatch(
+    append_benchmark_history(
+      results[results$status == "ok", , drop = FALSE],
+      history_path
+    ),
+    error = function(e) {
+      message("benchmark-history append failed: ", conditionMessage(e))
+    }
+  )
+
   if (args$update || !file.exists(args$baseline)) {
     baseline_rows <- results[results$status == "ok", c(key_columns, "status", "median_ms")]
     write.csv(baseline_rows, args$baseline, row.names = FALSE)

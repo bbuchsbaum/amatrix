@@ -322,3 +322,80 @@ prime_backend <- function(obj, backend) {
     error = function(e) invisible(obj)
   )
 }
+
+# ---------------------------------------------------------------------------
+# append_benchmark_history: record every run's summary rows to an append-only
+# history CSV so baseline.csv updates never lose historical measurements.
+# ---------------------------------------------------------------------------
+
+.benchmark_history_columns <- function() {
+  c(
+    "timestamp", "git_sha", "op", "size_label", "backend", "variant",
+    "median_ms", "sd_ms", "n_reps", "host_os", "host_cpu"
+  )
+}
+
+.benchmark_git_sha <- function() {
+  sha <- tryCatch(
+    suppressWarnings(system2("git", c("rev-parse", "--short", "HEAD"), stdout = TRUE, stderr = FALSE)),
+    error = function(e) character()
+  )
+  if (length(sha) == 0L || !nzchar(sha[[1L]])) "unknown" else sha[[1L]]
+}
+
+.benchmark_host_cpu <- function() {
+  info <- tryCatch(benchmarkme::get_cpu(), error = function(e) NULL)
+  if (is.list(info) && !is.null(info$model_name)) {
+    return(info$model_name)
+  }
+  sys <- Sys.info()
+  sys[["machine"]] %||% "unknown"
+}
+
+append_benchmark_history <- function(df, path) {
+  cols <- .benchmark_history_columns()
+
+  if (is.null(df) || nrow(df) == 0L) {
+    return(invisible(character()))
+  }
+
+  timestamp <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+  git_sha <- .benchmark_git_sha()
+  host_os <- paste(Sys.info()[["sysname"]], Sys.info()[["release"]], sep = "/")
+  host_cpu <- .benchmark_host_cpu()
+
+  backend_col <- if ("requested_backend" %in% names(df)) {
+    df$requested_backend
+  } else {
+    rep(NA_character_, nrow(df))
+  }
+
+  row <- data.frame(
+    timestamp  = rep(timestamp, nrow(df)),
+    git_sha    = rep(git_sha, nrow(df)),
+    op         = df$op %||% rep(NA_character_, nrow(df)),
+    size_label = df$size_label %||% rep(NA_character_, nrow(df)),
+    backend    = backend_col,
+    variant    = df$variant %||% rep(NA_character_, nrow(df)),
+    median_ms  = df$median_ms %||% rep(NA_real_, nrow(df)),
+    sd_ms      = df$sd_ms %||% rep(NA_real_, nrow(df)),
+    n_reps     = df$n_reps %||% rep(NA_integer_, nrow(df)),
+    host_os    = rep(host_os, nrow(df)),
+    host_cpu   = rep(host_cpu, nrow(df)),
+    stringsAsFactors = FALSE
+  )
+  row <- row[, cols, drop = FALSE]
+
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  need_header <- !file.exists(path) || file.info(path)$size == 0
+  utils::write.table(
+    row,
+    file = path,
+    sep = ",",
+    row.names = FALSE,
+    col.names = need_header,
+    append = !need_header,
+    qmethod = "double"
+  )
+  invisible(path)
+}
