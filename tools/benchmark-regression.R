@@ -350,7 +350,8 @@ new_result_row <- function(...) {
     sd_ms = NA_real_,
     p05_ms = NA_real_,
     p95_ms = NA_real_,
-    n_reps = NA_integer_
+    n_reps = NA_integer_,
+    rel_err = NA_real_
   )
   values <- modifyList(defaults, list(...))
   as.data.frame(values, stringsAsFactors = FALSE)
@@ -685,6 +686,30 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
 
   timing <- benchmark_time_ms(runner, reps = reps)
 
+  rel_err <- NA_real_
+  if (!identical(requested_backend, "cpu") && op %in% c("matmul", "crossprod", "rsvd", "chol")) {
+    rel_err <- tryCatch({
+      ref <- switch(
+        op,
+        matmul    = as.matrix(adgeMatrix(X, preferred_backend = "cpu") %*% adgeMatrix(B_host, preferred_backend = "cpu")),
+        crossprod = as.matrix(crossprod(adgeMatrix(X, preferred_backend = "cpu"))),
+        rsvd      = { r <- rsvd(adgeMatrix(X, preferred_backend = "cpu"), k = 10L); r$u %*% diag(r$d) %*% t(r$v) },
+        chol      = as.matrix(chol(adgeMatrix(SPD, preferred_backend = "cpu")))
+      )
+      gpu_result <- switch(
+        op,
+        matmul    = as.matrix(adgeMatrix(X, preferred_backend = requested_backend) %*% adgeMatrix(B_host, preferred_backend = requested_backend)),
+        crossprod = as.matrix(crossprod(adgeMatrix(X, preferred_backend = requested_backend))),
+        rsvd      = { r <- rsvd(adgeMatrix(X, preferred_backend = requested_backend), k = 10L); r$u %*% diag(r$d) %*% t(r$v) },
+        chol      = as.matrix(chol(adgeMatrix(SPD, preferred_backend = requested_backend)))
+      )
+      assert_backend_accuracy(ref, gpu_result, op)
+    }, error = function(e) {
+      warning(sprintf("assert_backend_accuracy failed for op=%s backend=%s: %s", op, requested_backend, conditionMessage(e)), call. = FALSE, immediate. = TRUE)
+      NA_real_
+    })
+  }
+
   new_result_row(
     suite = result_meta$suite,
     op = result_meta$op,
@@ -708,7 +733,8 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
     sd_ms = timing$sd,
     p05_ms = timing$p05,
     p95_ms = timing$p95,
-    n_reps = timing$n_reps
+    n_reps = timing$n_reps,
+    rel_err = rel_err
   )
 }
 

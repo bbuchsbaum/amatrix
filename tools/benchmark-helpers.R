@@ -399,3 +399,39 @@ append_benchmark_history <- function(df, path) {
   )
   invisible(path)
 }
+
+# ---------------------------------------------------------------------------
+# assert_backend_accuracy: compare GPU result against CPU reference
+# ---------------------------------------------------------------------------
+
+TOLERANCES <- list(
+  svd             = 1e-4,
+  rsvd            = 1e-4,
+  svd_factor_subspace = 1e-4,
+  chol            = 1e-6,
+  matmul          = 1e-5,
+  crossprod       = 1e-5,
+  tcrossprod      = 1e-5,
+  dist            = 1e-5,
+  many_lm         = 1e-5
+)
+
+assert_backend_accuracy <- function(ref, gpu, op, tol = NULL) {
+  if (is.null(tol)) {
+    tol <- TOLERANCES[[op]]
+    if (is.null(tol)) {
+      stop(sprintf("assert_backend_accuracy: no tolerance registered for op '%s'", op), call. = FALSE)
+    }
+  }
+  ref_mat <- as.matrix(ref)
+  gpu_mat <- as.matrix(gpu)
+  rel_err <- norm(ref_mat - gpu_mat, type = "F") /
+    max(norm(ref_mat, type = "F"), .Machine$double.eps)
+  if (rel_err > tol) {
+    stop(sprintf(
+      "accuracy regression: op=%s tol=%.2e rel_err=%.2e",
+      op, tol, rel_err
+    ), call. = FALSE)
+  }
+  rel_err
+}
