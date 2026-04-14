@@ -53,6 +53,31 @@
   )
 }
 
+.invariant_na_dense_fixture <- function(
+  backend = "cpu",
+  policy = "auto",
+  precision = "strict"
+) {
+  host <- matrix(
+    c(1, NA, 3,
+      4, 5, NA,
+      7, 8, 9,
+      10, NA, 12),
+    nrow = 3L,
+    ncol = 4L
+  )
+
+  list(
+    host = host,
+    am = amatrix:::new_adgeMatrix(
+      host,
+      preferred_backend = backend,
+      policy = policy,
+      precision = precision
+    )
+  )
+}
+
 .invariant_template <- function(e1, e2 = NULL) {
   if (inherits(e1, "aMatrix")) {
     return(e1)

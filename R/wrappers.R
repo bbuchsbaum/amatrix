@@ -1689,6 +1689,9 @@ rowmeans <- function(x, na.rm = FALSE) {
     return(Matrix::rowMeans(amatrix_materialize_host(x), na.rm = na.rm))
   }
   if (inherits(x, "adgeMatrix")) {
+    if (isTRUE(na.rm)) {
+      return(base::rowMeans(as.matrix(amatrix_materialize_host(x)), na.rm = TRUE))
+    }
     return(rowsums(x, na.rm = na.rm) / ncol(x))
   }
   x_host <- as.matrix(amatrix_materialize_host(x))
@@ -1702,6 +1705,9 @@ colmeans <- function(x, na.rm = FALSE) {
     return(Matrix::colMeans(amatrix_materialize_host(x), na.rm = na.rm))
   }
   if (inherits(x, "adgeMatrix")) {
+    if (isTRUE(na.rm)) {
+      return(base::colMeans(as.matrix(amatrix_materialize_host(x)), na.rm = TRUE))
+    }
     return(colsums(x, na.rm = na.rm) / nrow(x))
   }
   x_host <- as.matrix(amatrix_materialize_host(x))
@@ -1916,6 +1922,9 @@ segment_mean <- function(x, labels, K) {
 
 #' @export
 rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
+  if (isTRUE(na.rm)) {
+    return(base::rowsum(as.matrix(amatrix_materialize_host(x)), group, reorder = reorder, na.rm = TRUE, ...))
+  }
   if (is.factor(group)) {
     # reorder=TRUE: honour factor's own level ordering (user-defined, preserves
     #   all levels including unoccupied ones — e.g. empty k-means clusters).
