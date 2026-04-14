@@ -326,7 +326,7 @@ or `error("requires CLBlast")`).  Package installs and loads cleanly.
 ### Primary test platform
 
 Linux + NVIDIA (most common HPC GPU, best OpenCL runtime quality).
-Performance baselines are machine-specific (not CI) per `docs/quality-tracking.md`.
+Performance baselines are machine-specific (not CI) per `planning_docs/quality-tracking.md`.
 
 ## Estimated Scope
 

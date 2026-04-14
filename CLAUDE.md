@@ -2,7 +2,7 @@
 
 ## Quality Strategy
 
-See `docs/quality-tracking.md` for the full accuracy and performance methodology.
+See `planning_docs/quality-tracking.md` for the full accuracy and performance methodology.
 Summary:
 - **Accuracy:** `devtools::test()` — cross-backend conformance at `1e-4` (GPU) / `1e-10` (CPU)
 - **Performance:** `Rscript tools/benchmark-regression.R` — compare to `tools/baseline.csv`

@@ -2,11 +2,42 @@
 
 ## Quality Strategy
 
-See `docs/quality-tracking.md` for the full accuracy and performance methodology.
+See `planning_docs/quality-tracking.md` for the full accuracy and performance methodology.
 Summary:
 - **Accuracy:** `devtools::test()` — cross-backend conformance at `1e-4` (GPU) / `1e-10` (CPU)
 - **Performance:** `Rscript tools/benchmark-regression.R` — compare to `tools/baseline.csv`
 - Every new exported op must be added to the coverage table in that doc.
+
+## Bug Capture Protocol (Track 6)
+
+Every discovered bug gets a **minimal repro first**, then the fix. This is
+non-negotiable. The repro becomes a permanent regression test so the bug
+cannot silently return.
+
+**Workflow:**
+
+1. **Write the repro before the fix.** Add a new test file under
+   `tests/testthat/` named `test-regression-<short-slug>.R`. The file must
+   fail on current `main` and pass after the fix.
+
+2. **Record reproduction metadata in the test file header:**
+   - Seed(s) used to construct the input
+   - Dimensions and shape of the failing input
+   - Backend, precision mode, and dispatch path (cold / resident)
+   - R version and platform (from `sessionInfo()`)
+   - Link to the beads issue or external bug report
+
+3. **Never delete regression tests.** A closed bug can reopen. The test is
+   the tombstone that says "this is fixed and we check every PR that it
+   stays fixed."
+
+4. **Empty `tests/testthat/_problems/` at release.** Extracted failing cases
+   are temporary; every file there must either be fixed and reintegrated as
+   `test-regression-*.R` or explicitly deleted with a commit message
+   explaining the decision.
+
+See `planning_docs/quality-tracking.md` §7 rule 5 (orphan repros are
+stop-ship) and the four-tests-per-op rule in §4 Coverage Matrix.
 
 ## Issue Tracking
 

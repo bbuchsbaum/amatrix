@@ -6,7 +6,7 @@
 **Date:** 2026-04-06  
 
 All timings are median wall-clock seconds unless noted otherwise.
-Reproduce with the scripts in `tools/` — see `docs/quality-tracking.md §3` for protocol.
+Reproduce with the scripts in `tools/` — see `planning_docs/quality-tracking.md §3` for protocol.
 
 ---
 
