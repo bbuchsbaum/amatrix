@@ -171,6 +171,124 @@
               label = paste0("[", backend_name, "/rsvd sv ordering]"))
 }
 
+# -- Gaussian Process regression conformance ------------------------------
+#
+# GP regression is a five-op chain that exercises the full factorization
+# lifecycle (kernel_matrix -> chol_factor -> chol_solve -> matmul ->
+# chol_logdet + quad_form) on a SHARED factor. The reference implementation
+# is a 15-line plain-R GP using base::chol + base::backsolve.
+#
+# Checks:
+#   * Posterior mean matches base R within tol
+#   * Posterior variance matches base R within tol
+#   * Log marginal likelihood matches base R within tol
+#   * The Kα = y invariant (metamorphic): Kα must reproduce y exactly.
+#
+# The test is the smallest dataset we can use while still exercising a
+# non-trivial Cholesky on K+σ²I. All constants are pinned via seed.
+
+.gp_reference <- function(X_train, y_train, X_test, lengthscale = 0.7,
+                          amplitude = 1.0, noise = 0.1) {
+  .rbf <- function(A, B, ls, amp) {
+    sq <- outer(rowSums(A * A), rowSums(B * B), `+`) - 2 * (A %*% t(B))
+    sq[sq < 0] <- 0
+    amp^2 * exp(-sq / (2 * ls^2))
+  }
+  K   <- .rbf(X_train, X_train, lengthscale, amplitude) +
+         diag(noise^2, nrow(X_train))
+  Ks  <- .rbf(X_test,  X_train, lengthscale, amplitude)
+  Kss <- .rbf(X_test,  X_test,  lengthscale, amplitude) +
+         diag(noise^2, nrow(X_test))
+
+  L     <- t(chol(K))                            # lower triangular
+  alpha <- backsolve(t(L), forwardsolve(L, y_train))
+  mu    <- as.numeric(Ks %*% alpha)
+
+  v     <- forwardsolve(L, t(Ks))                # shape p x n_test
+  var_post <- diag(Kss) - colSums(v * v)
+
+  logdet_K <- 2 * sum(log(diag(L)))
+  quad     <- sum(y_train * alpha)
+  lml      <- -0.5 * quad - 0.5 * logdet_K - 0.5 * length(y_train) * log(2 * pi)
+
+  list(mu = mu, var = var_post, lml = lml, alpha = alpha, K = K)
+}
+
+.run_gp_conformance <- function(backend_name, tol) {
+  set.seed(2026041601L)
+  n_train <- 24L
+  n_test  <- 8L
+  d       <- 3L
+
+  X_train_host <- matrix(rnorm(n_train * d), n_train, d)
+  X_test_host  <- matrix(rnorm(n_test  * d), n_test,  d)
+  f_fun   <- function(x) sin(x[, 1L]) + 0.5 * x[, 2L]^2 - x[, 3L]
+  y_train <- f_fun(X_train_host) + 0.05 * rnorm(n_train)
+
+  lengthscale <- 0.7
+  amplitude   <- 1.0
+  noise       <- 0.1
+
+  # -- Reference (base R) -------------------------------------------------
+  ref <- .gp_reference(X_train_host, y_train, X_test_host,
+                       lengthscale = lengthscale,
+                       amplitude   = amplitude,
+                       noise       = noise)
+
+  # -- amatrix implementation --------------------------------------------
+  # This block is the "plain R" story: we swap matrix for adgeMatrix and
+  # use kernel_matrix + chol_factor + chol_solve + chol_logdet + matmul,
+  # all of which route through the chosen backend.
+  X_train <- adgeMatrix(X_train_host, preferred_backend = backend_name)
+  X_test  <- adgeMatrix(X_test_host,  preferred_backend = backend_name)
+
+  K_train   <- kernel_matrix(X_train, kernel = "rbf", sigma = lengthscale)
+  K_train   <- as.matrix(K_train) * (amplitude^2) +
+               diag(noise^2, n_train)
+  K_cross   <- kernel_matrix(X_test, X_train, kernel = "rbf", sigma = lengthscale)
+  K_cross   <- as.matrix(K_cross) * (amplitude^2)
+  K_test    <- kernel_matrix(X_test, kernel = "rbf", sigma = lengthscale)
+  K_test    <- as.matrix(K_test) * (amplitude^2) +
+               diag(noise^2, n_test)
+
+  K_am    <- as_adgeMatrix(K_train, preferred_backend = backend_name)
+  factor  <- chol_factor(K_am)
+  alpha   <- chol_solve(factor, matrix(y_train, ncol = 1L))
+  alpha_v <- as.numeric(alpha)
+
+  mu_am   <- as.numeric(K_cross %*% alpha_v)
+
+  # Posterior variance: diag(K_test - K_cross %*% K^{-1} %*% t(K_cross)).
+  # Using diag(A %*% B) = rowSums(A * t(B)): with A = K_cross (n_test x n_train)
+  # and B = K^{-1} %*% t(K_cross) = Ks_t_m (n_train x n_test), we get
+  # diag(A B) = rowSums(K_cross * t(Ks_t_m)).
+  Ks_t    <- chol_solve(factor, t(K_cross))
+  Ks_t_m  <- as.matrix(Ks_t)
+  var_am  <- diag(K_test) - rowSums(K_cross * t(Ks_t_m))
+
+  # Log marginal likelihood via chol_logdet + quad_form
+  logdet_K <- chol_logdet(factor)
+  quad     <- sum(y_train * alpha_v)
+  lml_am   <- -0.5 * quad - 0.5 * logdet_K - 0.5 * n_train * log(2 * pi)
+
+  tag <- function(op) paste0("[", backend_name, "/gp ", op, "]")
+
+  # Oracle: match base R reference
+  expect_equal(mu_am, ref$mu, tolerance = tol, label = tag("mean"))
+  expect_equal(var_am, ref$var, tolerance = tol, label = tag("variance"))
+  expect_equal(lml_am, ref$lml, tolerance = tol, label = tag("log marginal likelihood"))
+
+  # Metamorphic: Kα must reproduce y.
+  Ky <- as.numeric(K_train %*% alpha_v)
+  expect_equal(Ky, y_train, tolerance = max(tol, 1e-8),
+               label = tag("K alpha = y invariant"))
+
+  # Variance must be non-negative (numerical): no backend should produce a
+  # negative predictive variance for an SPD kernel + noise.
+  expect_true(all(var_am >= -max(tol, 1e-8)),
+              label = tag("variance non-negative"))
+}
+
 # -- dist_matrix / kernel_matrix wrapper-level tests ----------------------------------
 test_that("dist_matrix euclidean matches base R", {
   set.seed(11)
@@ -264,6 +382,10 @@ test_that("cpu backend: rsvd reconstruction and orthonormality", {
   .run_rsvd_conformance("cpu", tol = .CPU_TOL)
 })
 
+test_that("cpu backend: GP regression matches base R GP reference", {
+  .run_gp_conformance("cpu", tol = .CPU_TOL)
+})
+
 # -- MLX backend conformance --------------------------------------------------
 test_that("mlx backend: all core ops match base R", {
   skip_if_not(
@@ -284,6 +406,14 @@ test_that("mlx backend: rsvd reconstruction and orthonormality", {
   .run_rsvd_conformance("mlx", tol = .CPU_TOL, precision = "strict")
 })
 
+test_that("mlx backend: GP regression matches base R GP reference", {
+  skip_if_not(
+    isTRUE(try(amatrix.mlx::amatrix_mlx_is_available(), silent = TRUE)),
+    "mlx backend not available"
+  )
+  .run_gp_conformance("mlx", tol = .GPU_TOL)
+})
+
 # -- ArrayFire backend conformance --------------------------------------------
 test_that("arrayfire backend: all core ops match base R", {
   skip_if_not(
@@ -299,6 +429,14 @@ test_that("arrayfire backend: rsvd reconstruction and orthonormality", {
     "arrayfire backend not available"
   )
   .run_rsvd_conformance("arrayfire", tol = .CPU_TOL, precision = "strict")
+})
+
+test_that("arrayfire backend: GP regression matches base R GP reference", {
+  skip_if_not(
+    isTRUE(try(amatrix.arrayfire::amatrix_arrayfire_is_available(), silent = TRUE)),
+    "arrayfire backend not available"
+  )
+  .run_gp_conformance("arrayfire", tol = .GPU_TOL)
 })
 
 # -- OpenCL backend conformance -----------------------------------------------
@@ -320,4 +458,24 @@ test_that("opencl backend: all core ops match base R", {
   )
 
   .run_backend_conformance("opencl", tol = .GPU_TOL)
+})
+
+test_that("opencl backend: GP regression matches base R GP reference", {
+  skip_if_not(requireNamespace("amatrix.opencl", quietly = TRUE),
+              "amatrix.opencl backend package not installed")
+
+  old_env <- Sys.getenv("AMATRIX_OPENCL_PROBE_GPU", unset = NA_character_)
+  on.exit({
+    if (is.na(old_env)) Sys.unsetenv("AMATRIX_OPENCL_PROBE_GPU") else Sys.setenv(AMATRIX_OPENCL_PROBE_GPU = old_env)
+  }, add = TRUE)
+
+  Sys.setenv(AMATRIX_OPENCL_PROBE_GPU = "1")
+  amatrix.opencl::amatrix_opencl_register(overwrite = TRUE)
+
+  skip_if_not(
+    isTRUE(try(amatrix.opencl::amatrix_opencl_native_available(force = TRUE), silent = TRUE)),
+    "opencl backend not available"
+  )
+
+  .run_gp_conformance("opencl", tol = .GPU_TOL)
 })

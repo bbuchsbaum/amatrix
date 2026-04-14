@@ -637,7 +637,7 @@ test_that("standalone rsvd uses OpenCL backend on low-rank dense inputs", {
 
     expect_identical(fit$iter, 1L)
     expect_identical(fit$mprod, 4L)
-    expect_equal(fit$d, d, tolerance = 1e-4)
+    expect_equal(fit$d, d, tolerance = 5e-5)
   })
 })
 

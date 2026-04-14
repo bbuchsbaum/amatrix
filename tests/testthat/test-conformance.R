@@ -1270,16 +1270,18 @@ test_that("MLX QR cache keys distinguish native and compact strategies", {
   Y_host <- matrix(rnorm(1024 * 32), nrow = 1024, ncol = 32)
   X <- adgeMatrix(X_host, preferred_backend = "mlx", precision = "fast")
 
-  old <- options(
+  withr::local_options(list(
     amatrix.mlx.available = TRUE,
     amatrix.mlx.qr_tsqr_block_rows = 256L
-  )
-  on.exit(options(old), add = TRUE)
+  ))
 
-  options(amatrix.mlx.qr_helper_mode = "native")
+  withr::local_options(list(amatrix.mlx.qr_helper_mode = "native"))
   fit_native <- many_lm(X, Y_host, method = "qr", cache = TRUE, include_residuals = FALSE)
 
-  options(amatrix.mlx.qr_helper_mode = "compact", amatrix.mlx.qr_compact_method = "tsqr")
+  withr::local_options(list(
+    amatrix.mlx.qr_helper_mode = "compact",
+    amatrix.mlx.qr_compact_method = "tsqr"
+  ))
   fit_compact <- many_lm(X, Y_host, method = "qr", cache = TRUE, include_residuals = FALSE)
 
   expect_identical(fit_native$qr_helper_path, "native_resident_backend")

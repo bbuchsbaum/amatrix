@@ -302,3 +302,80 @@ test_that("Fallback drops residency honestly when op is not resident-capable", {
     expect_equal(rs, rowSums(x_host), tolerance = 1e-10)
   })
 })
+
+# ──────────────────────────────────────────────────────────────────────────
+# Track 6 — residency lifecycle stress
+#
+# High-churn allocation loop validates that:
+#   * The residency registry does not grow unbounded across GC cycles
+#   * Finalizer env cleanup fires when adgeMatrix objects go out of scope
+#   * No R-level OOM or segfault occurs when creating/destroying thousands
+#     of small matrices in quick succession
+#
+# Scope: host-only adgeMatrix objects (no GPU residency). The test is
+# intentionally light on each allocation and heavy on iteration count; it
+# should finish in under a couple of seconds on a laptop.
+# ──────────────────────────────────────────────────────────────────────────
+
+test_that("stress: 10k small adgeMatrix allocations gc cleanly", {
+  skip_on_cran()
+
+  n_iter <- 10000L
+  batch  <- 500L
+
+  initial_residency <- residency_table_size()
+
+  for (b in seq_len(n_iter %/% batch)) {
+    for (i in seq_len(batch)) {
+      local({
+        m <- adgeMatrix(matrix(rnorm(4L), nrow = 2L, ncol = 2L))
+        # Touch m so the compiler can't elide the allocation.
+        dim(m)
+      })
+    }
+    invisible(gc(verbose = FALSE))
+  }
+
+  final_residency <- residency_table_size()
+
+  # Host-only matrices never register a GPU residency entry, so the
+  # registry should grow by ~0 entries — tolerate a small number of
+  # stragglers from the enclosing test environment.
+  expect_true(
+    final_residency - initial_residency <= 5L,
+    info = sprintf(
+      "residency registry grew by %d entries after %d allocations (initial=%d, final=%d)",
+      final_residency - initial_residency, n_iter, initial_residency, final_residency
+    )
+  )
+})
+
+test_that("stress: repeated chol_factor does not leak cached factors", {
+  skip_on_cran()
+
+  initial_residency <- residency_table_size()
+
+  for (i in seq_len(200L)) {
+    local({
+      set.seed(2026041500L + i)
+      a <- crossprod(matrix(rnorm(16L), 4L, 4L)) + diag(4L)
+      x <- as_adgeMatrix(a)
+      fac <- chol_factor(x)
+      as.matrix(fac)
+    })
+    if (i %% 50L == 0L) invisible(gc(verbose = FALSE))
+  }
+  invisible(gc(verbose = FALSE))
+
+  final_residency <- residency_table_size()
+
+  # Growth budget: we don't demand perfect finalizer ordering, just that
+  # we don't blow past a couple of straggler factors.
+  expect_true(
+    final_residency - initial_residency <= 20L,
+    info = sprintf(
+      "residency table grew by %d entries after 200 chol_factor calls (initial=%d, final=%d)",
+      final_residency - initial_residency, initial_residency, final_residency
+    )
+  )
+})

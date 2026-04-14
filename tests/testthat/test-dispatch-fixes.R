@@ -78,6 +78,34 @@ test_that("diag(adgCMatrix) extracts diagonal as numeric vector", {
   expect_equal(d, base::diag(as.matrix(M)), tolerance = 1e-12)
 })
 
+test_that("Math(adgeMatrix) preserves adgeMatrix class", {
+  A <- adgeMatrix(matrix(c(1, 4, 9, 16) * 1.0, 2, 2))
+  out <- sqrt(A)
+  expect_s4_class(out, "adgeMatrix")
+  expect_equal(as.matrix(out), sqrt(as.matrix(A)), tolerance = 1e-12)
+})
+
+test_that("Math(adgCMatrix) preserves adgCMatrix class when result stays sparse", {
+  S <- adgCMatrix(as(Matrix::Diagonal(x = c(1, 4, 9)), "dgCMatrix"))
+  out <- sqrt(S)
+  expect_s4_class(out, "adgCMatrix")
+  expect_equal(as.matrix(out), sqrt(as.matrix(S)), tolerance = 1e-12)
+})
+
+test_that("diag<-(adgeMatrix) preserves adgeMatrix class", {
+  A <- adgeMatrix(matrix(0, 3, 3))
+  diag(A) <- c(1, 2, 3)
+  expect_s4_class(A, "adgeMatrix")
+  expect_equal(as.matrix(A), diag(c(1, 2, 3)), tolerance = 1e-12)
+})
+
+test_that("diag<-(adgCMatrix) preserves adgCMatrix class", {
+  S <- adgCMatrix(as(Matrix::Diagonal(3), "dgCMatrix"))
+  diag(S) <- c(2, 4, 6)
+  expect_s4_class(S, "adgCMatrix")
+  expect_equal(as.matrix(S), diag(c(2, 4, 6)), tolerance = 1e-12)
+})
+
 # ---- Ops: adgeMatrix + adgeMatrix returns adgeMatrix (not dgeMatrix) --------
 
 test_that("adgeMatrix + adgeMatrix returns adgeMatrix", {
