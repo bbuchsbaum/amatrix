@@ -133,6 +133,8 @@ lm_loo_cv <- function(X, y, method = "qr", ...) {
   n     <- nrow(X)
 
   X_am <- if (inherits(X, "aMatrix")) X else as_adgeMatrix(X)
+  .amatrix_validate_model_finite(X_am, "X")
+  .amatrix_validate_model_finite(matrix(y_vec, ncol = 1L), "Y")
 
   # Full QR factor (used as starting point for downdate)
   qr_full <- am_qr(X_am, ...)

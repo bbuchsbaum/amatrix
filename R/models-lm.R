@@ -47,6 +47,33 @@
   .amatrix_model_dense_arg(y, template = template)
 }
 
+.amatrix_model_all_finite <- function(x) {
+  if (inherits(x, "adgeMatrix")) {
+    if (isTRUE(x@finalizer_env$host_deferred)) {
+      return(all(is.finite(as.matrix(amatrix_materialize_host(x)))))
+    }
+    return(all(is.finite(x@x)))
+  }
+
+  if (inherits(x, "adgCMatrix")) {
+    return(all(is.finite(x@x)))
+  }
+
+  if (inherits(x, "aMatrix")) {
+    return(all(is.finite(as.matrix(amatrix_materialize_host(x)))))
+  }
+
+  all(is.finite(as.matrix(x)))
+}
+
+.amatrix_validate_model_finite <- function(x, arg_name) {
+  if (!.amatrix_model_all_finite(x)) {
+    .amatrix_abort_bad_arg(sprintf("%s must contain only finite numeric values", arg_name))
+  }
+
+  invisible(x)
+}
+
 .amatrix_model_response_host <- function(y) {
   value <- .amatrix_host_arg(y)
   if (is.null(dim(value))) {
@@ -390,6 +417,8 @@
 .amatrix_many_lm_qr_hot <- function(X_arg, Y, cache = TRUE, include_fitted = FALSE, include_residuals = FALSE) {
   stopifnot(inherits(X_arg, "adgeMatrix"))
 
+  .amatrix_validate_model_finite(X_arg, "X")
+  .amatrix_validate_model_finite(Y, "Y")
   Y_host <- .amatrix_model_response_host(Y)
   cache_key <- .amatrix_lm_cache_key(X_arg, extra = .amatrix_qr_cache_signature(X_arg))
   cache_value <- .amatrix_lm_cache_value(X_arg, cache = cache, need_xtx = FALSE, need_qr = TRUE, cache_key = cache_key)
@@ -430,6 +459,8 @@
     include_residuals = TRUE,
     method = c("normal", "qr")) {
   method <- match.arg(method)
+  .amatrix_validate_model_finite(X_arg, "X")
+  .amatrix_validate_model_finite(Y, "Y")
 
   if (identical(method, "qr")) {
     Y_host <- .amatrix_model_response_host(Y)
@@ -577,17 +608,22 @@
       lhs <- .amatrix_prepare_resident_arg(X_arg, backend_name)
       if (!is.null(lhs)) {
         out_key <- .amatrix_next_resident_key(backend_name)
+        release_output <- TRUE
+        on.exit({
+          if (release_output) {
+            .amatrix_release_resident_key(backend_name, out_key)
+          }
+          .amatrix_cleanup_temp_resident_safe(list(lhs), backend_name)
+        }, add = TRUE)
         result <- tryCatch({
-          val <- backend$broadcast_ewise_resident(lhs$key, sqrt_w, 1L, "*", out_key)
-          .amatrix_cleanup_temp_resident(list(lhs), backend_name)
-          val
+          backend$broadcast_ewise_resident(lhs$key, sqrt_w, 1L, "*", out_key)
         }, error = function(e) NULL)
         if (!is.null(result)) {
           value <- .amatrix_rewrap_like(X_arg, result)
-          return(.amatrix_bind_resident(value, backend_name, out_key))
+          bound <- .amatrix_bind_resident(value, backend_name, out_key)
+          release_output <- FALSE
+          return(bound)
         }
-        try(backend$resident_drop(out_key), silent = TRUE)
-        .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       }
     }
   }
@@ -976,6 +1012,8 @@ ridge_fit <- function(
 
   X_arg <- .amatrix_model_design_arg(X, intercept = intercept)
   Y_arg <- .amatrix_model_response_arg(Y, template = X_arg)
+  .amatrix_validate_model_finite(X_arg, "X")
+  .amatrix_validate_model_finite(Y_arg, "Y")
 
   cache_value <- .amatrix_lm_cache_value(X_arg, cache = cache)
   XtX <- cache_value$xtx
@@ -1090,6 +1128,8 @@ wls_fit <- function(
   Y_arg <- .amatrix_model_response_arg(Y, template = X_arg)
   method <- match.arg(method)
   weights <- .amatrix_validate_weights(weights, nrow(X_arg))
+  .amatrix_validate_model_finite(X_arg, "X")
+  .amatrix_validate_model_finite(Y_arg, "Y")
 
   cache_extra <- .amatrix_weights_signature(weights)
   if (identical(method, "qr")) {
