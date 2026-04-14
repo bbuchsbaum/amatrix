@@ -87,6 +87,7 @@ setMethod("show", "KronMatrix", function(object) {
 # Materialization
 # ---------------------------------------------------------------------------
 
+#' @rdname amatrix-s3-methods
 #' @export
 as.matrix.KronMatrix <- function(x, ...) base::kronecker(x@A, x@B)
 
