@@ -18,6 +18,12 @@
 ^pkgdown$
 ^planning_docs$
 ^tools/benchmark-results$
+^\.bug-hunt-r2$
+^\.bug-hunt-r3$
+^\.bug-hunt-r4$
+^tests/testthat/\.bug-hunt-r3$
+^\.nightly-artifacts$
+^amatrix-manual\.tex$
 ^\.\.Rcheck$
 ^cran-comments\.md$
 ^\.github$

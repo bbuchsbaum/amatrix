@@ -14,11 +14,13 @@ Imports:
     Matrix
 Suggests:
     testthat (>= 3.0.0),
+    callr,
     ggplot2,
     irlba,
     knitr,
     pkgload,
     rmarkdown,
+    rprojroot,
     withr,
     amatrix.mlx,
     amatrix.arrayfire,
