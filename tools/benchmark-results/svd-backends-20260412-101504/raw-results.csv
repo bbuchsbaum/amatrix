@@ -1,0 +1,25 @@
+"case","algorithm","backend","precision","status","reason","elapsed","rel_sv_err","iter","mprod","selected_backend","stringsAsFactors"
+"500x400-k20","base::svd","cpu","strict","ok",NA,0.172,0,NA,NA,"cpu",FALSE
+"500x400-k20","irlba::svdr","cpu","strict","ok",NA,0.0300000000000002,0.0754682104130964,NA,5,"cpu",FALSE
+"1000x800-k20","base::svd","cpu","strict","ok",NA,1.35,0,NA,NA,"cpu",FALSE
+"1000x800-k20","irlba::svdr","cpu","strict","ok",NA,0.109,0.0894327261648133,NA,5,"cpu",FALSE
+"3000x1200-k40","base::svd","cpu","strict","ok",NA,10.167,0,NA,NA,"cpu",FALSE
+"3000x1200-k40","irlba::svdr","cpu","strict","ok",NA,0.860000000000001,0.0989477137288648,NA,5,"cpu",FALSE
+"500x400-k20","svd","cpu","strict","ok",NA,0.171,0,NA,NA,"cpu",FALSE
+"500x400-k20","rsvd","cpu","strict","unsupported","backend lacks rsvd capability",NA,NA,NA,NA,NA,FALSE
+"500x400-k20","svd","mlx","fast","ok","safe spectral fallback to cpu",0.171,0,NA,NA,"cpu",FALSE
+"500x400-k20","rsvd","mlx","fast","ok","safe spectral fallback to cpu",0.0299999999999998,0.0764656454989038,NA,5,"cpu",FALSE
+"500x400-k20","svd","opencl","fast","ok","OpenCL exact svd via opt-in BDC route",0.024,9.07919529710467e-16,NA,NA,"opencl",FALSE
+"500x400-k20","rsvd","opencl","fast","ok",NA,0.0169999999999999,0.0764656558241308,2,6,"opencl",FALSE
+"1000x800-k20","svd","cpu","strict","ok",NA,1.358,0,NA,NA,"cpu",FALSE
+"1000x800-k20","rsvd","cpu","strict","unsupported","backend lacks rsvd capability",NA,NA,NA,NA,NA,FALSE
+"1000x800-k20","svd","mlx","fast","ok","safe spectral fallback to cpu",1.374,0,NA,NA,"cpu",FALSE
+"1000x800-k20","rsvd","mlx","fast","ok","safe spectral fallback to cpu",0.112,0.0916422720272576,NA,5,"cpu",FALSE
+"1000x800-k20","svd","opencl","fast","ok","OpenCL exact svd via opt-in BDC route",0.107,1.23930539908229e-15,NA,NA,"opencl",FALSE
+"1000x800-k20","rsvd","opencl","fast","ok",NA,0.024,0.091642273521517,2,6,"opencl",FALSE
+"3000x1200-k40","svd","cpu","strict","ok",NA,10.21,0,NA,NA,"cpu",FALSE
+"3000x1200-k40","rsvd","cpu","strict","unsupported","backend lacks rsvd capability",NA,NA,NA,NA,NA,FALSE
+"3000x1200-k40","svd","mlx","fast","ok","safe spectral fallback to cpu",10.002,0,NA,NA,"cpu",FALSE
+"3000x1200-k40","rsvd","mlx","fast","ok","safe spectral fallback to cpu",0.883000000000001,0.0983907705030237,NA,5,"cpu",FALSE
+"3000x1200-k40","svd","opencl","fast","ok","OpenCL exact svd via opt-in BDC route",0.67,9.83290491289667e-16,NA,NA,"opencl",FALSE
+"3000x1200-k40","rsvd","opencl","fast","ok",NA,0.0940000000000012,0.0983907424456458,2,6,"opencl",FALSE

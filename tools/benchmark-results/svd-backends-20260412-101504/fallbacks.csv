@@ -1,0 +1,7 @@
+"case","algorithm","backend","precision","status","reason","elapsed","rel_sv_err","iter","mprod","selected_backend","stringsAsFactors","cpu_reference_elapsed","speedup_vs_cpu","dispatch_state"
+"1000x800-k20","rsvd","mlx","fast","ok","safe spectral fallback to cpu",0.112,0.0916422720272576,NA,5,"cpu",FALSE,NA,NA,"cpu_fallback"
+"1000x800-k20","svd","mlx","fast","ok","safe spectral fallback to cpu",1.374,0,NA,NA,"cpu",FALSE,1.358,0.988355167394468,"cpu_fallback"
+"3000x1200-k40","rsvd","mlx","fast","ok","safe spectral fallback to cpu",0.883000000000001,0.0983907705030237,NA,5,"cpu",FALSE,NA,NA,"cpu_fallback"
+"3000x1200-k40","svd","mlx","fast","ok","safe spectral fallback to cpu",10.002,0,NA,NA,"cpu",FALSE,10.21,1.02079584083183,"cpu_fallback"
+"500x400-k20","rsvd","mlx","fast","ok","safe spectral fallback to cpu",0.0299999999999998,0.0764656454989038,NA,5,"cpu",FALSE,NA,NA,"cpu_fallback"
+"500x400-k20","svd","mlx","fast","ok","safe spectral fallback to cpu",0.171,0,NA,NA,"cpu",FALSE,0.171,1,"cpu_fallback"

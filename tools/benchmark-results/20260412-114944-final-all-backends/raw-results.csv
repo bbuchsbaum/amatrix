@@ -1,0 +1,611 @@
+"suite","op","size_label","variant","nrow","ncol","rhs_width","density","nnz","density_bucket","requested_backend","dispatch_probe_op","requested_supported","requested_support_reason","dispatch_backend","dispatch_path","status","error_message","reps","median_ms","cpu_reference_ms","speedup_vs_cpu","baseline_ms","ratio_vs_baseline"
+"dense","chol","large","cold",4096,128,0,0,0,"dense","arrayfire","chol",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4.00000000000045,1.99999999999978,0.499999999999889,NA,NA
+"dense","chol","large","cold",4096,128,0,0,0,"dense","cpu","chol",TRUE,"cold supported","cpu","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","chol","large","cold",4096,128,0,NA,NA,NA,"metal","chol",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","chol","large","cold",4096,128,0,0,0,"dense","mlx","chol",TRUE,"cold supported","mlx","cold","ok",NA,7,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"dense","chol","large","cold",4096,128,0,0,0,"dense","opencl","chol",TRUE,"cold supported","opencl","cold","ok",NA,7,2.00000000000022,1.99999999999978,0.999999999999778,NA,NA
+"dense","chol","large","warm",4096,128,0,0,0,"dense","arrayfire","chol",TRUE,"cold supported","arrayfire","cold","ok",NA,7,3.00000000000011,1.00000000000033,0.333333333333432,NA,NA
+"dense","chol","large","warm",4096,128,0,0,0,"dense","cpu","chol",TRUE,"cold supported","cpu","cold","ok",NA,7,1.00000000000033,1.00000000000033,1,NA,NA
+"dense","chol","large","warm",4096,128,0,NA,NA,NA,"metal","chol",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","chol","large","warm",4096,128,0,0,0,"dense","mlx","chol",TRUE,"cold supported","mlx","cold","ok",NA,7,1.00000000000033,1.00000000000033,1,NA,NA
+"dense","chol","large","warm",4096,128,0,0,0,"dense","opencl","chol",TRUE,"cold supported","opencl","cold","ok",NA,7,1.00000000000033,1.00000000000033,1,NA,NA
+"dense","chol","medium","cold",1024,128,0,0,0,"dense","arrayfire","chol",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4.99999999999989,2.00000000000022,0.400000000000053,NA,NA
+"dense","chol","medium","cold",1024,128,0,0,0,"dense","cpu","chol",TRUE,"cold supported","cpu","cold","ok",NA,7,2.00000000000022,2.00000000000022,1,NA,NA
+"dense","chol","medium","cold",1024,128,0,NA,NA,NA,"metal","chol",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","chol","medium","cold",1024,128,0,0,0,"dense","mlx","chol",TRUE,"cold supported","mlx","cold","ok",NA,7,3.00000000000011,2.00000000000022,0.666666666666716,NA,NA
+"dense","chol","medium","cold",1024,128,0,0,0,"dense","opencl","chol",TRUE,"cold supported","opencl","cold","ok",NA,7,1.99999999999978,2.00000000000022,1.00000000000022,NA,NA
+"dense","chol","medium","warm",1024,128,0,0,0,"dense","arrayfire","chol",TRUE,"cold supported","arrayfire","cold","ok",NA,7,3.00000000000011,0.99999999999989,0.333333333333284,NA,NA
+"dense","chol","medium","warm",1024,128,0,0,0,"dense","cpu","chol",TRUE,"cold supported","cpu","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","chol","medium","warm",1024,128,0,NA,NA,NA,"metal","chol",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","chol","medium","warm",1024,128,0,0,0,"dense","mlx","chol",TRUE,"cold supported","mlx","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","chol","medium","warm",1024,128,0,0,0,"dense","opencl","chol",TRUE,"cold supported","opencl","cold","ok",NA,7,1.99999999999978,0.99999999999989,0.5,NA,NA
+"dense","chol","small","cold",256,32,0,0,0,"dense","arrayfire","chol",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4,2,0.5,NA,NA
+"dense","chol","small","cold",256,32,0,0,0,"dense","cpu","chol",TRUE,"cold supported","cpu","cold","ok",NA,7,2,2,1,NA,NA
+"dense","chol","small","cold",256,32,0,NA,NA,NA,"metal","chol",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","chol","small","cold",256,32,0,0,0,"dense","mlx","chol",TRUE,"cold supported","mlx","cold","ok",NA,7,3.00000000000011,2,0.666666666666642,NA,NA
+"dense","chol","small","cold",256,32,0,0,0,"dense","opencl","chol",TRUE,"cold supported","opencl","cold","ok",NA,7,1.99999999999978,2,1.00000000000011,NA,NA
+"dense","chol","small","warm",256,32,0,0,0,"dense","arrayfire","chol",TRUE,"cold supported","arrayfire","cold","ok",NA,7,3.00000000000011,0.99999999999989,0.333333333333284,NA,NA
+"dense","chol","small","warm",256,32,0,0,0,"dense","cpu","chol",TRUE,"cold supported","cpu","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","chol","small","warm",256,32,0,NA,NA,NA,"metal","chol",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","chol","small","warm",256,32,0,0,0,"dense","mlx","chol",TRUE,"cold supported","mlx","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","chol","small","warm",256,32,0,0,0,"dense","opencl","chol",TRUE,"cold supported","opencl","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","covariance","large","cold",4096,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,10.0000000000002,40.9999999999999,4.0999999999999,NA,NA
+"dense","covariance","large","cold",4096,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,40.9999999999999,40.9999999999999,1,NA,NA
+"dense","covariance","large","cold",4096,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","covariance","large","cold",4096,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,4,40.9999999999999,10.25,NA,NA
+"dense","covariance","large","cold",4096,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,8.00000000000001,40.9999999999999,5.12499999999999,NA,NA
+"dense","covariance","large","warm",4096,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,9.99999999999979,40,4.00000000000009,NA,NA
+"dense","covariance","large","warm",4096,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,40,40,1,NA,NA
+"dense","covariance","large","warm",4096,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","covariance","large","warm",4096,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,3.00000000000011,40,13.3333333333328,NA,NA
+"dense","covariance","large","warm",4096,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,7.00000000000012,40,5.71428571428562,NA,NA
+"dense","covariance","medium","cold",1024,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4.99999999999989,11.0000000000001,2.20000000000007,NA,NA
+"dense","covariance","medium","cold",1024,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,11.0000000000001,11.0000000000001,1,NA,NA
+"dense","covariance","medium","cold",1024,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","covariance","medium","cold",1024,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,3.00000000000011,11.0000000000001,3.66666666666657,NA,NA
+"dense","covariance","medium","cold",1024,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,4,11.0000000000001,2.75000000000003,NA,NA
+"dense","covariance","medium","warm",1024,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4.99999999999989,12,2.40000000000005,NA,NA
+"dense","covariance","medium","warm",1024,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,12,12,1,NA,NA
+"dense","covariance","medium","warm",1024,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","covariance","medium","warm",1024,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,2.00000000000022,12,5.99999999999933,NA,NA
+"dense","covariance","medium","warm",1024,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,4,12,3,NA,NA
+"dense","covariance","small","cold",256,32,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4,2,0.5,NA,NA
+"dense","covariance","small","cold",256,32,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,2,2,1,NA,NA
+"dense","covariance","small","cold",256,32,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","covariance","small","cold",256,32,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,2.99999999999967,2,0.666666666666741,NA,NA
+"dense","covariance","small","cold",256,32,0,NA,NA,NA,"opencl","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","covariance","small","warm",256,32,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,3.00000000000011,2.99999999999967,0.999999999999852,NA,NA
+"dense","covariance","small","warm",256,32,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,2.99999999999967,2.99999999999967,1,NA,NA
+"dense","covariance","small","warm",256,32,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","covariance","small","warm",256,32,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,2.99999999999967,1.5,NA,NA
+"dense","covariance","small","warm",256,32,0,NA,NA,NA,"opencl","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","crossprod","large","cold",4096,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,6.00000000000023,36,5.99999999999978,NA,NA
+"dense","crossprod","large","cold",4096,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,36,36,1,NA,NA
+"dense","crossprod","large","cold",4096,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","crossprod","large","cold",4096,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,4,36,9,NA,NA
+"dense","crossprod","large","cold",4096,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,5.99999999999978,36,6.00000000000022,NA,NA
+"dense","crossprod","large","warm",4096,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,2.99999999999923,35.0000000000001,11.6666666666697,NA,NA
+"dense","crossprod","large","warm",4096,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,35.0000000000001,35.0000000000001,1,NA,NA
+"dense","crossprod","large","warm",4096,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","crossprod","large","warm",4096,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,35.0000000000001,17.500000000002,NA,NA
+"dense","crossprod","large","warm",4096,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,3.00000000000011,35.0000000000001,11.6666666666663,NA,NA
+"dense","crossprod","medium","cold",1024,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4,9.99999999999979,2.49999999999994,NA,NA
+"dense","crossprod","medium","cold",1024,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,9.99999999999979,9.99999999999979,1,NA,NA
+"dense","crossprod","medium","cold",1024,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","crossprod","medium","cold",1024,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,3.00000000000011,9.99999999999979,3.33333333333314,NA,NA
+"dense","crossprod","medium","cold",1024,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,4,9.99999999999979,2.49999999999994,NA,NA
+"dense","crossprod","medium","warm",1024,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,1.99999999999978,8.9999999999999,4.50000000000044,NA,NA
+"dense","crossprod","medium","warm",1024,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,8.9999999999999,8.9999999999999,1,NA,NA
+"dense","crossprod","medium","warm",1024,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","crossprod","medium","warm",1024,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,8.9999999999999,4.50000000000044,NA,NA
+"dense","crossprod","medium","warm",1024,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,2.00000000000022,8.9999999999999,4.49999999999944,NA,NA
+"dense","crossprod","small","cold",256,32,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,3.00000000000011,2,0.666666666666642,NA,NA
+"dense","crossprod","small","cold",256,32,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,2,2,1,NA,NA
+"dense","crossprod","small","cold",256,32,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","crossprod","small","cold",256,32,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,2.99999999999967,2,0.666666666666741,NA,NA
+"dense","crossprod","small","cold",256,32,0,NA,NA,NA,"opencl","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","crossprod","small","warm",256,32,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,2.00000000000022,0.99999999999989,0.499999999999889,NA,NA
+"dense","crossprod","small","warm",256,32,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","crossprod","small","warm",256,32,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","crossprod","small","warm",256,32,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,0.99999999999989,0.5,NA,NA
+"dense","crossprod","small","warm",256,32,0,NA,NA,NA,"opencl","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","dist","large","cold",4096,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,5.00000000000034,8.9999999999999,1.79999999999986,NA,NA
+"dense","dist","large","cold",4096,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,8.9999999999999,8.9999999999999,1,NA,NA
+"dense","dist","large","cold",4096,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","dist","large","cold",4096,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,4.99999999999989,8.9999999999999,1.80000000000002,NA,NA
+"dense","dist","large","cold",4096,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,7.00000000000012,8.9999999999999,1.28571428571425,NA,NA
+"dense","dist","large","warm",4096,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4.00000000000045,8.9999999999999,2.24999999999972,NA,NA
+"dense","dist","large","warm",4096,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,8.9999999999999,8.9999999999999,1,NA,NA
+"dense","dist","large","warm",4096,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","dist","large","warm",4096,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,4.00000000000045,8.9999999999999,2.24999999999972,NA,NA
+"dense","dist","large","warm",4096,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,5.99999999999978,8.9999999999999,1.50000000000004,NA,NA
+"dense","dist","medium","cold",1024,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4.99999999999989,8.9999999999999,1.80000000000002,NA,NA
+"dense","dist","medium","cold",1024,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,8.9999999999999,8.9999999999999,1,NA,NA
+"dense","dist","medium","cold",1024,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","dist","medium","cold",1024,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,4.99999999999989,8.9999999999999,1.80000000000002,NA,NA
+"dense","dist","medium","cold",1024,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,7.00000000000012,8.9999999999999,1.28571428571425,NA,NA
+"dense","dist","medium","warm",1024,128,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4,8.00000000000001,2,NA,NA
+"dense","dist","medium","warm",1024,128,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,8.00000000000001,8.00000000000001,1,NA,NA
+"dense","dist","medium","warm",1024,128,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","dist","medium","warm",1024,128,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,4,8.00000000000001,2,NA,NA
+"dense","dist","medium","warm",1024,128,0,0,0,"dense","opencl","crossprod",TRUE,"cold supported","opencl","cold","ok",NA,7,6.00000000000023,8.00000000000001,1.33333333333328,NA,NA
+"dense","dist","small","cold",256,32,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,3.00000000000011,2,0.666666666666642,NA,NA
+"dense","dist","small","cold",256,32,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,2,2,1,NA,NA
+"dense","dist","small","cold",256,32,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","dist","small","cold",256,32,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,2.00000000000022,2,0.999999999999889,NA,NA
+"dense","dist","small","cold",256,32,0,NA,NA,NA,"opencl","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","dist","small","warm",256,32,0,0,0,"dense","arrayfire","crossprod",TRUE,"cold supported","arrayfire","cold","ok",NA,7,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"dense","dist","small","warm",256,32,0,0,0,"dense","cpu","crossprod",TRUE,"cold supported","cpu","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","dist","small","warm",256,32,0,NA,NA,NA,"metal","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","dist","small","warm",256,32,0,0,0,"dense","mlx","crossprod",TRUE,"cold supported","mlx","cold","ok",NA,7,2.00000000000022,1.99999999999978,0.999999999999778,NA,NA
+"dense","dist","small","warm",256,32,0,NA,NA,NA,"opencl","crossprod",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","large","cold",128,128,0,NA,NA,NA,"arrayfire","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","large","cold",128,128,0,0,0,"dense","cpu","eigen",TRUE,"cold supported","cpu","cold","ok",NA,7,3.00000000000011,3.00000000000011,1,NA,NA
+"dense","eigen_sym","large","cold",128,128,0,NA,NA,NA,"metal","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","large","cold",128,128,0,0,0,"dense","mlx","eigen",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,3.00000000000011,1.50000000000022,NA,NA
+"dense","eigen_sym","large","cold",128,128,0,0,0,"dense","opencl","eigen",TRUE,"cold supported","opencl","cold","ok",NA,7,3.00000000000011,3.00000000000011,1,NA,NA
+"dense","eigen_sym","large","warm",128,128,0,NA,NA,NA,"arrayfire","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","large","warm",128,128,0,0,0,"dense","cpu","eigen",TRUE,"cold supported","cpu","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","eigen_sym","large","warm",128,128,0,NA,NA,NA,"metal","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","large","warm",128,128,0,0,0,"dense","mlx","eigen",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","eigen_sym","large","warm",128,128,0,0,0,"dense","opencl","eigen",TRUE,"cold supported","opencl","cold","ok",NA,7,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"dense","eigen_sym","medium","cold",128,128,0,NA,NA,NA,"arrayfire","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","medium","cold",128,128,0,0,0,"dense","cpu","eigen",TRUE,"cold supported","cpu","cold","ok",NA,7,3.00000000000011,3.00000000000011,1,NA,NA
+"dense","eigen_sym","medium","cold",128,128,0,NA,NA,NA,"metal","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","medium","cold",128,128,0,0,0,"dense","mlx","eigen",TRUE,"cold supported","mlx","cold","ok",NA,7,2.00000000000022,3.00000000000011,1.49999999999989,NA,NA
+"dense","eigen_sym","medium","cold",128,128,0,0,0,"dense","opencl","eigen",TRUE,"cold supported","opencl","cold","ok",NA,7,3.00000000000011,3.00000000000011,1,NA,NA
+"dense","eigen_sym","medium","warm",128,128,0,NA,NA,NA,"arrayfire","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","medium","warm",128,128,0,0,0,"dense","cpu","eigen",TRUE,"cold supported","cpu","cold","ok",NA,7,3.00000000000011,3.00000000000011,1,NA,NA
+"dense","eigen_sym","medium","warm",128,128,0,NA,NA,NA,"metal","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","medium","warm",128,128,0,0,0,"dense","mlx","eigen",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,3.00000000000011,1.50000000000022,NA,NA
+"dense","eigen_sym","medium","warm",128,128,0,0,0,"dense","opencl","eigen",TRUE,"cold supported","opencl","cold","ok",NA,7,2.99999999999967,3.00000000000011,1.00000000000015,NA,NA
+"dense","eigen_sym","small","cold",32,32,0,NA,NA,NA,"arrayfire","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","small","cold",32,32,0,0,0,"dense","cpu","eigen",TRUE,"cold supported","cpu","cold","ok",NA,7,1.00000000000011,1.00000000000011,1,NA,NA
+"dense","eigen_sym","small","cold",32,32,0,NA,NA,NA,"metal","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","small","cold",32,32,0,0,0,"dense","mlx","eigen",TRUE,"cold supported","mlx","cold","ok",NA,7,1.00000000000033,1.00000000000011,0.999999999999778,NA,NA
+"dense","eigen_sym","small","cold",32,32,0,0,0,"dense","opencl","eigen",TRUE,"cold supported","opencl","cold","ok",NA,7,1.00000000000033,1.00000000000011,0.999999999999778,NA,NA
+"dense","eigen_sym","small","warm",32,32,0,NA,NA,NA,"arrayfire","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","small","warm",32,32,0,0,0,"dense","cpu","eigen",TRUE,"cold supported","cpu","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","eigen_sym","small","warm",32,32,0,NA,NA,NA,"metal","eigen",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","eigen_sym","small","warm",32,32,0,0,0,"dense","mlx","eigen",TRUE,"cold supported","mlx","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","eigen_sym","small","warm",32,32,0,0,0,"dense","opencl","eigen",TRUE,"cold supported","opencl","cold","ok",NA,7,0,0.99999999999989,Inf,NA,NA
+"dense","many_lm","large","cold",4096,128,3,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,47.0000000000006,46.0000000000003,0.978723404255312,NA,NA
+"dense","many_lm","large","cold",4096,128,3,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,46.0000000000003,46.0000000000003,1,NA,NA
+"dense","many_lm","large","cold",4096,128,3,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","many_lm","large","cold",4096,128,3,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,16,46.0000000000003,2.87500000000001,NA,NA
+"dense","many_lm","large","cold",4096,128,3,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,32,46.0000000000003,1.43750000000001,NA,NA
+"dense","many_lm","large","warm",4096,128,3,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,3.00000000000011,3.00000000000011,1,NA,NA
+"dense","many_lm","large","warm",4096,128,3,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,3.00000000000011,3.00000000000011,1,NA,NA
+"dense","many_lm","large","warm",4096,128,3,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","many_lm","large","warm",4096,128,3,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,3.00000000000011,1.50000000000022,NA,NA
+"dense","many_lm","large","warm",4096,128,3,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,3.99999999999956,3.00000000000011,0.750000000000111,NA,NA
+"dense","many_lm","medium","cold",1024,128,3,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,12.9999999999999,12.9999999999999,1,NA,NA
+"dense","many_lm","medium","cold",1024,128,3,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,12.9999999999999,12.9999999999999,1,NA,NA
+"dense","many_lm","medium","cold",1024,128,3,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","many_lm","medium","cold",1024,128,3,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,5.99999999999978,12.9999999999999,2.16666666666673,NA,NA
+"dense","many_lm","medium","cold",1024,128,3,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,12.9999999999999,12.9999999999999,1,NA,NA
+"dense","many_lm","medium","warm",1024,128,3,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","many_lm","medium","warm",1024,128,3,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","many_lm","medium","warm",1024,128,3,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","many_lm","medium","warm",1024,128,3,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","many_lm","medium","warm",1024,128,3,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,1.00000000000033,1.99999999999978,1.99999999999911,NA,NA
+"dense","many_lm","small","cold",256,32,3,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,2.00000000000022,2,0.999999999999889,NA,NA
+"dense","many_lm","small","cold",256,32,3,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,2,2,1,NA,NA
+"dense","many_lm","small","cold",256,32,3,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","many_lm","small","cold",256,32,3,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,3.00000000000011,2,0.666666666666642,NA,NA
+"dense","many_lm","small","cold",256,32,3,NA,NA,NA,"opencl","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","many_lm","small","warm",256,32,3,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","many_lm","small","warm",256,32,3,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","many_lm","small","warm",256,32,3,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","many_lm","small","warm",256,32,3,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,1.99999999999978,0.99999999999989,0.5,NA,NA
+"dense","many_lm","small","warm",256,32,3,NA,NA,NA,"opencl","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","matmul","large","cold",4096,128,128,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,8.00000000000001,20.9999999999999,2.62499999999999,NA,NA
+"dense","matmul","large","cold",4096,128,128,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,20.9999999999999,20.9999999999999,1,NA,NA
+"dense","matmul","large","cold",4096,128,128,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","matmul","large","cold",4096,128,128,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,6.99999999999967,20.9999999999999,3.00000000000013,NA,NA
+"dense","matmul","large","cold",4096,128,128,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,7.00000000000012,20.9999999999999,2.99999999999994,NA,NA
+"dense","matmul","large","warm",4096,128,128,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,3.99999999999956,20,5.00000000000056,NA,NA
+"dense","matmul","large","warm",4096,128,128,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,20,20,1,NA,NA
+"dense","matmul","large","warm",4096,128,128,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","matmul","large","warm",4096,128,128,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,3.00000000000011,20,6.66666666666642,NA,NA
+"dense","matmul","large","warm",4096,128,128,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,3.00000000000011,20,6.66666666666642,NA,NA
+"dense","matmul","medium","cold",1024,128,128,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,5.00000000000034,6.00000000000023,1.19999999999996,NA,NA
+"dense","matmul","medium","cold",1024,128,128,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,6.00000000000023,6.00000000000023,1,NA,NA
+"dense","matmul","medium","cold",1024,128,128,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","matmul","medium","cold",1024,128,128,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,4,6.00000000000023,1.50000000000006,NA,NA
+"dense","matmul","medium","cold",1024,128,128,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,5.99999999999978,6.00000000000023,1.00000000000007,NA,NA
+"dense","matmul","medium","warm",1024,128,128,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,2.00000000000022,5.00000000000034,2.49999999999989,NA,NA
+"dense","matmul","medium","warm",1024,128,128,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,5.00000000000034,5.00000000000034,1,NA,NA
+"dense","matmul","medium","warm",1024,128,128,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","matmul","medium","warm",1024,128,128,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,2.00000000000022,5.00000000000034,2.49999999999989,NA,NA
+"dense","matmul","medium","warm",1024,128,128,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,1.99999999999978,5.00000000000034,2.50000000000044,NA,NA
+"dense","matmul","small","cold",256,32,32,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4,2,0.5,NA,NA
+"dense","matmul","small","cold",256,32,32,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,2,2,1,NA,NA
+"dense","matmul","small","cold",256,32,32,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","matmul","small","cold",256,32,32,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,4,2,0.5,NA,NA
+"dense","matmul","small","cold",256,32,32,NA,NA,NA,"opencl","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","matmul","small","warm",256,32,32,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,2.00000000000022,0.99999999999989,0.499999999999889,NA,NA
+"dense","matmul","small","warm",256,32,32,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","matmul","small","warm",256,32,32,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","matmul","small","warm",256,32,32,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,1.00000000000033,0.99999999999989,0.999999999999556,NA,NA
+"dense","matmul","small","warm",256,32,32,NA,NA,NA,"opencl","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","rsvd","large","cold",4096,128,0,0,0,"dense","arrayfire","rsvd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,33.9999999999998,54.9999999999997,1.61764705882353,NA,NA
+"dense","rsvd","large","cold",4096,128,0,0,0,"dense","cpu","rsvd",TRUE,"cold supported","cpu","cold","ok",NA,7,54.9999999999997,54.9999999999997,1,NA,NA
+"dense","rsvd","large","cold",4096,128,0,NA,NA,NA,"metal","rsvd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","rsvd","large","cold",4096,128,0,0,0,"dense","mlx","rsvd",TRUE,"cold supported","mlx","cold","ok",NA,7,30.0000000000002,54.9999999999997,1.83333333333331,NA,NA
+"dense","rsvd","large","cold",4096,128,0,0,0,"dense","opencl","rsvd",TRUE,"cold supported","opencl","cold","ok",NA,7,28.9999999999999,54.9999999999997,1.89655172413793,NA,NA
+"dense","rsvd","large","warm",4096,128,0,0,0,"dense","arrayfire","rsvd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,32,54.0000000000003,1.68750000000001,NA,NA
+"dense","rsvd","large","warm",4096,128,0,0,0,"dense","cpu","rsvd",TRUE,"cold supported","cpu","cold","ok",NA,7,54.0000000000003,54.0000000000003,1,NA,NA
+"dense","rsvd","large","warm",4096,128,0,NA,NA,NA,"metal","rsvd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","rsvd","large","warm",4096,128,0,0,0,"dense","mlx","rsvd",TRUE,"cold supported","mlx","cold","ok",NA,7,29.9999999999994,54.0000000000003,1.80000000000005,NA,NA
+"dense","rsvd","large","warm",4096,128,0,0,0,"dense","opencl","rsvd",TRUE,"cold supported","opencl","cold","ok",NA,7,28.0000000000005,54.0000000000003,1.92857142857141,NA,NA
+"dense","rsvd","medium","cold",1024,128,0,0,0,"dense","arrayfire","rsvd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,15.0000000000001,15.0000000000001,1,NA,NA
+"dense","rsvd","medium","cold",1024,128,0,0,0,"dense","cpu","rsvd",TRUE,"cold supported","cpu","cold","ok",NA,7,15.0000000000001,15.0000000000001,1,NA,NA
+"dense","rsvd","medium","cold",1024,128,0,NA,NA,NA,"metal","rsvd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","rsvd","medium","cold",1024,128,0,0,0,"dense","mlx","rsvd",TRUE,"cold supported","mlx","cold","ok",NA,7,18.0000000000002,15.0000000000001,0.833333333333329,NA,NA
+"dense","rsvd","medium","cold",1024,128,0,0,0,"dense","opencl","rsvd",TRUE,"cold supported","opencl","cold","ok",NA,7,15.0000000000001,15.0000000000001,1,NA,NA
+"dense","rsvd","medium","warm",1024,128,0,0,0,"dense","arrayfire","rsvd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,13.9999999999998,13.9999999999998,1,NA,NA
+"dense","rsvd","medium","warm",1024,128,0,0,0,"dense","cpu","rsvd",TRUE,"cold supported","cpu","cold","ok",NA,7,13.9999999999998,13.9999999999998,1,NA,NA
+"dense","rsvd","medium","warm",1024,128,0,NA,NA,NA,"metal","rsvd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","rsvd","medium","warm",1024,128,0,0,0,"dense","mlx","rsvd",TRUE,"cold supported","mlx","cold","ok",NA,7,17.9999999999998,13.9999999999998,0.777777777777775,NA,NA
+"dense","rsvd","medium","warm",1024,128,0,0,0,"dense","opencl","rsvd",TRUE,"cold supported","opencl","cold","ok",NA,7,12.9999999999999,13.9999999999998,1.07692307692307,NA,NA
+"dense","rsvd","small","cold",256,32,0,0,0,"dense","arrayfire","rsvd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,11.0000000000001,2.99999999999989,0.27272727272726,NA,NA
+"dense","rsvd","small","cold",256,32,0,0,0,"dense","cpu","rsvd",TRUE,"cold supported","cpu","cold","ok",NA,7,2.99999999999989,2.99999999999989,1,NA,NA
+"dense","rsvd","small","cold",256,32,0,NA,NA,NA,"metal","rsvd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","rsvd","small","cold",256,32,0,0,0,"dense","mlx","rsvd",TRUE,"cold supported","mlx","cold","ok",NA,7,15.0000000000001,2.99999999999989,0.199999999999991,NA,NA
+"dense","rsvd","small","cold",256,32,0,0,0,"dense","opencl","rsvd",TRUE,"cold supported","opencl","cold","ok",NA,7,12,2.99999999999989,0.249999999999991,NA,NA
+"dense","rsvd","small","warm",256,32,0,0,0,"dense","arrayfire","rsvd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,10.0000000000002,1.99999999999978,0.199999999999973,NA,NA
+"dense","rsvd","small","warm",256,32,0,0,0,"dense","cpu","rsvd",TRUE,"cold supported","cpu","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","rsvd","small","warm",256,32,0,NA,NA,NA,"metal","rsvd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","rsvd","small","warm",256,32,0,0,0,"dense","mlx","rsvd",TRUE,"cold supported","mlx","cold","ok",NA,7,15.0000000000001,1.99999999999978,0.133333333333318,NA,NA
+"dense","rsvd","small","warm",256,32,0,0,0,"dense","opencl","rsvd",TRUE,"cold supported","opencl","cold","ok",NA,7,10.0000000000002,1.99999999999978,0.199999999999973,NA,NA
+"dense","sinkhorn","large","cold",1024,1024,1024,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,53.9999999999994,170,3.14814814814818,NA,NA
+"dense","sinkhorn","large","cold",1024,1024,1024,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,170,170,1,NA,NA
+"dense","sinkhorn","large","cold",1024,1024,1024,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","sinkhorn","large","cold",1024,1024,1024,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,111.999999999999,170,1.51785714285715,NA,NA
+"dense","sinkhorn","large","cold",1024,1024,1024,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,32.9999999999995,170,5.15151515151523,NA,NA
+"dense","sinkhorn","large","warm",1024,1024,1024,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,54.0000000000003,167,3.09259259259257,NA,NA
+"dense","sinkhorn","large","warm",1024,1024,1024,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,167,167,1,NA,NA
+"dense","sinkhorn","large","warm",1024,1024,1024,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","sinkhorn","large","warm",1024,1024,1024,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,114,167,1.46491228070175,NA,NA
+"dense","sinkhorn","large","warm",1024,1024,1024,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,32.9999999999995,167,5.06060606060614,NA,NA
+"dense","sinkhorn","medium","cold",512,512,512,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,43.0000000000001,48,1.11627906976744,NA,NA
+"dense","sinkhorn","medium","cold",512,512,512,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,48,48,1,NA,NA
+"dense","sinkhorn","medium","cold",512,512,512,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","sinkhorn","medium","cold",512,512,512,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,43.0000000000006,48,1.11627906976743,NA,NA
+"dense","sinkhorn","medium","cold",512,512,512,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,16.9999999999999,48,2.82352941176472,NA,NA
+"dense","sinkhorn","medium","warm",512,512,512,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,42.0000000000007,47.0000000000002,1.1190476190476,NA,NA
+"dense","sinkhorn","medium","warm",512,512,512,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,47.0000000000002,47.0000000000002,1,NA,NA
+"dense","sinkhorn","medium","warm",512,512,512,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","sinkhorn","medium","warm",512,512,512,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,40.9999999999995,47.0000000000002,1.14634146341465,NA,NA
+"dense","sinkhorn","medium","warm",512,512,512,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,16,47.0000000000002,2.93750000000001,NA,NA
+"dense","sinkhorn","small","cold",128,128,128,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,34.9999999999997,4,0.114285714285715,NA,NA
+"dense","sinkhorn","small","cold",128,128,128,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,4,4,1,NA,NA
+"dense","sinkhorn","small","cold",128,128,128,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","sinkhorn","small","cold",128,128,128,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,30.9999999999997,4,0.129032258064518,NA,NA
+"dense","sinkhorn","small","cold",128,128,128,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,12,4,0.333333333333333,NA,NA
+"dense","sinkhorn","small","warm",128,128,128,0,0,"dense","arrayfire","matmul",TRUE,"cold supported","arrayfire","cold","ok",NA,7,35.0000000000001,4,0.114285714285714,NA,NA
+"dense","sinkhorn","small","warm",128,128,128,0,0,"dense","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,7,4,4,1,NA,NA
+"dense","sinkhorn","small","warm",128,128,128,NA,NA,NA,"metal","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","sinkhorn","small","warm",128,128,128,0,0,"dense","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,7,25.9999999999998,4,0.153846153846155,NA,NA
+"dense","sinkhorn","small","warm",128,128,128,0,0,"dense","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,7,11.0000000000001,4,0.36363636363636,NA,NA
+"dense","solve_rhs","large","cold",4096,128,3,NA,NA,NA,"arrayfire","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","large","cold",4096,128,3,0,0,"dense","cpu","solve",TRUE,"cold supported","cpu","cold","ok",NA,7,3.00000000000011,3.00000000000011,1,NA,NA
+"dense","solve_rhs","large","cold",4096,128,3,NA,NA,NA,"metal","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","large","cold",4096,128,3,0,0,"dense","mlx","solve",TRUE,"cold supported","mlx","cold","ok",NA,7,4,3.00000000000011,0.750000000000028,NA,NA
+"dense","solve_rhs","large","cold",4096,128,3,0,0,"dense","opencl","solve",TRUE,"cold supported","opencl","cold","ok",NA,7,4,3.00000000000011,0.750000000000028,NA,NA
+"dense","solve_rhs","large","warm",4096,128,3,NA,NA,NA,"arrayfire","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","large","warm",4096,128,3,0,0,"dense","cpu","solve",TRUE,"cold supported","cpu","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","solve_rhs","large","warm",4096,128,3,NA,NA,NA,"metal","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","large","warm",4096,128,3,0,0,"dense","mlx","solve",TRUE,"cold supported","mlx","cold","ok",NA,7,1.00000000000033,1.99999999999978,1.99999999999911,NA,NA
+"dense","solve_rhs","large","warm",4096,128,3,0,0,"dense","opencl","solve",TRUE,"cold supported","opencl","cold","ok",NA,7,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"dense","solve_rhs","medium","cold",1024,128,3,NA,NA,NA,"arrayfire","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","medium","cold",1024,128,3,0,0,"dense","cpu","solve",TRUE,"cold supported","cpu","cold","ok",NA,7,3.00000000000011,3.00000000000011,1,NA,NA
+"dense","solve_rhs","medium","cold",1024,128,3,NA,NA,NA,"metal","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","medium","cold",1024,128,3,0,0,"dense","mlx","solve",TRUE,"cold supported","mlx","cold","ok",NA,7,4,3.00000000000011,0.750000000000028,NA,NA
+"dense","solve_rhs","medium","cold",1024,128,3,0,0,"dense","opencl","solve",TRUE,"cold supported","opencl","cold","ok",NA,7,4,3.00000000000011,0.750000000000028,NA,NA
+"dense","solve_rhs","medium","warm",1024,128,3,NA,NA,NA,"arrayfire","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","medium","warm",1024,128,3,0,0,"dense","cpu","solve",TRUE,"cold supported","cpu","cold","ok",NA,7,1.99999999999978,1.99999999999978,1,NA,NA
+"dense","solve_rhs","medium","warm",1024,128,3,NA,NA,NA,"metal","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","medium","warm",1024,128,3,0,0,"dense","mlx","solve",TRUE,"cold supported","mlx","cold","ok",NA,7,0.99999999999989,1.99999999999978,2,NA,NA
+"dense","solve_rhs","medium","warm",1024,128,3,0,0,"dense","opencl","solve",TRUE,"cold supported","opencl","cold","ok",NA,7,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"dense","solve_rhs","small","cold",256,32,3,NA,NA,NA,"arrayfire","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","small","cold",256,32,3,0,0,"dense","cpu","solve",TRUE,"cold supported","cpu","cold","ok",NA,7,2.99999999999989,2.99999999999989,1,NA,NA
+"dense","solve_rhs","small","cold",256,32,3,NA,NA,NA,"metal","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","small","cold",256,32,3,0,0,"dense","mlx","solve",TRUE,"cold supported","mlx","cold","ok",NA,7,4,2.99999999999989,0.749999999999972,NA,NA
+"dense","solve_rhs","small","cold",256,32,3,0,0,"dense","opencl","solve",TRUE,"cold supported","opencl","cold","ok",NA,7,3.00000000000011,2.99999999999989,0.999999999999926,NA,NA
+"dense","solve_rhs","small","warm",256,32,3,NA,NA,NA,"arrayfire","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","small","warm",256,32,3,0,0,"dense","cpu","solve",TRUE,"cold supported","cpu","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","solve_rhs","small","warm",256,32,3,NA,NA,NA,"metal","solve",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","solve_rhs","small","warm",256,32,3,0,0,"dense","mlx","solve",TRUE,"cold supported","mlx","cold","ok",NA,7,0.99999999999989,0.99999999999989,1,NA,NA
+"dense","solve_rhs","small","warm",256,32,3,0,0,"dense","opencl","solve",TRUE,"cold supported","opencl","cold","ok",NA,7,2.00000000000022,0.99999999999989,0.499999999999889,NA,NA
+"dense","svd","large","cold",4096,128,0,0,0,"dense","arrayfire","svd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,32.9999999999999,117.999999999999,3.57575757575757,NA,NA
+"dense","svd","large","cold",4096,128,0,0,0,"dense","cpu","svd",TRUE,"cold supported","cpu","cold","ok",NA,7,117.999999999999,117.999999999999,1,NA,NA
+"dense","svd","large","cold",4096,128,0,NA,NA,NA,"metal","svd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","svd","large","cold",4096,128,0,0,0,"dense","mlx","svd",TRUE,"cold supported","mlx","cold","ok",NA,7,138,117.999999999999,0.855072463768113,NA,NA
+"dense","svd","large","cold",4096,128,0,0,0,"dense","opencl","svd",TRUE,"cold supported","opencl","cold","ok",NA,7,119.000000000001,117.999999999999,0.991596638655452,NA,NA
+"dense","svd","large","warm",4096,128,0,0,0,"dense","arrayfire","svd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,31.9999999999991,117,3.6562500000001,NA,NA
+"dense","svd","large","warm",4096,128,0,0,0,"dense","cpu","svd",TRUE,"cold supported","cpu","cold","ok",NA,7,117,117,1,NA,NA
+"dense","svd","large","warm",4096,128,0,NA,NA,NA,"metal","svd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","svd","large","warm",4096,128,0,0,0,"dense","mlx","svd",TRUE,"cold supported","mlx","cold","ok",NA,7,134,117,0.873134328358207,NA,NA
+"dense","svd","large","warm",4096,128,0,0,0,"dense","opencl","svd",TRUE,"cold supported","opencl","cold","ok",NA,7,119,117,0.983193277310926,NA,NA
+"dense","svd","medium","cold",1024,128,0,0,0,"dense","arrayfire","svd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,13.0000000000003,32,2.4615384615384,NA,NA
+"dense","svd","medium","cold",1024,128,0,0,0,"dense","cpu","svd",TRUE,"cold supported","cpu","cold","ok",NA,7,32,32,1,NA,NA
+"dense","svd","medium","cold",1024,128,0,NA,NA,NA,"metal","svd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","svd","medium","cold",1024,128,0,0,0,"dense","mlx","svd",TRUE,"cold supported","mlx","cold","ok",NA,7,37.9999999999998,32,0.8421052631579,NA,NA
+"dense","svd","medium","cold",1024,128,0,0,0,"dense","opencl","svd",TRUE,"cold supported","opencl","cold","ok",NA,7,32.9999999999999,32,0.969696969696973,NA,NA
+"dense","svd","medium","warm",1024,128,0,0,0,"dense","arrayfire","svd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,13.9999999999998,32,2.28571428571432,NA,NA
+"dense","svd","medium","warm",1024,128,0,0,0,"dense","cpu","svd",TRUE,"cold supported","cpu","cold","ok",NA,7,32,32,1,NA,NA
+"dense","svd","medium","warm",1024,128,0,NA,NA,NA,"metal","svd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","svd","medium","warm",1024,128,0,0,0,"dense","mlx","svd",TRUE,"cold supported","mlx","cold","ok",NA,7,36,32,0.888888888888889,NA,NA
+"dense","svd","medium","warm",1024,128,0,0,0,"dense","opencl","svd",TRUE,"cold supported","opencl","cold","ok",NA,7,32,32,1,NA,NA
+"dense","svd","small","cold",256,32,0,0,0,"dense","arrayfire","svd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,5.99999999999978,2,0.333333333333346,NA,NA
+"dense","svd","small","cold",256,32,0,0,0,"dense","cpu","svd",TRUE,"cold supported","cpu","cold","ok",NA,7,2,2,1,NA,NA
+"dense","svd","small","cold",256,32,0,NA,NA,NA,"metal","svd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","svd","small","cold",256,32,0,0,0,"dense","mlx","svd",TRUE,"cold supported","mlx","cold","ok",NA,7,4,2,0.5,NA,NA
+"dense","svd","small","cold",256,32,0,0,0,"dense","opencl","svd",TRUE,"cold supported","opencl","cold","ok",NA,7,2.00000000000022,2,0.999999999999889,NA,NA
+"dense","svd","small","warm",256,32,0,0,0,"dense","arrayfire","svd",TRUE,"cold supported","arrayfire","cold","ok",NA,7,4.99999999999989,1.00000000000011,0.200000000000027,NA,NA
+"dense","svd","small","warm",256,32,0,0,0,"dense","cpu","svd",TRUE,"cold supported","cpu","cold","ok",NA,7,1.00000000000011,1.00000000000011,1,NA,NA
+"dense","svd","small","warm",256,32,0,NA,NA,NA,"metal","svd",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,NA,NA,NA,NA
+"dense","svd","small","warm",256,32,0,0,0,"dense","mlx","svd",TRUE,"cold supported","mlx","cold","ok",NA,7,2.00000000000022,1.00000000000011,0.5,NA,NA
+"dense","svd","small","warm",256,32,0,0,0,"dense","opencl","svd",TRUE,"cold supported","opencl","cold","ok",NA,7,1.00000000000033,1.00000000000011,0.999999999999778,NA,NA
+"sparse","block_lanczos","large","cold",8000,2000,8,0.05,800000,"sparse","arrayfire","block_lanczos",TRUE,"iterative supported","arrayfire","iterative","ok",NA,3,301,189,0.627906976744185,NA,NA
+"sparse","block_lanczos","large","cold",8000,2000,8,0.05,800000,"sparse","cpu","block_lanczos",NA,NA,"cpu","iterative","ok",NA,3,189,189,1,NA,NA
+"sparse","block_lanczos","large","cold",8000,2000,8,0.05,800000,"sparse","metal","block_lanczos",TRUE,"iterative supported","metal","iterative","ok",NA,3,157,189,1.20382165605095,NA,NA
+"sparse","block_lanczos","large","cold",8000,2000,8,0.05,800000,"sparse","mlx","block_lanczos",TRUE,"iterative supported","mlx","iterative","ok",NA,3,220,189,0.859090909090906,NA,NA
+"sparse","block_lanczos","large","cold",8000,2000,8,0.05,800000,"sparse","opencl","block_lanczos",TRUE,"iterative supported","opencl","iterative","ok",NA,3,125,189,1.512,NA,NA
+"sparse","block_lanczos","large","warm",8000,2000,8,0.05,800000,"sparse","arrayfire","block_lanczos",TRUE,"iterative supported","arrayfire","iterative","ok",NA,3,294,183,0.622448979591837,NA,NA
+"sparse","block_lanczos","large","warm",8000,2000,8,0.05,800000,"sparse","cpu","block_lanczos",NA,NA,"cpu","iterative","ok",NA,3,183,183,1,NA,NA
+"sparse","block_lanczos","large","warm",8000,2000,8,0.05,800000,"sparse","metal","block_lanczos",TRUE,"iterative supported","metal","iterative","ok",NA,3,112,183,1.63392857142857,NA,NA
+"sparse","block_lanczos","large","warm",8000,2000,8,0.05,800000,"sparse","mlx","block_lanczos",TRUE,"iterative supported","mlx","iterative","ok",NA,3,210,183,0.871428571428571,NA,NA
+"sparse","block_lanczos","large","warm",8000,2000,8,0.05,800000,"sparse","opencl","block_lanczos",TRUE,"iterative supported","opencl","iterative","ok",NA,3,128,183,1.4296875,NA,NA
+"sparse","block_lanczos","medium","cold",4000,1000,8,0.05,200000,"sparse","arrayfire","block_lanczos",TRUE,"iterative supported","arrayfire","iterative","ok",NA,3,97,64.9999999999999,0.670103092783505,NA,NA
+"sparse","block_lanczos","medium","cold",4000,1000,8,0.05,200000,"sparse","cpu","block_lanczos",NA,NA,"cpu","iterative","ok",NA,3,64.9999999999999,64.9999999999999,1,NA,NA
+"sparse","block_lanczos","medium","cold",4000,1000,8,0.05,200000,"sparse","metal","block_lanczos",TRUE,"iterative supported","metal","iterative","ok",NA,3,68.9999999999999,64.9999999999999,0.942028985507246,NA,NA
+"sparse","block_lanczos","medium","cold",4000,1000,8,0.05,200000,"sparse","mlx","block_lanczos",TRUE,"iterative supported","mlx","iterative","ok",NA,3,79.0000000000002,64.9999999999999,0.82278481012658,NA,NA
+"sparse","block_lanczos","medium","cold",4000,1000,8,0.05,200000,"sparse","opencl","block_lanczos",TRUE,"iterative supported","opencl","iterative","ok",NA,3,70.0000000000003,64.9999999999999,0.928571428571424,NA,NA
+"sparse","block_lanczos","medium","warm",4000,1000,8,0.05,200000,"sparse","arrayfire","block_lanczos",TRUE,"iterative supported","arrayfire","iterative","ok",NA,3,95.0000000000002,62.0000000000003,0.65263157894737,NA,NA
+"sparse","block_lanczos","medium","warm",4000,1000,8,0.05,200000,"sparse","cpu","block_lanczos",NA,NA,"cpu","iterative","ok",NA,3,62.0000000000003,62.0000000000003,1,NA,NA
+"sparse","block_lanczos","medium","warm",4000,1000,8,0.05,200000,"sparse","metal","block_lanczos",TRUE,"iterative supported","metal","iterative","ok",NA,3,57.9999999999998,62.0000000000003,1.06896551724139,NA,NA
+"sparse","block_lanczos","medium","warm",4000,1000,8,0.05,200000,"sparse","mlx","block_lanczos",TRUE,"iterative supported","mlx","iterative","ok",NA,3,77,62.0000000000003,0.805194805194809,NA,NA
+"sparse","block_lanczos","medium","warm",4000,1000,8,0.05,200000,"sparse","opencl","block_lanczos",TRUE,"iterative supported","opencl","iterative","ok",NA,3,63.0000000000002,62.0000000000003,0.984126984126986,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.001,16000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.005,80000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.01,160000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.05,800000,"sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,7.99999999999912,NA,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.001,16000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.005,80000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,4.999999999999,NA,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.01,160000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,6.00000000000023,NA,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.05,800000,"sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,22.9999999999997,NA,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.001,16000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.005,80000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.01,160000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.05,800000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,7.99999999999912,7.99999999999912,1,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.001,16000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.005,80000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,4.999999999999,4.999999999999,1,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.01,160000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,6.00000000000023,6.00000000000023,1,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.05,800000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,22.9999999999997,22.9999999999997,1,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.001,16000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,4.99999999999989,3.00000000000011,0.600000000000036,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.005,80000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,8.99999999999945,3.00000000000011,0.333333333333366,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.01,160000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,12.0000000000005,3.00000000000011,0.25,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.05,800000,"sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,44.9999999999999,7.99999999999912,0.177777777777758,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.001,16000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,6.99999999999967,3.00000000000011,0.428571428571465,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.005,80000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,11.000000000001,4.999999999999,0.454545454545322,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.01,160000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,14.9999999999988,6.00000000000023,0.400000000000047,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.05,800000,"sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,47.0000000000006,22.9999999999997,0.489361702127647,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.001,16000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4.00000000000045,3.00000000000011,0.749999999999944,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.005,80000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4.99999999999989,3.00000000000011,0.600000000000036,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.01,160000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,6.00000000000023,3.00000000000011,0.5,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.05,800000,"sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,19.9999999999996,7.99999999999912,0.399999999999964,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.001,16000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,5.99999999999934,3.00000000000011,0.500000000000074,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.005,80000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,9.00000000000034,4.999999999999,0.555555555555424,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.01,160000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,12.0000000000005,6.00000000000023,0.5,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.05,800000,"sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,38.0000000000003,22.9999999999997,0.605263157894725,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.001,16000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,17.0000000000003,3.00000000000011,0.176470588235297,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.005,80000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,8.99999999999856,3.00000000000011,0.333333333333399,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.01,160000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,9.99999999999979,3.00000000000011,0.300000000000018,NA,NA
+"sparse","spmm","large","cold",8000,2000,8,0.05,800000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,16.9999999999995,7.99999999999912,0.470588235294081,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.001,16000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,9.99999999999979,3.00000000000011,0.300000000000018,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.005,80000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,9.99999999999979,4.999999999999,0.499999999999911,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.01,160000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,9.00000000000034,6.00000000000023,0.666666666666667,NA,NA
+"sparse","spmm","large","cold",8000,2000,32,0.05,800000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,19.9999999999996,22.9999999999997,1.15000000000001,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.001,16000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.005,80000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.01,160000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,4.00000000000045,2.00000000000067,0.500000000000111,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.05,800000,"sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,14.0000000000002,6.99999999999967,0.499999999999968,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.001,16000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.005,80000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,7.00000000000056,3.00000000000011,0.42857142857141,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.01,160000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,11.9999999999996,5.00000000000078,0.416666666666747,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.05,800000,"sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,52.0000000000005,20.999999999999,0.403846153846131,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.001,16000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.005,80000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.01,160000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,2.00000000000067,2.00000000000067,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.05,800000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,6.99999999999967,6.99999999999967,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.001,16000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.005,80000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.01,160000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,5.00000000000078,5.00000000000078,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.05,800000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,20.999999999999,20.999999999999,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.001,16000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.005,80000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,2.00000000000067,1.99999999999978,0.999999999999556,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.01,160000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999889,2.00000000000067,1.00000000000089,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.05,800000,"sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999889,6.99999999999967,3.50000000000178,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.001,16000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,4.00000000000045,1.99999999999978,0.499999999999889,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.005,80000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,3.99999999999956,3.00000000000011,0.750000000000111,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.01,160000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,3.99999999999956,5.00000000000078,1.25000000000033,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.05,800000,"sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,4.00000000000134,20.999999999999,5.249999999998,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.001,16000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,0.999999999999446,1.00000000000033,1.00000000000089,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.005,80000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,2.00000000000067,1.99999999999978,0.999999999999556,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.01,160000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,3.00000000000011,2.00000000000067,0.666666666666864,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.05,800000,"sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,8.99999999999856,6.99999999999967,0.777777777777865,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.001,16000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.005,80000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,4.999999999999,3.00000000000011,0.600000000000142,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.01,160000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,7.99999999999912,5.00000000000078,0.625000000000167,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.05,800000,"sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,27.000000000001,20.999999999999,0.777777777777712,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.001,16000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.005,80000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,2.00000000000067,1.99999999999978,0.999999999999556,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.01,160000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,2.00000000000067,2.00000000000067,1,NA,NA
+"sparse","spmm","large","resident",8000,2000,8,0.05,800000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,3.00000000000011,6.99999999999967,2.33333333333314,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.001,16000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999889,1.99999999999978,1.00000000000044,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.005,80000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,2.00000000000067,3.00000000000011,1.49999999999956,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.01,160000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,3.00000000000011,5.00000000000078,1.66666666666686,NA,NA
+"sparse","spmm","large","resident",8000,2000,32,0.05,800000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,4.00000000000134,20.999999999999,5.249999999998,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.001,4000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,2,NA,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.005,20000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,2.00000000000022,NA,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.01,40000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.05,200000,"sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.001,4000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.005,20000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.01,40000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.99999999999956,NA,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.05,200000,"sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,4.99999999999989,NA,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.001,4000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,2,2,1,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.005,20000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,2.00000000000022,2.00000000000022,1,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.01,40000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.05,200000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.001,4000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.005,20000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.01,40000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.99999999999956,3.99999999999956,1,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.05,200000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,4.99999999999989,4.99999999999989,1,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.001,4000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,4,2,0.5,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.005,20000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,4.99999999999989,2.00000000000022,0.400000000000053,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.01,40000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,6.00000000000023,3.00000000000011,0.5,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.05,200000,"sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,14.0000000000002,3.00000000000011,0.214285714285719,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.001,4000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,4.99999999999989,3.00000000000011,0.600000000000036,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.005,20000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,6.00000000000023,3.00000000000011,0.5,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.01,40000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,6.99999999999967,3.99999999999956,0.571428571428535,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.05,200000,"sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,14.9999999999997,4.99999999999989,0.333333333333333,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.001,4000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4,2,0.5,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.005,20000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4,2.00000000000022,0.500000000000056,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.01,40000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4.00000000000045,3.00000000000011,0.749999999999944,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.05,200000,"sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,7.00000000000056,3.00000000000011,0.42857142857141,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.001,4000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4,3.00000000000011,0.750000000000028,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.005,20000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4.99999999999989,3.00000000000011,0.600000000000036,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.01,40000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,6.99999999999967,3.99999999999956,0.571428571428535,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.05,200000,"sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,12.0000000000005,4.99999999999989,0.416666666666642,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.001,4000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,8.00000000000001,2,0.25,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.005,20000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,7.00000000000012,2.00000000000022,0.285714285714313,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.01,40000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,8.99999999999945,3.00000000000011,0.333333333333366,NA,NA
+"sparse","spmm","medium","cold",4000,1000,8,0.05,200000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,11.0000000000001,3.00000000000011,0.27272727272728,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.001,4000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,5.99999999999978,3.00000000000011,0.500000000000037,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.005,20000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,8.00000000000001,3.00000000000011,0.375000000000014,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.01,40000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,8.99999999999945,3.99999999999956,0.444444444444422,NA,NA
+"sparse","spmm","medium","cold",4000,1000,32,0.05,200000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,12.0000000000005,4.99999999999989,0.416666666666642,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.001,4000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,0.99999999999989,1.00000000000011,1.00000000000022,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.005,20000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,0.99999999999989,1.00000000000033,1.00000000000044,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.01,40000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.05,200000,"sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,4.00000000000045,1.99999999999978,0.499999999999889,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.001,4000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.005,20000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,2.00000000000022,1.99999999999978,0.999999999999778,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.01,40000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,4,1.99999999999978,0.499999999999944,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.05,200000,"sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,14.0000000000002,3.99999999999956,0.285714285714249,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.001,4000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.00000000000011,1.00000000000011,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.005,20000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.01,40000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.05,200000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.001,4000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.005,20000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.01,40000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.05,200000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.99999999999956,3.99999999999956,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.001,4000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,2.00000000000022,1.00000000000011,0.5,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.005,20000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.01,40000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.05,200000,"sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.001,4000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.005,20000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,2.00000000000067,1.99999999999978,0.999999999999556,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.01,40000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.05,200000,"sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,2.99999999999923,3.99999999999956,1.33333333333353,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.001,4000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,0.99999999999989,1.00000000000011,1.00000000000022,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.005,20000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,0.99999999999989,1.00000000000033,1.00000000000044,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.01,40000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.05,200000,"sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.001,4000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,2.00000000000022,1.00000000000033,0.500000000000111,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.005,20000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.01,40000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,3.00000000000011,1.99999999999978,0.666666666666568,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.05,200000,"sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,8.00000000000001,3.99999999999956,0.499999999999944,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.001,4000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.00000000000011,0.500000000000111,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.005,20000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.01,40000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","medium","resident",4000,1000,8,0.05,200000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.001,4000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.005,20000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.01,40000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmm","medium","resident",4000,1000,32,0.05,200000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,3.00000000000011,3.99999999999956,1.33333333333314,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.001,16000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,1.99999999999978,NA,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.005,80000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.01,160000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.05,800000,"sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,4.00000000000045,NA,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.001,16000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.005,80000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.01,160000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.05,800000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,4.00000000000045,4.00000000000045,1,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.001,16000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,4.99999999999989,1.99999999999978,0.399999999999964,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.005,80000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,8.00000000000001,3.00000000000011,0.375000000000014,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.01,160000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,12.0000000000005,3.00000000000011,0.25,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.05,800000,"sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,44.0000000000005,4.00000000000045,0.0909090909091001,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.001,16000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4.00000000000045,1.99999999999978,0.499999999999889,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.005,80000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4.00000000000045,3.00000000000011,0.749999999999944,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.01,160000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,6.00000000000023,3.00000000000011,0.5,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.05,800000,"sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,12.9999999999999,4.00000000000045,0.307692307692344,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.001,16000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,8.00000000000001,1.99999999999978,0.249999999999972,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.005,80000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,9.00000000000034,3.00000000000011,0.333333333333333,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.01,160000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,9.00000000000034,3.00000000000011,0.333333333333333,NA,NA
+"sparse","spmv","large","cold",8000,2000,1,0.05,800000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,16,4.00000000000045,0.250000000000028,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.001,16000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,0.99999999999989,1.00000000000033,1.00000000000044,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.005,80000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.01,160000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,0.99999999999989,1.99999999999978,2,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.05,800000,"sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,3.00000000000011,2.00000000000067,0.666666666666864,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.001,16000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.005,80000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.01,160000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.05,800000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,2.00000000000067,2.00000000000067,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.001,16000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.005,80000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.01,160000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.05,800000,"sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,2.00000000000067,1.00000000000044,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.001,16000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,0.999999999999446,1.00000000000033,1.00000000000089,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.005,80000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.01,160000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,1.00000000000033,1.99999999999978,1.99999999999911,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.05,800000,"sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,1.99999999999978,2.00000000000067,1.00000000000044,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.001,16000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.005,80000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.01,160000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmv","large","resident",8000,2000,1,0.05,800000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,2.00000000000067,1.00000000000044,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.001,4000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,2,NA,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.005,20000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,2.00000000000022,NA,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.01,40000,"ultra_sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,1.99999999999978,NA,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.05,200000,"sparse","arrayfire","matmul",FALSE,"op unsupported","cpu","cold","unsupported","op unsupported",NA,NA,3.00000000000011,NA,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.001,4000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,2,2,1,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.005,20000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,2.00000000000022,2.00000000000022,1,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.01,40000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.99999999999978,1.99999999999978,1,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.05,200000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,3.00000000000011,3.00000000000011,1,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.001,4000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,4,2,0.5,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.005,20000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,4,2.00000000000022,0.500000000000056,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.01,40000,"ultra_sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,5.99999999999978,1.99999999999978,0.333333333333309,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.05,200000,"sparse","metal","matmul",TRUE,"cold supported","metal","cold","ok",NA,5,13.9999999999998,3.00000000000011,0.214285714285726,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.001,4000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4,2,0.5,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.005,20000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4,2.00000000000022,0.500000000000056,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.01,40000,"ultra_sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,4,1.99999999999978,0.499999999999944,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.05,200000,"sparse","mlx","matmul",TRUE,"cold supported","mlx","cold","ok",NA,5,6.00000000000023,3.00000000000011,0.5,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.001,4000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,8.00000000000001,2,0.25,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.005,20000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,8.00000000000001,2.00000000000022,0.250000000000028,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.01,40000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,8.00000000000001,1.99999999999978,0.249999999999972,NA,NA
+"sparse","spmv","medium","cold",4000,1000,1,0.05,200000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,11.9999999999996,3.00000000000011,0.250000000000018,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.001,4000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,0.99999999999989,0.99999999999989,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.005,20000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,0.99999999999989,0.99999999999989,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.01,40000,"ultra_sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,0.99999999999989,0.99999999999989,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.05,200000,"sparse","arrayfire","matmul",TRUE,"resident supported","arrayfire","resident","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.001,4000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,0.99999999999989,0.99999999999989,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.005,20000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,0.99999999999989,0.99999999999989,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.01,40000,"ultra_sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,0.99999999999989,0.99999999999989,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.05,200000,"sparse","cpu","matmul",TRUE,"cold supported","cpu","cold","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.001,4000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,0.99999999999989,0.5,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.005,20000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,0.99999999999989,0.5,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.01,40000,"ultra_sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.00000000000033,0.99999999999989,0.999999999999556,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.05,200000,"sparse","metal","matmul",TRUE,"resident supported","metal","resident","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.001,4000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,0.99999999999989,0.99999999999989,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.005,20000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,0.99999999999989,0.99999999999989,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.01,40000,"ultra_sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,1.00000000000033,0.99999999999989,0.999999999999556,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.05,200000,"sparse","mlx","matmul",TRUE,"resident supported","mlx","resident","ok",NA,5,1.00000000000033,1.00000000000033,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.001,4000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,2.00000000000022,0.99999999999989,0.499999999999889,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.005,20000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,0.99999999999989,0.5,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.01,40000,"ultra_sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,0.99999999999989,0.99999999999989,1,NA,NA
+"sparse","spmv","medium","resident",4000,1000,1,0.05,200000,"sparse","opencl","matmul",TRUE,"cold supported","opencl","cold","ok",NA,5,1.99999999999978,1.00000000000033,0.500000000000222,NA,NA
+"sparse","svd_factor_subspace","large","cold",8000,2000,8,0.05,800000,"sparse","arrayfire","svd_factor_subspace",TRUE,"iterative supported","arrayfire","iterative","ok",NA,3,115,60.9999999999999,0.530434782608694,NA,NA
+"sparse","svd_factor_subspace","large","cold",8000,2000,8,0.05,800000,"sparse","cpu","svd_factor_subspace",NA,NA,"cpu","iterative","ok",NA,3,60.9999999999999,60.9999999999999,1,NA,NA
+"sparse","svd_factor_subspace","large","cold",8000,2000,8,0.05,800000,"sparse","metal","svd_factor_subspace",TRUE,"iterative supported","metal","iterative","ok",NA,3,71.0000000000002,60.9999999999999,0.859154929577462,NA,NA
+"sparse","svd_factor_subspace","large","cold",8000,2000,8,0.05,800000,"sparse","mlx","svd_factor_subspace",TRUE,"iterative supported","mlx","iterative","ok",NA,3,89,60.9999999999999,0.685393258426966,NA,NA
+"sparse","svd_factor_subspace","large","cold",8000,2000,8,0.05,800000,"sparse","opencl","svd_factor_subspace",TRUE,"iterative supported","opencl","iterative","ok",NA,3,44.9999999999999,60.9999999999999,1.35555555555556,NA,NA
+"sparse","svd_factor_subspace","large","warm",8000,2000,8,0.05,800000,"sparse","arrayfire","svd_factor_subspace",TRUE,"iterative supported","arrayfire","iterative","ok",NA,3,114,58.9999999999997,0.517543859649119,NA,NA
+"sparse","svd_factor_subspace","large","warm",8000,2000,8,0.05,800000,"sparse","cpu","svd_factor_subspace",NA,NA,"cpu","iterative","ok",NA,3,58.9999999999997,58.9999999999997,1,NA,NA
+"sparse","svd_factor_subspace","large","warm",8000,2000,8,0.05,800000,"sparse","metal","svd_factor_subspace",TRUE,"iterative supported","metal","iterative","ok",NA,3,30.0000000000002,58.9999999999997,1.96666666666664,NA,NA
+"sparse","svd_factor_subspace","large","warm",8000,2000,8,0.05,800000,"sparse","mlx","svd_factor_subspace",TRUE,"iterative supported","mlx","iterative","ok",NA,3,80.0000000000001,58.9999999999997,0.737499999999996,NA,NA
+"sparse","svd_factor_subspace","large","warm",8000,2000,8,0.05,800000,"sparse","opencl","svd_factor_subspace",TRUE,"iterative supported","opencl","iterative","ok",NA,3,42.0000000000003,58.9999999999997,1.40476190476189,NA,NA
+"sparse","svd_factor_subspace","medium","cold",4000,1000,8,0.05,200000,"sparse","arrayfire","svd_factor_subspace",TRUE,"iterative supported","arrayfire","iterative","ok",NA,3,36,18,0.5,NA,NA
+"sparse","svd_factor_subspace","medium","cold",4000,1000,8,0.05,200000,"sparse","cpu","svd_factor_subspace",NA,NA,"cpu","iterative","ok",NA,3,18,18,1,NA,NA
+"sparse","svd_factor_subspace","medium","cold",4000,1000,8,0.05,200000,"sparse","metal","svd_factor_subspace",TRUE,"iterative supported","metal","iterative","ok",NA,3,29.0000000000004,18,0.620689655172407,NA,NA
+"sparse","svd_factor_subspace","medium","cold",4000,1000,8,0.05,200000,"sparse","mlx","svd_factor_subspace",TRUE,"iterative supported","mlx","iterative","ok",NA,3,34.0000000000003,18,0.529411764705879,NA,NA
+"sparse","svd_factor_subspace","medium","cold",4000,1000,8,0.05,200000,"sparse","opencl","svd_factor_subspace",TRUE,"iterative supported","opencl","iterative","ok",NA,3,29.9999999999998,18,0.600000000000004,NA,NA
+"sparse","svd_factor_subspace","medium","warm",4000,1000,8,0.05,200000,"sparse","arrayfire","svd_factor_subspace",TRUE,"iterative supported","arrayfire","iterative","ok",NA,3,36,17.9999999999998,0.499999999999994,NA,NA
+"sparse","svd_factor_subspace","medium","warm",4000,1000,8,0.05,200000,"sparse","cpu","svd_factor_subspace",NA,NA,"cpu","iterative","ok",NA,3,17.9999999999998,17.9999999999998,1,NA,NA
+"sparse","svd_factor_subspace","medium","warm",4000,1000,8,0.05,200000,"sparse","metal","svd_factor_subspace",TRUE,"iterative supported","metal","iterative","ok",NA,3,17.9999999999998,17.9999999999998,1,NA,NA
+"sparse","svd_factor_subspace","medium","warm",4000,1000,8,0.05,200000,"sparse","mlx","svd_factor_subspace",TRUE,"iterative supported","mlx","iterative","ok",NA,3,30.9999999999997,17.9999999999998,0.580645161290322,NA,NA
+"sparse","svd_factor_subspace","medium","warm",4000,1000,8,0.05,200000,"sparse","opencl","svd_factor_subspace",TRUE,"iterative supported","opencl","iterative","ok",NA,3,24.9999999999999,17.9999999999998,0.719999999999994,NA,NA

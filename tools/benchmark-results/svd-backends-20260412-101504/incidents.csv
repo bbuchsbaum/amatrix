@@ -1,0 +1,4 @@
+"case","algorithm","backend","precision","status","reason","elapsed","rel_sv_err","iter","mprod","selected_backend","stringsAsFactors","cpu_reference_elapsed","speedup_vs_cpu","dispatch_state"
+"1000x800-k20","rsvd","cpu","strict","unsupported","backend lacks rsvd capability",NA,NA,NA,NA,NA,FALSE,NA,NA,"unsupported"
+"3000x1200-k40","rsvd","cpu","strict","unsupported","backend lacks rsvd capability",NA,NA,NA,NA,NA,FALSE,NA,NA,"unsupported"
+"500x400-k20","rsvd","cpu","strict","unsupported","backend lacks rsvd capability",NA,NA,NA,NA,NA,FALSE,NA,NA,"unsupported"
