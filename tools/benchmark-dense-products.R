@@ -1,5 +1,9 @@
 #!/usr/bin/env Rscript
 
+if (file.exists(file.path("tools", "benchmark-helpers.R"))) {
+  source(file.path("tools", "benchmark-helpers.R"), local = FALSE)
+}
+
 suppressPackageStartupMessages({
   if (requireNamespace("pkgload", quietly = TRUE) && file.exists("DESCRIPTION")) {
     pkgload::load_all(".", quiet = TRUE)
@@ -28,6 +32,9 @@ run_case <- function(n) {
   y_cpu <- adgeMatrix(y_host, preferred_backend = "cpu")
   x_mlx <- adgeMatrix(x_host, preferred_backend = "mlx")
   y_mlx <- adgeMatrix(y_host, preferred_backend = "mlx")
+
+  x_mlx <- prime_backend(x_mlx, "mlx")
+  y_mlx <- prime_backend(y_mlx, "mlx")
 
   bench::mark(
     cpu_matmul = { invisible(x_cpu %*% y_cpu) },

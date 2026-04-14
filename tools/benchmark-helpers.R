@@ -305,3 +305,20 @@ benchmark_system2_capture <- function(command, args) {
     status = attr(output, "status") %||% warned_status %||% 0L
   )
 }
+
+# ---------------------------------------------------------------------------
+# prime_backend: force host->device upload before timing begins
+# ---------------------------------------------------------------------------
+
+prime_backend <- function(obj, backend) {
+  if (identical(backend, "cpu") || is.null(backend)) {
+    return(invisible(obj))
+  }
+  tryCatch(
+    {
+      primed <- amatrix::amatrix_bind_resident(obj, backend = backend)
+      invisible(primed)
+    },
+    error = function(e) invisible(obj)
+  )
+}
