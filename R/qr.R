@@ -882,34 +882,34 @@ dim.amDenseQR <- function(x) {
   .amatrix_qr_source_dim(x)
 }
 
-#' @noRd
+#' @exportMethod qr.Q
 setMethod("qr.Q", signature(qr = "amQR"), function(qr, complete = FALSE) {
   .amatrix_rewrap_qr_result(qr, .amatrix_qr_q(qr, complete = complete))
 })
 
-#' @noRd
+#' @exportMethod qr.R
 setMethod("qr.R", signature(qr = "amQR"), function(qr, complete = FALSE) {
   .amatrix_rewrap_qr_result(qr, .amatrix_qr_r(qr, complete = complete))
 })
 
-#' @noRd
+#' @exportMethod qr.solve
 setMethod("qr.solve", signature(a = "amQR", b = "missing"), function(a, b, tol = 1e-07) {
   .amatrix_rewrap_qr_result(a, .amatrix_qr_solve_value(a, tol = tol))
 })
 
-#' @noRd
+#' @exportMethod qr.solve
 setMethod("qr.solve", signature(a = "amQR", b = "ANY"), function(a, b, tol = 1e-07) {
   b_mat <- as.matrix(.amatrix_host_arg(b))
   .amatrix_rewrap_qr_result(a, .amatrix_qr_solve_value(a, b = b_mat, tol = tol))
 })
 
-#' @noRd
+#' @exportMethod qr.coef
 setMethod("qr.coef", signature(qr = "amQR", y = "ANY"), function(qr, y) {
   y_mat <- as.matrix(.amatrix_host_arg(y))
   .amatrix_rewrap_qr_result(qr, .amatrix_qr_coef_value(qr, y_mat))
 })
 
-#' @noRd
+#' @exportMethod qr.qty
 setMethod("qr.qty", signature(qr = "amQR", y = "ANY"), function(qr, y) {
   y_mat <- as.matrix(.amatrix_host_arg(y))
   if (identical(.amatrix_qr_kind(qr), "mlx_compact_qr")) {
@@ -924,7 +924,7 @@ setMethod("qr.qty", signature(qr = "amQR", y = "ANY"), function(qr, y) {
   .amatrix_rewrap_qr_result(qr, qr.qty(.amatrix_qr_factor(qr), y_mat))
 })
 
-#' @noRd
+#' @exportMethod qr.qy
 setMethod("qr.qy", signature(qr = "amQR", y = "ANY"), function(qr, y) {
   y_mat <- as.matrix(.amatrix_host_arg(y))
   if (identical(.amatrix_qr_kind(qr), "mlx_compact_qr")) {
@@ -939,13 +939,13 @@ setMethod("qr.qy", signature(qr = "amQR", y = "ANY"), function(qr, y) {
   .amatrix_rewrap_qr_result(qr, qr.qy(.amatrix_qr_factor(qr), y_mat))
 })
 
-#' @noRd
+#' @exportMethod qr.fitted
 setMethod("qr.fitted", signature(qr = "amQR", y = "ANY"), function(qr, y, k = NULL) {
   y_mat <- as.matrix(.amatrix_host_arg(y))
   .amatrix_rewrap_qr_result(qr, .amatrix_qr_fitted_value(qr, y_mat, k = k))
 })
 
-#' @noRd
+#' @exportMethod qr.resid
 setMethod("qr.resid", signature(qr = "amQR", y = "ANY"), function(qr, y) {
   y_mat <- as.matrix(.amatrix_host_arg(y))
   .amatrix_rewrap_qr_result(qr, .amatrix_qr_resid_value(qr, y_mat))
