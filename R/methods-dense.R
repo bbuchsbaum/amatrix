@@ -271,13 +271,28 @@ setMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", drop = "log
 })
 
 #' @noRd
+setMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
+  am_subset(x, i, j, ..., drop = TRUE)
+})
+
+#' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "missing", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
 })
 
 #' @noRd
+setMethod("[", signature(x = "adgeMatrix", i = "missing", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
+  am_subset(x, i, j, ..., drop = TRUE)
+})
+
+#' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "index", j = "missing", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
   am_subset(x, i, j, ..., drop = drop)
+})
+
+#' @noRd
+setMethod("[", signature(x = "adgeMatrix", i = "index", j = "missing", drop = "missing"), function(x, i, j, ..., drop) {
+  am_subset(x, i, j, ..., drop = TRUE)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", value = "ANY"), function(x, i, j, ..., value) {
