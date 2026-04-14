@@ -73,7 +73,9 @@ test_that("fast mode prefers an available accelerator without session setters", 
     expect_equal(x@preferred_backend, "mlx")
     expect_equal(x@policy, "auto")
     expect_equal(x@precision, "fast")
-    expect_identical(plan$preferred, c("mlx", "auto", "cpu"))
+    # preferred_candidates (R/policy.R) now filters "auto" out of the
+    # preferred list so the resolved order is (preferred_backend, cpu).
+    expect_identical(plan$preferred, c("mlx", "cpu"))
     expect_identical(plan$chosen, "mlx")
   })
 })

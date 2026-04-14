@@ -156,7 +156,12 @@ test_that("amatrix-planning-03: CPU fallback preserves original supported_cold=F
       # candidate_summary string is consistent with what the entries report.
       summary_row <- amatrix_backend_matrix(x, ops = "svd")
       expect_identical(summary_row$chosen, "cpu")
-      expect_false(summary_row$cpu_fallback)  # BUG: cpu IS the preferred backend here, so this should be FALSE
+      # cpu_fallback semantics: TRUE iff cpu was chosen and the first
+      # preference was not cpu. See amatrix-15n in
+      # test-regression-backend-preference-summary.R for the authoritative
+      # contract. In this scenario preferred[[1]] == "planning_no_svd", so
+      # cpu_fallback is TRUE.
+      expect_true(summary_row$cpu_fallback)
     }
   )
 })

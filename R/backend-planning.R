@@ -415,15 +415,34 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
     do.call(backend_method, c(list(x = amatrix_materialize_host(x)), args)),
     error = function(e) {
       if (!identical(chosen_name, "cpu")) {
-        # (1) Re-signal the original backend condition. signalCondition does
-        # not unwind the stack — outer calling handlers observe it and return.
-        tryCatch(signalCondition(e), error = function(ee) NULL)
-
         reason <- sprintf("%s runtime error: %s", method, conditionMessage(e))
 
-        # (2) Signal a classed amatrix_fallback condition (not an error).
+        # (1) Emit a fresh observation condition carrying the ORIGINAL classes
+        # of the backend error. Must not inherit from "error" because (a) we
+        # have already handled the real error in this tryCatch, and (b) R's
+        # signalCondition falls through to stop() on unhandled error
+        # conditions and does not reach outer withCallingHandlers from inside
+        # a consumed tryCatch error-handler frame. Stripping "error" gives us
+        # a plain calling-handler-only signal.
+        orig_classes <- setdiff(class(e), c("error", "simpleError", "condition"))
+        if (length(orig_classes) > 0L) {
+          observed_cond <- structure(
+            class = c(orig_classes, "amatrix_observed_backend_error", "condition"),
+            list(
+              message = conditionMessage(e),
+              call = NULL,
+              op = op,
+              backend = chosen_name,
+              original_condition = e
+            )
+          )
+          tryCatch(signalCondition(observed_cond), error = function(ee) NULL)
+        }
+
+        # (2) Signal a classed amatrix_fallback condition (not an error) so
+        # observers can catch fallback events generically.
         fallback_cond <- structure(
-          class = c("amatrix_fallback", "message", "condition"),
+          class = c("amatrix_fallback", "condition"),
           list(
             message = reason,
             call = NULL,
