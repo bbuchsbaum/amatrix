@@ -313,6 +313,39 @@
   invisible(NULL)
 }
 
+.amatrix_release_resident_key <- function(backend_name, key, sparse = FALSE) {
+  if (is.null(key) || !nzchar(key)) {
+    return(invisible(NULL))
+  }
+
+  backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
+  if (is.null(backend) || !.amatrix_backend_residency_capable(backend)) {
+    return(invisible(NULL))
+  }
+
+  if (isTRUE(sparse)) {
+    if (is.function(backend$sparse_resident_has) &&
+        is.function(backend$sparse_resident_drop) &&
+        isTRUE(backend$sparse_resident_has(key))) {
+      try(backend$sparse_resident_drop(key), silent = TRUE)
+    }
+    return(invisible(NULL))
+  }
+
+  if (is.function(backend$resident_has) &&
+      is.function(backend$resident_drop) &&
+      isTRUE(backend$resident_has(key))) {
+    try(backend$resident_drop(key), silent = TRUE)
+  }
+
+  invisible(NULL)
+}
+
+.amatrix_cleanup_temp_resident_safe <- function(args, backend_name) {
+  try(.amatrix_cleanup_temp_resident(args, backend_name), silent = TRUE)
+  invisible(NULL)
+}
+
 # ── Deferred host materialization helpers ──────────────────────────────────
 # When active, resident ops skip the GPU→CPU download.  The result is wrapped
 # in a deferred adgeMatrix whose @x holds NaN until the first host access
@@ -331,6 +364,15 @@
 # `resident` is the list(value, backend, resident_key) from _try_resident_*.
 # `out_dim` is required when resident$value is NULL (deferred mode).
 .amatrix_resident_wrap <- function(template, resident, out_dim = NULL) {
+  release_output <- !is.null(resident$backend) &&
+    !is.null(resident$resident_key) &&
+    nzchar(resident$resident_key)
+  on.exit({
+    if (release_output) {
+      .amatrix_release_resident_key(resident$backend, resident$resident_key)
+    }
+  }, add = TRUE)
+
   if (is.null(resident$value) && !is.null(out_dim)) {
     # Deferred path
     dn <- if (inherits(template, "aMatrix")) template@Dimnames else list(NULL, NULL)
@@ -344,11 +386,15 @@
       policy    = template@policy,
       precision = template@precision
     )
-    return(.amatrix_bind_resident(obj, resident$backend, resident$resident_key))
+    bound <- .amatrix_bind_resident(obj, resident$backend, resident$resident_key)
+    release_output <- FALSE
+    return(bound)
   }
   # Eager path
   value <- .amatrix_rewrap_like(template, resident$value)
-  .amatrix_bind_resident(value, resident$backend, resident$resident_key)
+  bound <- .amatrix_bind_resident(value, resident$backend, resident$resident_key)
+  release_output <- FALSE
+  bound
 }
 
 .amatrix_try_resident_matmul <- function(x, y, backend_name) {
@@ -408,13 +454,20 @@
 
   defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
+  release_output <- TRUE
+  on.exit({
+    if (release_output) {
+      .amatrix_release_resident_key(backend_name, out_key)
+    }
+    .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
+  }, add = TRUE)
   value <- tryCatch(
     backend$matmul_resident(lhs$key, rhs$key, out_key, defer = defer),
-    error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+    error = function(e) NULL
   )
-  .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
   if (is.null(value)) return(NULL)
 
+  release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
@@ -434,22 +487,22 @@
 
   defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
-  ok <- FALSE
-  value <- tryCatch(
-    {
-      ok <- TRUE
-      backend$dense_sparse_matmul_resident_key(lhs$key, rhs$key, out_key, defer = defer)
-    },
-    error = function(e) {
-      try(backend$resident_drop(out_key), silent = TRUE)
-      NULL
+  release_output <- TRUE
+  on.exit({
+    if (release_output) {
+      .amatrix_release_resident_key(backend_name, out_key)
     }
+    .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
+  }, add = TRUE)
+  value <- tryCatch(
+    backend$dense_sparse_matmul_resident_key(lhs$key, rhs$key, out_key, defer = defer),
+    error = function(e) NULL
   )
-  .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
-  if (!isTRUE(ok)) {
+  if (is.null(value)) {
     return(NULL)
   }
 
+  release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
@@ -469,19 +522,19 @@
       if (!is.null(rhs) && !isTRUE(rhs$sparse)) {
         defer <- .amatrix_defer_host_active()
         out_key <- .amatrix_next_resident_key(backend_name)
-        ok <- FALSE
-        value <- tryCatch(
-          {
-            ok <- TRUE
-            backend$spmm_resident_key(lhs$key, rhs$key, out_key, trans_lhs = TRUE, defer = defer)
-          },
-          error = function(e) {
-            try(backend$resident_drop(out_key), silent = TRUE)
-            NULL
+        release_output <- TRUE
+        on.exit({
+          if (release_output) {
+            .amatrix_release_resident_key(backend_name, out_key)
           }
+          .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
+        }, add = TRUE)
+        value <- tryCatch(
+          backend$spmm_resident_key(lhs$key, rhs$key, out_key, trans_lhs = TRUE, defer = defer),
+          error = function(e) NULL
         )
-        .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
-        if (isTRUE(ok)) {
+        if (!is.null(value)) {
+          release_output <- FALSE
           return(list(value = value, backend = backend_name, resident_key = out_key))
         }
       } else {
@@ -513,13 +566,20 @@
   defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
   rhs_key <- if (is.null(rhs)) NULL else rhs$key
+  release_output <- TRUE
+  on.exit({
+    if (release_output) {
+      .amatrix_release_resident_key(backend_name, out_key)
+    }
+    .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
+  }, add = TRUE)
   value <- tryCatch(
     backend$crossprod_resident(lhs$key, rhs_key, out_key, defer = defer),
-    error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+    error = function(e) NULL
   )
-  .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
   if (is.null(value)) return(NULL)
 
+  release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
@@ -540,19 +600,19 @@
       if (!is.null(rhs_t) && !isTRUE(rhs_t$sparse)) {
         defer <- .amatrix_defer_host_active()
         out_key <- .amatrix_next_resident_key(backend_name)
-        ok <- FALSE
-        value <- tryCatch(
-          {
-            ok <- TRUE
-            backend$spmm_resident_key(lhs$key, rhs_t$key, out_key, trans_lhs = FALSE, defer = defer)
-          },
-          error = function(e) {
-            try(backend$resident_drop(out_key), silent = TRUE)
-            NULL
+        release_output <- TRUE
+        on.exit({
+          if (release_output) {
+            .amatrix_release_resident_key(backend_name, out_key)
           }
+          .amatrix_cleanup_temp_resident_safe(list(lhs, rhs_t), backend_name)
+        }, add = TRUE)
+        value <- tryCatch(
+          backend$spmm_resident_key(lhs$key, rhs_t$key, out_key, trans_lhs = FALSE, defer = defer),
+          error = function(e) NULL
         )
-        .amatrix_cleanup_temp_resident(list(lhs, rhs_t), backend_name)
-        if (isTRUE(ok)) {
+        if (!is.null(value)) {
+          release_output <- FALSE
           return(list(value = value, backend = backend_name, resident_key = out_key))
         }
       } else {
@@ -584,13 +644,20 @@
   defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
   rhs_key <- if (is.null(rhs)) NULL else rhs$key
+  release_output <- TRUE
+  on.exit({
+    if (release_output) {
+      .amatrix_release_resident_key(backend_name, out_key)
+    }
+    .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
+  }, add = TRUE)
   value <- tryCatch(
     backend$tcrossprod_resident(lhs$key, rhs_key, out_key, defer = defer),
-    error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+    error = function(e) NULL
   )
-  .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
   if (is.null(value)) return(NULL)
 
+  release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
@@ -633,19 +700,23 @@
 
   defer <- .amatrix_defer_host_active()
   out_key <- .amatrix_next_resident_key(backend_name)
+  release_output <- TRUE
+  on.exit({
+    if (release_output) {
+      .amatrix_release_resident_key(backend_name, out_key)
+    }
+    .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
+  }, add = TRUE)
   value <- tryCatch(
     backend$ewise_resident(lhs$key, rhs_payload, op, out_key, defer = defer),
-    error = function(e) {
-      try(backend$resident_drop(out_key), silent = TRUE)
-      NULL
-    }
+    error = function(e) NULL
   )
-  .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
 
   if (is.null(value)) {
     return(NULL)
   }
 
+  release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
@@ -677,12 +748,18 @@
   lhs <- .amatrix_prepare_resident_arg(a, backend_name, promote_amatrix = TRUE)
   if (is.null(lhs)) return(NULL)
   out_key <- .amatrix_next_resident_key(backend_name)
+  release_output <- TRUE
   if (is.null(b)) {
+    on.exit({
+      if (release_output) {
+        .amatrix_release_resident_key(backend_name, out_key)
+      }
+      .amatrix_cleanup_temp_resident_safe(list(lhs), backend_name)
+    }, add = TRUE)
     value <- tryCatch(
       backend$solve_resident(lhs$key, NULL, out_key),
-      error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+      error = function(e) NULL
     )
-    .amatrix_cleanup_temp_resident(list(lhs), backend_name)
   } else {
     b_arg <- if (is.vector(b)) matrix(b, ncol = 1L) else b
     rhs <- .amatrix_prepare_resident_arg(b_arg, backend_name, promote_amatrix = TRUE)
@@ -690,13 +767,19 @@
       .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       return(NULL)
     }
+    on.exit({
+      if (release_output) {
+        .amatrix_release_resident_key(backend_name, out_key)
+      }
+      .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
+    }, add = TRUE)
     value <- tryCatch(
       backend$solve_resident(lhs$key, rhs$key, out_key),
-      error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+      error = function(e) NULL
     )
-    .amatrix_cleanup_temp_resident(list(lhs, rhs), backend_name)
   }
   if (is.null(value)) return(NULL)
+  release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
@@ -707,12 +790,19 @@
   lhs <- .amatrix_prepare_resident_arg(x, backend_name, promote_amatrix = TRUE)
   if (is.null(lhs)) return(NULL)
   out_key <- .amatrix_next_resident_key(backend_name)
+  release_output <- TRUE
+  on.exit({
+    if (release_output) {
+      .amatrix_release_resident_key(backend_name, out_key)
+    }
+    .amatrix_cleanup_temp_resident_safe(list(lhs), backend_name)
+  }, add = TRUE)
   value <- tryCatch(
     backend$chol_resident(lhs$key, out_key),
-    error = function(e) { try(backend$resident_drop(out_key), silent = TRUE); NULL }
+    error = function(e) NULL
   )
-  .amatrix_cleanup_temp_resident(list(lhs), backend_name)
   if (is.null(value)) return(NULL)
+  release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
@@ -987,7 +1077,16 @@ am_transpose <- function(x) {
 }
 
 am_subset <- function(x, i, j, ..., drop = TRUE) {
-  value <- amatrix_materialize_host(x)[i, j, ..., drop = drop]
+  host_x <- amatrix_materialize_host(x)
+  value <- if (missing(i) && missing(j)) {
+    host_x[..., drop = drop]
+  } else if (missing(j)) {
+    host_x[i, , ..., drop = drop]
+  } else if (missing(i)) {
+    host_x[, j, ..., drop = drop]
+  } else {
+    host_x[i, j, ..., drop = drop]
+  }
   .amatrix_rewrap_value(x, value)
 }
 
@@ -1298,21 +1397,28 @@ crossprod_weighted <- function(X, w) {
       if (!is.null(lhs)) {
         scaled_key <- .amatrix_next_resident_key(backend_name)
         out_key    <- .amatrix_next_resident_key(backend_name)
+        release_scaled <- TRUE
+        release_output <- TRUE
+        on.exit({
+          if (release_output) {
+            .amatrix_release_resident_key(backend_name, out_key)
+          }
+          if (release_scaled) {
+            .amatrix_release_resident_key(backend_name, scaled_key)
+          }
+          .amatrix_cleanup_temp_resident_safe(list(lhs), backend_name)
+        }, add = TRUE)
         result <- tryCatch({
           backend$broadcast_ewise_resident(lhs$key, sqrt_w, 1L, "*", scaled_key)
           val <- backend$crossprod_resident(scaled_key, NULL, out_key)
-          backend$resident_drop(scaled_key)
-          .amatrix_cleanup_temp_resident(list(lhs), backend_name)
           val
         }, error = function(e) NULL)
         if (!is.null(result)) {
           value <- .amatrix_rewrap_value(X_arg, result)
-          return(.amatrix_bind_resident(value, backend_name, out_key))
+          bound <- .amatrix_bind_resident(value, backend_name, out_key)
+          release_output <- FALSE
+          return(bound)
         }
-        # Clean up on failure
-        try(backend$resident_drop(scaled_key), silent = TRUE)
-        try(backend$resident_drop(out_key), silent = TRUE)
-        .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       }
     }
   }
@@ -1360,20 +1466,28 @@ tcrossprod_weighted <- function(X, w) {
       if (!is.null(lhs)) {
         scaled_key <- .amatrix_next_resident_key(backend_name)
         out_key    <- .amatrix_next_resident_key(backend_name)
+        release_scaled <- TRUE
+        release_output <- TRUE
+        on.exit({
+          if (release_output) {
+            .amatrix_release_resident_key(backend_name, out_key)
+          }
+          if (release_scaled) {
+            .amatrix_release_resident_key(backend_name, scaled_key)
+          }
+          .amatrix_cleanup_temp_resident_safe(list(lhs), backend_name)
+        }, add = TRUE)
         result <- tryCatch({
           backend$broadcast_ewise_resident(lhs$key, sqrt_w, 1L, "*", scaled_key)
           val <- backend$tcrossprod_resident(scaled_key, NULL, out_key)
-          backend$resident_drop(scaled_key)
-          .amatrix_cleanup_temp_resident(list(lhs), backend_name)
           val
         }, error = function(e) NULL)
         if (!is.null(result)) {
           value <- .amatrix_rewrap_value(X_arg, result)
-          return(.amatrix_bind_resident(value, backend_name, out_key))
+          bound <- .amatrix_bind_resident(value, backend_name, out_key)
+          release_output <- FALSE
+          return(bound)
         }
-        try(backend$resident_drop(scaled_key), silent = TRUE)
-        try(backend$resident_drop(out_key), silent = TRUE)
-        .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       }
     }
   }
@@ -1431,30 +1545,42 @@ xty_weighted <- function(X, w, y) {
         x_scaled_key <- .amatrix_next_resident_key(backend_name)
         y_scaled_key <- .amatrix_next_resident_key(backend_name)
         out_key      <- .amatrix_next_resident_key(backend_name)
+        y_key <- .amatrix_next_resident_key(backend_name)
+        release_x_scaled <- TRUE
+        release_y_scaled <- TRUE
+        release_y <- TRUE
+        release_output <- TRUE
+        on.exit({
+          if (release_output) {
+            .amatrix_release_resident_key(backend_name, out_key)
+          }
+          if (release_y_scaled) {
+            .amatrix_release_resident_key(backend_name, y_scaled_key)
+          }
+          if (release_x_scaled) {
+            .amatrix_release_resident_key(backend_name, x_scaled_key)
+          }
+          if (release_y) {
+            .amatrix_release_resident_key(backend_name, y_key)
+          }
+          .amatrix_cleanup_temp_resident_safe(list(lhs), backend_name)
+        }, add = TRUE)
         result <- tryCatch({
           # Scale X rows by sqrt(w) on GPU
           backend$broadcast_ewise_resident(lhs$key, sqrt_w, 1L, "*", x_scaled_key)
           # Upload and scale y rows by sqrt(w) on GPU
-          y_key <- .amatrix_next_resident_key(backend_name)
           backend$resident_store(y_key, y_mat)
           backend$broadcast_ewise_resident(y_key, sqrt_w, 1L, "*", y_scaled_key)
-          backend$resident_drop(y_key)
           # crossprod(X_scaled, y_scaled)
           val <- backend$crossprod_resident(x_scaled_key, y_scaled_key, out_key)
-          backend$resident_drop(x_scaled_key)
-          backend$resident_drop(y_scaled_key)
-          .amatrix_cleanup_temp_resident(list(lhs), backend_name)
           val
         }, error = function(e) NULL)
         if (!is.null(result)) {
           value <- .amatrix_rewrap_value(X_arg, result)
-          return(.amatrix_bind_resident(value, backend_name, out_key))
+          bound <- .amatrix_bind_resident(value, backend_name, out_key)
+          release_output <- FALSE
+          return(bound)
         }
-        # Clean up on failure
-        try(backend$resident_drop(x_scaled_key), silent = TRUE)
-        try(backend$resident_drop(y_scaled_key), silent = TRUE)
-        try(backend$resident_drop(out_key), silent = TRUE)
-        .amatrix_cleanup_temp_resident(list(lhs), backend_name)
       }
     }
   }
@@ -2695,6 +2821,9 @@ dist_matrix <- function(X, Y = NULL,
   spec <- .am_metric_backend_spec(X, Y)
   X_mat <- .am_metric_checked_matrix(X, "X")
   Y_mat <- if (!is.null(Y)) .am_metric_checked_matrix(Y, "Y") else NULL
+  if (any(dim(X_mat) == 0L) || (!is.null(Y_mat) && any(dim(Y_mat) == 0L))) {
+    spec$name <- "cpu"
+  }
 
   # Auto-tile for large self-distance to prevent GPU OOM
   if (is.null(tile_size) && is.null(Y_mat) && nrow(X_mat) > 50000L)
@@ -2756,6 +2885,9 @@ kernel_matrix <- function(X, Y = NULL,
   spec <- .am_metric_backend_spec(X, Y, preferred_backend = preferred_backend)
   X_mat  <- .am_metric_checked_matrix(X, "X")
   Y_mat  <- if (!is.null(Y)) .am_metric_checked_matrix(Y, "Y") else NULL
+  if (any(dim(X_mat) == 0L) || (!is.null(Y_mat) && any(dim(Y_mat) == 0L))) {
+    spec$name <- "cpu"
+  }
 
   # Resident path: compute on GPU and store directly, skipping CPU round-trip.
   # Returns an adgeMatrix with a live resident key bound, so the next GPU op
