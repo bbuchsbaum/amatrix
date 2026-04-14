@@ -186,6 +186,24 @@ amatrix_register_backend <- function(name, backend, overwrite = FALSE) {
   }
 
   assign(name, backend, envir = .amatrix_state$backends)
+  if (isTRUE(exists_already)) {
+    calibration <- .amatrix_state$calibration
+    if (!is.null(calibration)) {
+      if (!is.null(calibration$thresholds)) {
+        calibration$thresholds[[name]] <- NULL
+      }
+      if (is.data.frame(calibration$results) && "backend" %in% names(calibration$results)) {
+        calibration$results <- calibration$results[calibration$results$backend != name, , drop = FALSE]
+      }
+      .amatrix_state$calibration <- calibration
+    }
+
+    if (!is.null(.amatrix_state$backend_health)) {
+      .amatrix_state$backend_health[[name]] <- NULL
+    }
+
+    .amatrix_cache_clear()
+  }
   invisible(name)
 }
 

@@ -107,6 +107,24 @@ amatrix_set_cache_max_size <- function(max_size) {
   invisible(NULL)
 }
 
+.amatrix_cache_clear <- function() {
+  cache_keys <- ls(envir = .amatrix_state$model_cache, all.names = FALSE)
+  if (length(cache_keys) > 0L) {
+    rm(list = cache_keys, envir = .amatrix_state$model_cache)
+  }
+
+  atime_env <- .amatrix_state$cache_atime
+  if (!is.null(atime_env)) {
+    atime_keys <- ls(envir = atime_env, all.names = FALSE)
+    if (length(atime_keys) > 0L) {
+      rm(list = atime_keys, envir = atime_env)
+    }
+  }
+
+  .amatrix_state$cache_atime_counter <- 0L
+  invisible(NULL)
+}
+
 # Evict the single least-recently-used cache entry.
 .amatrix_cache_evict_lru <- function() {
   atime_env <- .amatrix_state$cache_atime

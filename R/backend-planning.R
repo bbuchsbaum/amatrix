@@ -405,24 +405,53 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
     # the binding so future ops on x don't need to re-upload.
   }
 
-  # Wrap the cold-path backend call in tryCatch: on runtime error we log a
-  # structured fallback event, mark the backend unhealthy, and re-dispatch
-  # via the caller-supplied fallback. See planning_docs/quality-tracking.md
-  # §7 rule 7 (non-empty fallback log is stop-ship).
+  # Wrap the cold-path backend call in tryCatch: on runtime error we
+  #   (1) re-signal the ORIGINAL backend condition via signalCondition() so
+  #       outer withCallingHandlers can observe the original classed error
+  #       (amatrix-uu2 contract)
+  #   (2) signal an amatrix_fallback condition with structured metadata so
+  #       callers can observe fallback events (amatrix-hjj contract)
+  #   (3) log a structured fallback event (internal telemetry)
+  #   (4) mark the backend unhealthy
+  #   (5) re-dispatch via the caller-supplied fallback
+  # See planning_docs/quality-tracking.md §7 rule 7 (non-empty fallback log
+  # is stop-ship).
   tryCatch(
     do.call(backend_method, c(list(x = amatrix_materialize_host(x)), args)),
     error = function(e) {
       if (!identical(chosen_name, "cpu")) {
+        # (1) Re-signal the original backend condition. signalCondition does
+        # not unwind the stack — outer calling handlers observe it and return.
+        tryCatch(signalCondition(e), error = function(ee) NULL)
+
+        reason <- sprintf("%s runtime error: %s", method, conditionMessage(e))
+
+        # (2) Signal a classed amatrix_fallback condition (not an error).
+        fallback_cond <- structure(
+          class = c("amatrix_fallback", "message", "condition"),
+          list(
+            message = reason,
+            call = NULL,
+            op = op,
+            backend = chosen_name,
+            reason = reason,
+            original_condition = e
+          )
+        )
+        tryCatch(signalCondition(fallback_cond), error = function(ee) NULL)
+
+        # (3) Internal telemetry log.
         .amatrix_log_fallback(
           op = op,
           backend = chosen_name,
-          reason = sprintf("%s runtime error: %s", method, conditionMessage(e)),
+          reason = reason,
           from_backend = chosen_name
         )
-        .amatrix_backend_health_mark(
-          chosen_name, "unhealthy",
-          sprintf("%s runtime error: %s", method, conditionMessage(e))
-        )
+
+        # (4) Mark the backend unhealthy.
+        .amatrix_backend_health_mark(chosen_name, "unhealthy", reason)
+
+        # (5) Run the caller's fallback.
         return(fallback())
       }
       stop(e)  # CPU errors are real bugs; don't swallow them.

@@ -376,7 +376,11 @@ setMethod("show", "amSVD", function(object) {
   q_basis <- trimmed$q
   rank_discovered <- ncol(q_basis)
   if (rank_discovered < 1L) {
-    stop("subspace SVD did not discover a usable range space", call. = FALSE)
+    stop(errorCondition(
+      "subspace SVD did not discover a usable range space",
+      class = "amatrix_subspace_error",
+      call = NULL
+    ))
   }
 
   t_mat <- right_apply(q_basis)
