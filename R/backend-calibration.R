@@ -150,8 +150,9 @@ amatrix_calibrate <- function(
   }
 
   calibration <- list(
-    version       = "1",
+    version       = "2",
     calibrated_at = Sys.time(),
+    sys_hash      = .amatrix_sys_hash(),
     thresholds    = thresholds,
     results       = results_df
   )
@@ -209,6 +210,141 @@ amatrix_calibration_info <- function() {
   .amatrix_state$calibration
 }
 
+#' Report amatrix benchmark status across ops and backends
+#'
+#' Reads the machine-local baseline in \code{tools/baseline.csv} (if
+#' present) and the cached calibration in the user cache directory,
+#' and returns a structured data.frame surfacing per-op cold vs warm
+#' timings and the currently-calibrated dispatch thresholds.
+#'
+#' This is the user-facing honesty surface for Track 4's speed contract:
+#' users can see (a) which backends are calibrated on their machine,
+#' (b) cold-start vs warm-run ratios per op, and (c) where the
+#' dispatcher will currently route.
+#'
+#' @param baseline_path Path to the baseline CSV. Defaults to
+#'   \code{file.path(getwd(), "tools", "baseline.csv")} so it works when
+#'   called from the package source tree. Pass \code{NULL} to skip
+#'   baseline reading entirely and return only calibration data.
+#'
+#' @return A list with two elements:
+#'   \describe{
+#'     \item{baseline}{data.frame with columns \code{op}, \code{size},
+#'       \code{backend}, \code{cold_ms}, \code{warm_ms},
+#'       \code{warm_vs_cold_ratio}, \code{speedup_vs_cpu}. Rows with
+#'       missing cold OR warm data use \code{NA} for the missing variant.
+#'       Empty when the baseline file is absent.}
+#'     \item{calibration}{data.frame with columns \code{backend}, \code{op},
+#'       \code{threshold_elements}, \code{gpu_wins}. Rows come from the
+#'       cached calibration; empty when no calibration is available.}
+#'   }
+#'
+#' @examples
+#' \dontrun{
+#' rep <- amatrix_benchmark_report()
+#' head(rep$baseline)
+#' head(rep$calibration)
+#' }
+#'
+#' @seealso \code{\link{amatrix_calibrate}},
+#'   \code{\link{amatrix_calibration_info}}
+#' @export
+amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baseline.csv")) {
+  baseline_df <- data.frame(
+    op = character(0), size = character(0), backend = character(0),
+    cold_ms = numeric(0), warm_ms = numeric(0),
+    warm_vs_cold_ratio = numeric(0), speedup_vs_cpu = numeric(0),
+    stringsAsFactors = FALSE
+  )
+
+  if (!is.null(baseline_path) && file.exists(baseline_path)) {
+    raw <- tryCatch(
+      utils::read.csv(baseline_path, stringsAsFactors = FALSE),
+      error = function(e) NULL
+    )
+    if (!is.null(raw) && all(c("op", "size", "backend", "variant", "median_ms") %in% names(raw))) {
+      # Pivot cold/warm rows into side-by-side columns. Speedup is backend-local.
+      key <- paste(raw$op, raw$size, raw$backend, sep = "\001")
+      cold_idx <- raw$variant == "cold"
+      warm_idx <- raw$variant == "warm"
+      cold_map <- setNames(raw$median_ms[cold_idx], key[cold_idx])
+      warm_map <- setNames(raw$median_ms[warm_idx], key[warm_idx])
+      all_keys <- unique(c(names(cold_map), names(warm_map)))
+
+      # Carry speedup_vs_cpu from whichever variant is present (prefer cold).
+      speedup_cold <- setNames(
+        raw$speedup_vs_cpu[cold_idx] %||% NA_real_,
+        key[cold_idx]
+      )
+      speedup_warm <- setNames(
+        raw$speedup_vs_cpu[warm_idx] %||% NA_real_,
+        key[warm_idx]
+      )
+
+      parts <- strsplit(all_keys, "\001", fixed = TRUE)
+      ops      <- vapply(parts, `[[`, character(1), 1L)
+      sizes    <- vapply(parts, `[[`, character(1), 2L)
+      backends <- vapply(parts, `[[`, character(1), 3L)
+
+      cold_vec <- cold_map[all_keys]
+      warm_vec <- warm_map[all_keys]
+      speedup  <- ifelse(is.na(speedup_cold[all_keys]), speedup_warm[all_keys], speedup_cold[all_keys])
+      ratio    <- ifelse(
+        is.finite(cold_vec) & is.finite(warm_vec) & warm_vec > 0,
+        cold_vec / warm_vec,
+        NA_real_
+      )
+
+      baseline_df <- data.frame(
+        op = ops,
+        size = sizes,
+        backend = backends,
+        cold_ms = unname(cold_vec),
+        warm_ms = unname(warm_vec),
+        warm_vs_cold_ratio = unname(ratio),
+        speedup_vs_cpu = unname(speedup),
+        stringsAsFactors = FALSE
+      )
+      rownames(baseline_df) <- NULL
+      # Stable ordering for readability.
+      baseline_df <- baseline_df[order(baseline_df$backend, baseline_df$op, baseline_df$size), , drop = FALSE]
+      rownames(baseline_df) <- NULL
+    }
+  }
+
+  .amatrix_load_calibration()
+  calibration_df <- data.frame(
+    backend = character(0), op = character(0),
+    threshold_elements = numeric(0), gpu_wins = logical(0),
+    stringsAsFactors = FALSE
+  )
+  cal <- .amatrix_state$calibration
+  if (!is.null(cal) && !is.null(cal$thresholds)) {
+    rows <- list()
+    for (be in names(cal$thresholds)) {
+      for (op in names(cal$thresholds[[be]])) {
+        thresh <- cal$thresholds[[be]][[op]]
+        rows[[length(rows) + 1L]] <- data.frame(
+          backend = be,
+          op = op,
+          threshold_elements = if (is.infinite(thresh)) Inf else as.numeric(thresh),
+          gpu_wins = !is.infinite(thresh),
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+    if (length(rows) > 0L) {
+      calibration_df <- do.call(rbind, rows)
+      rownames(calibration_df) <- NULL
+    }
+  }
+
+  list(
+    baseline = baseline_df,
+    calibration = calibration_df
+  )
+}
+
 # ── Internals ─────────────────────────────────────────────────────────────────
 
 .amatrix_calibration_path <- function() {
@@ -219,15 +355,50 @@ amatrix_calibration_info <- function() {
   file.path(cache_dir, "calibration.rds")
 }
 
-# Lazy-load calibration from disk on first use.
+# Hardware / runtime identity hash. When this changes we invalidate cached
+# calibration data — thresholds measured on one CPU class are not portable
+# to another. Track 4.
+.amatrix_sys_hash <- function() {
+  # Stable identity string for cache invalidation. We don't need a
+  # cryptographic hash — just a short, deterministic fingerprint of the
+  # fields that would change if the calibration target moves. Using the
+  # fields directly (joined by pipe) keeps the implementation base-R-only
+  # and makes hash mismatches self-documenting in the cache file.
+  paste0(
+    "v1|",
+    Sys.info()[["sysname"]], "|",
+    Sys.info()[["release"]], "|",
+    Sys.info()[["machine"]], "|",
+    R.version$platform, "|",
+    R.version$major, ".", R.version$minor
+  )
+}
+
+# Lazy-load calibration from disk on first use. Invalidates the cached file
+# when the sys_hash changes (hardware or R version).
 .amatrix_load_calibration <- function() {
   if (!is.null(.amatrix_state$calibration)) return(invisible(NULL))
   path <- .amatrix_calibration_path()
   if (!file.exists(path)) return(invisible(NULL))
   cal <- tryCatch(readRDS(path), error = function(e) NULL)
-  if (!is.null(cal) && identical(cal$version, "1")) {
-    .amatrix_state$calibration <- cal
+  if (is.null(cal)) return(invisible(NULL))
+
+  # Version gate — v1 is grandfathered with NULL hash (will re-calibrate on
+  # next explicit amatrix_calibrate() call). v2+ carries sys_hash.
+  if (!identical(cal$version, "1") && !identical(cal$version, "2")) {
+    return(invisible(NULL))
   }
+
+  # Hardware invalidation for v2+: skip the cache if the hash does not match.
+  if (identical(cal$version, "2")) {
+    current_hash <- tryCatch(.amatrix_sys_hash(), error = function(e) NULL)
+    if (is.null(current_hash) || !identical(cal$sys_hash, current_hash)) {
+      # Stale — do NOT populate state. Caller must re-calibrate.
+      return(invisible(NULL))
+    }
+  }
+
+  .amatrix_state$calibration <- cal
   invisible(NULL)
 }
 
