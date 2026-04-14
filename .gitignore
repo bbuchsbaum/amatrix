@@ -16,3 +16,6 @@ backends/*/src/*.o
 backends/*/src/*.so
 /doc/
 /Meta/
+
+# Local editor/tool backups
+.albersdown.bak/
