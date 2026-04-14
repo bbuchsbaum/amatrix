@@ -89,6 +89,31 @@ For especially hot repeated paths, you can still bind resident storage explicitl
 - `adgeMatrix(x, mode = "exact")` pins execution to strict CPU semantics.
 - `adgeMatrix(x, mode = "fast")` requests reduced-precision execution and prefers an available fast-capable accelerator automatically, with CPU fallback when none is available.
 
+## Backend tiers
+
+amatrix makes explicit support claims per backend. Tier labels track what the
+quality gates have actually proven on the current release, not aspiration.
+
+| Tier             | Backend(s)                     | What it means                                                                                          |
+|------------------|--------------------------------|--------------------------------------------------------------------------------------------------------|
+| **Authoritative**| `cpu`                          | Reference of record for correctness. Always available. CPU failures are stop-ship.                    |
+| **Supported**    | `mlx` (Apple Silicon), `arrayfire` *(provisional)* | Conformance-green, benchmarked, crash-free on their intended workloads. Listed as fast paths. |
+| **Experimental** | `opencl`, `metal`              | Registered and loadable; opt-in via options. Limited op coverage. Not subject to the crash stop-ship rule. |
+
+The authoritative definitions and the gate requirements that earn each tier
+live in `planning_docs/quality-tracking.md §8`. At runtime, the same
+information (plus current health state from the first-use canary probe) is
+available via:
+
+```r
+amatrix_backend_status()
+```
+
+Optional backends ship as separate packages: `amatrix.mlx`,
+`amatrix.arrayfire`, `amatrix.opencl`, `amatrix.metal`. Install only the
+ones you need — the core package works on pure CPU with no accelerator
+dependencies.
+
 ## Installation
 
 ```r
@@ -104,6 +129,9 @@ Other accelerator backends can be installed separately when needed.
 ## Start here
 
 - `vignette("amatrix")` for the getting-started workflow
+- `vignette("performance")` for when amatrix is fast (and when it isn't)
 - `?adgeMatrix` for matrix constructors
 - `?many_lm` for the flagship shared-design regression path
-- `?amatrix_backend_status` for backend availability and capability checks
+- `?amatrix_backend_status` for backend availability and health
+- `?amatrix_benchmark_report` for cold/warm timings and calibrated thresholds
+- `?amatrix_fallback_log` for dispatch fallback telemetry

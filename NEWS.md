@@ -55,3 +55,53 @@ Initial public release.
 * `tools/benchmark-regression.R` — canonical regression harness with
   per-backend worker isolation, direct-file and source-entry parity, and
   automatic baseline comparison.
+
+## Observability and honest defaults
+
+* `amatrix_backend_health_probe()` — run a canary op against a backend and
+  record its health (`healthy` / `unhealthy:<reason>`). Every backend is
+  probed on first use; subsequent routing decisions respect the probe.
+* `amatrix_backend_status()` now reports per-backend `health` and
+  `health_reason` columns alongside capabilities, features, and precision
+  modes.
+* `amatrix_fallback_log()` and `amatrix_fallback_log_reset()` — structured
+  log of every dispatch fall-through from a backend to CPU. A non-empty log
+  after a clean conformance run is a stop-ship condition.
+* `amatrix_benchmark_report()` — reads `tools/baseline.csv` and the cached
+  calibration, returning cold-vs-warm timings, warm/cold ratios, calibrated
+  thresholds, and `gpu_wins` flags per (op × backend).
+* Calibration cache is tagged with a `sys_hash` over OS, machine, platform,
+  and R version. Stale caches from a different machine are rejected
+  automatically instead of producing wrong routing.
+* Auto-fallback with telemetry: every backend error in `amatrix_dispatch_op`
+  is re-signaled as a calling-style condition (so `withCallingHandlers` can
+  observe the original error class) AND emits an `amatrix_fallback`
+  condition with structured metadata, before routing to CPU.
+* `mode = "balanced"` is now deprecated. It was never fully implemented
+  (routed to CPU under the hood) and now maps to `"exact"` with a
+  one-time-per-session deprecation warning. Use `"exact"` or `"fast"`.
+
+## Error handling and diagnostics
+
+* User-facing errors in wrapper functions now emit classed conditions
+  (`amatrix_bad_arg`, `amatrix_bad_backend`, `amatrix_backend_exists`,
+  `amatrix_subspace_error`) with `call = NULL` so messages don't leak
+  internal call stacks. `tryCatch(..., amatrix_bad_arg = ...)` and
+  `expect_error(class = "amatrix_bad_arg")` both work.
+
+## Quality machinery
+
+* `planning_docs/quality-tracking.md` is the authoritative quality doc. It
+  carries the coverage matrix (every exported op × four test types +
+  benchmark row + per-backend tier), the stop-ship rules, and the honest
+  backend tier assessment.
+* `tools/audit-dispatch.R` — static AST-based audit that enumerates every
+  required dispatch signature for `%*%` / `crossprod` / `tcrossprod` on
+  mixed plain/amatrix pairs and fails the PR gate if any is missing.
+* Residency tripwire (`options(amatrix.residency.tripwire = TRUE)` or
+  `AMATRIX_RESIDENCY_TRIPWIRE=1`) increments a counter on every real
+  GPU-to-host copy; the conformance suite asserts zero trips after a
+  clean run.
+* Three-lane CI: PR gate (`.github/workflows/R-CMD-check.yaml` +
+  fast-gates job), nightly stress (`nightly-stress.yaml`), release gate
+  (`release-gate.yaml` with required reviewers environment).
