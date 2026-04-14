@@ -10,7 +10,8 @@ suppressPackageStartupMessages({
 })
 
 if (!requireNamespace("amatrix.mlx", quietly = TRUE)) {
-  stop("amatrix.mlx must be installed", call. = FALSE)
+  message("skipped: amatrix.mlx not installed")
+  quit(save = "no", status = 0L)
 }
 
 options(amatrix.mlx.available = TRUE)

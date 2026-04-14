@@ -59,7 +59,8 @@ initialize_context <- function() {
 
   specs <- .benchmark_optional_backend_specs(include_arrayfire = FALSE)
   if (!isTRUE(.benchmark_enable_backend(specs[["mlx"]]))) {
-    stop("MLX backend is not available", call. = FALSE)
+    message("skipped: amatrix.mlx not installed")
+    quit(save = "no", status = 0L)
   }
 
   options(

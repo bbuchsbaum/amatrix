@@ -6,8 +6,12 @@ suppressPackageStartupMessages({
   } else {
     library(amatrix)
   }
-  library(amatrix.mlx)
 })
+
+if (!requireNamespace("amatrix.mlx", quietly = TRUE)) {
+  message("skipped: amatrix.mlx not installed")
+  quit(save = "no", status = 0L)
+}
 
 benchmark_elapsed <- function(fn, reps = 5L, iterations = 10L, warmup = NULL) {
   if (is.function(warmup)) {

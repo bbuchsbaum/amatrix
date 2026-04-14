@@ -10,7 +10,8 @@ suppressPackageStartupMessages({
 })
 
 if (!requireNamespace("amatrix.mlx", quietly = TRUE)) {
-  stop("amatrix.mlx must be installed before running this benchmark", call. = FALSE)
+  message("skipped: amatrix.mlx not installed")
+  quit(save = "no", status = 0L)
 }
 
 sizes <- c(256L, 512L, 1024L)

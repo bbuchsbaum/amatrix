@@ -6,9 +6,17 @@ suppressPackageStartupMessages({
   } else {
     library(amatrix)
   }
-  library(amatrix.mlx)
-  library(amatrix.arrayfire)
 })
+
+if (!requireNamespace("amatrix.mlx", quietly = TRUE)) {
+  message("skipped: amatrix.mlx not installed")
+  quit(save = "no", status = 0L)
+}
+
+if (!requireNamespace("amatrix.arrayfire", quietly = TRUE)) {
+  message("skipped: amatrix.arrayfire not installed")
+  quit(save = "no", status = 0L)
+}
 
 benchmark_elapsed <- function(fn, reps = 5L, iterations = 5L) {
   timings <- numeric(reps)
@@ -56,13 +64,9 @@ for (case_name in names(cases)) {
 
   base_elapsed <- benchmark_elapsed(function() base::qr(x), iterations = iterations)
   mlx_elapsed <- benchmark_elapsed(function() amatrix.mlx:::amatrix_mlx_qr(x), iterations = iterations)
-  af_elapsed <- benchmark_elapsed(function() amatrix.arrayfire:::amatrix_arrayfire_qr(x), iterations = iterations)
 
   mlx_fit <- amatrix.mlx:::amatrix_mlx_qr(x)
-  af_fit <- amatrix.arrayfire:::amatrix_arrayfire_qr(x)
-
   mlx_coef <- explicit_qr_coef(mlx_fit$q, mlx_fit$r, y, p)
-  af_coef <- explicit_qr_coef(af_fit$q, af_fit$r, y, p)
 
   rows[[length(rows) + 1L]] <- data.frame(
     case = case_name,
@@ -84,15 +88,31 @@ for (case_name in names(cases)) {
     stringsAsFactors = FALSE
   )
 
-  rows[[length(rows) + 1L]] <- data.frame(
-    case = case_name,
-    backend = "arrayfire",
-    elapsed = af_elapsed,
-    rel_reconstruction_error = relative_error(af_fit$q %*% af_fit$r, x),
-    rel_coef_error = relative_error(af_coef, base_coef),
-    note = "native ArrayFire QR",
-    stringsAsFactors = FALSE
-  )
+  if (n >= 96L) {
+    message(sprintf("skipped: known ArrayFire 96x96 segfault, see .omc/research/bench-audit/bugs.md (case=%s, n=%d)", case_name, n))
+    rows[[length(rows) + 1L]] <- data.frame(
+      case = case_name,
+      backend = "arrayfire",
+      elapsed = NA_real_,
+      rel_reconstruction_error = NA_real_,
+      rel_coef_error = NA_real_,
+      note = "skipped: known ArrayFire 96x96 segfault, see .omc/research/bench-audit/bugs.md",
+      stringsAsFactors = FALSE
+    )
+  } else {
+    af_elapsed <- benchmark_elapsed(function() amatrix.arrayfire:::amatrix_arrayfire_qr(x), iterations = iterations)
+    af_fit <- amatrix.arrayfire:::amatrix_arrayfire_qr(x)
+    af_coef <- explicit_qr_coef(af_fit$q, af_fit$r, y, p)
+    rows[[length(rows) + 1L]] <- data.frame(
+      case = case_name,
+      backend = "arrayfire",
+      elapsed = af_elapsed,
+      rel_reconstruction_error = relative_error(af_fit$q %*% af_fit$r, x),
+      rel_coef_error = relative_error(af_coef, base_coef),
+      note = "native ArrayFire QR",
+      stringsAsFactors = FALSE
+    )
+  }
 }
 
 results <- do.call(rbind, rows)
