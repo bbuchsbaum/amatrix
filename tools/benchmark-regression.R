@@ -1241,6 +1241,8 @@ key_columns <- c(
   "density", "nnz", "density_bucket"
 )
 
+baseline_min_key <- c("op", "size_label", "variant", "requested_backend")
+
 add_cpu_reference <- function(results) {
   cpu <- results[
     results$status == "ok" &
@@ -1257,6 +1259,29 @@ add_cpu_reference <- function(results) {
   )
 }
 
+normalize_baseline_schema <- function(baseline) {
+  if ("size" %in% names(baseline) && !"size_label" %in% names(baseline)) {
+    names(baseline)[names(baseline) == "size"] <- "size_label"
+  }
+  if ("backend" %in% names(baseline) && !"requested_backend" %in% names(baseline)) {
+    names(baseline)[names(baseline) == "backend"] <- "requested_backend"
+  }
+
+  legacy_to_canonical <- c(
+    "256x32"    = "small",
+    "1024x128"  = "medium",
+    "4096x128"  = "large",
+    "4096x1024" = "xlarge"
+  )
+  if ("size_label" %in% names(baseline)) {
+    hits <- baseline$size_label %in% names(legacy_to_canonical)
+    if (any(hits)) {
+      baseline$size_label[hits] <- unname(legacy_to_canonical[baseline$size_label[hits]])
+    }
+  }
+  baseline
+}
+
 add_baseline_compare <- function(results, baseline_path) {
   results$baseline_ms <- NA_real_
   results$ratio_vs_baseline <- NA_real_
@@ -1270,15 +1295,28 @@ add_baseline_compare <- function(results, baseline_path) {
     return(results)
   }
 
-  needed <- c(key_columns, "status", "median_ms")
-  if (!all(needed %in% names(baseline))) {
+  baseline <- normalize_baseline_schema(baseline)
+
+  if ("status" %in% names(baseline)) {
+    baseline <- baseline[baseline$status == "ok", , drop = FALSE]
+  }
+
+  if (!all(baseline_min_key %in% names(baseline))) {
     return(results)
   }
 
-  baseline <- baseline[baseline$status == "ok", c(key_columns, "median_ms")]
-  names(baseline)[names(baseline) == "median_ms"] <- "baseline_ms"
+  join_key <- intersect(key_columns, names(baseline))
+  if (!all(baseline_min_key %in% join_key)) {
+    join_key <- baseline_min_key
+  }
 
-  merged <- merge(results, baseline, by = key_columns, all.x = TRUE)
+  baseline <- baseline[, c(join_key, "median_ms"), drop = FALSE]
+  names(baseline)[names(baseline) == "median_ms"] <- "baseline_ms"
+  baseline <- baseline[!duplicated(baseline[, join_key, drop = FALSE]), , drop = FALSE]
+
+  results$baseline_ms <- NULL
+  results$ratio_vs_baseline <- NULL
+  merged <- merge(results, baseline, by = join_key, all.x = TRUE, sort = FALSE)
   merged$ratio_vs_baseline <- ifelse(
     is.na(merged$baseline_ms) | is.na(merged$median_ms),
     NA_real_,
