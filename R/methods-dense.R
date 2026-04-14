@@ -304,6 +304,14 @@ setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", valu
   am_subassign(x, i, j, ..., value = value)
 })
 
+setReplaceMethod("[", signature(x = "adgeMatrix", i = "missing", j = "index", value = "ANY"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "missing", value = "ANY"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
 #' Solve a linear system for adgeMatrix
 #'
 #' Compute the solution to \eqn{a x = b} or the matrix inverse of \code{a}
@@ -432,6 +440,18 @@ setMethod("diag", "adgeMatrix", function(x = 1, nrow, ncol, names = TRUE) {
 })
 
 #' @noRd
+setMethod("Math", "adgeMatrix", function(x) {
+  .amatrix_rewrap_value(x, callGeneric(amatrix_materialize_host(x)))
+})
+
+#' @noRd
+setReplaceMethod("diag", "adgeMatrix", function(x, value) {
+  host_x <- amatrix_materialize_host(x)
+  base::diag(host_x) <- value
+  .amatrix_rewrap_value(x, host_x)
+})
+
+#' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "ANY"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
@@ -481,6 +501,11 @@ setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "Matrix"), function(e1, e2) {
 })
 
 #' @noRd
+setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "dgeMatrix"), function(e1, e2) {
+  ewise(.Generic, e1, e2)
+})
+
+#' @noRd
 setMethod("Ops", signature(e1 = "ANY", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
@@ -507,6 +532,11 @@ setMethod("Ops", signature(e1 = "matrix", e2 = "adgeMatrix"), function(e1, e2) {
 
 #' @noRd
 setMethod("Ops", signature(e1 = "Matrix", e2 = "adgeMatrix"), function(e1, e2) {
+  ewise(.Generic, e1, e2)
+})
+
+#' @noRd
+setMethod("Ops", signature(e1 = "dgeMatrix", e2 = "adgeMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
 

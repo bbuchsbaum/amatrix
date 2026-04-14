@@ -1,5 +1,8 @@
 .amatrix_build_dgeMatrix <- function(x, dn = base::dimnames(x)) {
   stopifnot(is.matrix(x))
+  if (is.complex(x)) {
+    stop("complex matrices are not supported", call. = FALSE)
+  }
   storage.mode(x) <- "double"
   if (is.null(dn)) {
     dn <- vector("list", 2L)
@@ -32,6 +35,9 @@
   precision = amatrix_default_precision(),
   src_id = ""
 ) {
+  if (is.complex(data)) {
+    stop("complex matrices are not supported", call. = FALSE)
+  }
   if (!is.double(data)) {
     storage.mode(data) <- "double"
   }
@@ -68,6 +74,9 @@
 }
 
 .amatrix_sparse_base <- function(x) {
+  if (is.matrix(x) && is.complex(x)) {
+    stop("complex matrices are not supported", call. = FALSE)
+  }
   if (inherits(x, "dgCMatrix")) {
     return(x)
   }
@@ -421,9 +430,95 @@ as_adgCMatrix <- function(
   )
 }
 
+.amatrix_extract_metadata <- function(x) {
+  list(
+    preferred_backend = x@preferred_backend,
+    policy = x@policy,
+    precision = x@precision
+  )
+}
+
+.amatrix_restore_metadata <- function(meta, default_preferred = amatrix_default_policy(), default_policy = amatrix_default_policy(), default_precision = amatrix_default_precision()) {
+  if (!is.list(meta)) {
+    return(list(
+      preferred_backend = default_preferred,
+      policy = default_policy,
+      precision = default_precision
+    ))
+  }
+
+  list(
+    preferred_backend = if (!is.null(meta$preferred_backend)) meta$preferred_backend else default_preferred,
+    policy = if (!is.null(meta$policy)) meta$policy else default_policy,
+    precision = if (!is.null(meta$precision)) meta$precision else default_precision
+  )
+}
+
 setAs("matrix", "adgeMatrix", function(from) new_adgeMatrix(from))
-setAs("dgeMatrix", "adgeMatrix", function(from) new_adgeMatrix(from))
+setAs("dgeMatrix", "adgeMatrix", function(from) {
+  meta <- attr(from, "amatrix_metadata", exact = TRUE)
+  restored <- .amatrix_restore_metadata(meta)
+  new_adgeMatrix(
+    from,
+    preferred_backend = restored$preferred_backend,
+    policy = restored$policy,
+    precision = restored$precision
+  )
+})
 setAs("matrix", "adgCMatrix", function(from) new_adgCMatrix(from))
-setAs("dgCMatrix", "adgCMatrix", function(from) new_adgCMatrix(from))
-setAs("adgeMatrix", "dgeMatrix", function(from) new("dgeMatrix", x = from@x, Dim = from@Dim, Dimnames = from@Dimnames, factors = from@factors))
-setAs("adgCMatrix", "dgCMatrix", function(from) new("dgCMatrix", i = from@i, p = from@p, Dim = from@Dim, Dimnames = from@Dimnames, x = from@x, factors = from@factors))
+setAs("dgCMatrix", "adgCMatrix", function(from) {
+  meta <- attr(from, "amatrix_metadata", exact = TRUE)
+  restored <- .amatrix_restore_metadata(meta)
+  new_adgCMatrix(
+    from,
+    preferred_backend = restored$preferred_backend,
+    policy = restored$policy,
+    precision = restored$precision
+  )
+})
+setAs("adgeMatrix", "dgeMatrix", function(from) {
+  out <- new("dgeMatrix", x = from@x, Dim = from@Dim, Dimnames = from@Dimnames, factors = from@factors)
+  attr(out, "amatrix_metadata") <- .amatrix_extract_metadata(from)
+  out
+})
+setAs("adgCMatrix", "dgCMatrix", function(from) {
+  out <- new("dgCMatrix", i = from@i, p = from@p, Dim = from@Dim, Dimnames = from@Dimnames, x = from@x, factors = from@factors)
+  attr(out, "amatrix_metadata") <- .amatrix_extract_metadata(from)
+  out
+})
+setAs("adgCMatrix", "adgeMatrix", function(from) {
+  new_adgeMatrix(
+    as.matrix(from),
+    preferred_backend = from@preferred_backend,
+    policy = from@policy,
+    precision = from@precision
+  )
+})
+setAs("adgeMatrix", "adgCMatrix", function(from) {
+  new_adgCMatrix(
+    as.matrix(from),
+    preferred_backend = from@preferred_backend,
+    policy = from@policy,
+    precision = from@precision
+  )
+})
+setAs("dgCMatrix", "adgeMatrix", function(from) {
+  meta <- attr(from, "amatrix_metadata", exact = TRUE)
+  restored <- .amatrix_restore_metadata(meta)
+  new_adgeMatrix(
+    as.matrix(from),
+    preferred_backend = restored$preferred_backend,
+    policy = restored$policy,
+    precision = restored$precision
+  )
+})
+setAs("dgeMatrix", "adgCMatrix", function(from) {
+  meta <- attr(from, "amatrix_metadata", exact = TRUE)
+  restored <- .amatrix_restore_metadata(meta)
+  new_adgCMatrix(
+    from,
+    preferred_backend = restored$preferred_backend,
+    policy = restored$policy,
+    precision = restored$precision
+  )
+})

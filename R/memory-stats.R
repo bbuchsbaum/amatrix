@@ -42,9 +42,13 @@ amatrix_memory_stats <- function() {
   all_backends <- unique(c(all_backends, resident_backends))
 
   rows <- lapply(all_backends, function(be) {
-    n_res <- sum(vapply(entries, function(e) identical(e$backend, be), logical(1)))
-
     be_obj <- tryCatch(.amatrix_get_backend(be), error = function(e) NULL)
+    n_res <- sum(vapply(entries, function(e) {
+      identical(e$backend, be) &&
+        !is.null(be_obj) &&
+        .amatrix_backend_residency_capable(be_obj) &&
+        .amatrix_backend_has_resident_key(be_obj, e$resident_key, sparse = isTRUE(e$sparse))
+    }, logical(1)))
     bytes_used  <- NA_real_
     bytes_total <- NA_real_
 

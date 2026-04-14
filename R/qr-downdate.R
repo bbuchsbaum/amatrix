@@ -38,6 +38,19 @@ qr_downdate <- function(qr_factor, row_idx, X = NULL) {
   UseMethod("qr_downdate")
 }
 
+.amatrix_validate_row_idx <- function(row_idx, n_rows) {
+  if (length(row_idx) != 1L || is.na(row_idx) || !is.numeric(row_idx) || row_idx != as.integer(row_idx)) {
+    stop("row_idx must be a single positive integer", call. = FALSE)
+  }
+
+  row_idx <- as.integer(row_idx)
+  if (row_idx < 1L || row_idx > n_rows) {
+    stop(sprintf("row_idx must be between 1 and %d", n_rows), call. = FALSE)
+  }
+
+  row_idx
+}
+
 #' @export
 qr_downdate.amQR <- function(qr_factor, row_idx, X = NULL) {
   if (is.null(X)) {
@@ -48,9 +61,15 @@ qr_downdate.amQR <- function(qr_factor, row_idx, X = NULL) {
       call. = FALSE
     )
   }
-  X_sub <- X[-row_idx, , drop = FALSE]
-  if (!inherits(X_sub, "aMatrix")) X_sub <- as_adgeMatrix(X_sub)
-  am_qr(X_sub)
+
+  n_rows <- nrow(X)
+  if (is.null(n_rows)) {
+    stop("X must be a matrix-like object with rows", call. = FALSE)
+  }
+  row_idx <- .amatrix_validate_row_idx(row_idx, n_rows)
+
+  X_sub <- X[-row_idx, seq_len(ncol(X)), drop = FALSE]
+  am_qr(.amatrix_qr_arg(X_sub))
 }
 
 #' @export

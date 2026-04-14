@@ -986,7 +986,15 @@ am_subset <- function(x, i, j, ..., drop = TRUE) {
 am_subassign <- function(x, i, j, ..., value) {
   host_x <- amatrix_materialize_host(x)
   host_value <- .amatrix_host_arg(value)
-  host_x[i, j, ...] <- host_value
+  if (missing(i) && missing(j)) {
+    host_x[...] <- host_value
+  } else if (missing(j)) {
+    host_x[i, , ...] <- host_value
+  } else if (missing(i)) {
+    host_x[, j, ...] <- host_value
+  } else {
+    host_x[i, j, ...] <- host_value
+  }
   .amatrix_rewrap_value(x, host_x)
 }
 
@@ -1068,6 +1076,36 @@ am_chol <- function(x, ...) {
   )
 }
 
+.amatrix_qr_arg <- function(x) {
+  if (inherits(x, "adgCMatrix") || inherits(x, "adgeMatrix") || inherits(x, "amQR")) {
+    return(x)
+  }
+
+  if (inherits(x, "aMatrix")) {
+    return(x)
+  }
+
+  if (inherits(x, "dgCMatrix") || (inherits(x, "sparseMatrix") && !inherits(x, "denseMatrix"))) {
+    return(new_adgCMatrix(
+      x,
+      preferred_backend = "cpu",
+      policy = amatrix_default_policy(),
+      precision = amatrix_default_precision()
+    ))
+  }
+
+  if (inherits(x, "Matrix") || is.matrix(x)) {
+    return(as_adgeMatrix(
+      as.matrix(x),
+      preferred_backend = "cpu",
+      policy = amatrix_default_policy(),
+      precision = amatrix_default_precision()
+    ))
+  }
+
+  stop("x must be a matrix-like object", call. = FALSE)
+}
+
 #' QR decomposition of an amatrix object
 #'
 #' Computes the QR decomposition of a matrix or \code{aMatrix}, routing to
@@ -1086,6 +1124,8 @@ am_chol <- function(x, ...) {
 #'
 #' @export
 am_qr <- function(x, ...) {
+  x <- .amatrix_qr_arg(x)
+
   if (inherits(x, "adgCMatrix")) {
     host <- amatrix_materialize_host(x)
     return(.amatrix_wrap_sparse_qr(Matrix::qr(host, ...), x, method = "cpu"))
@@ -2039,7 +2079,7 @@ addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
 # CPU fallback: base R distance matrix + max.col.
 .pairwise_sqdist_argmin_cpu <- function(X_mat, Ct_mat, x_norms, c_norms) {
   cross <- X_mat %*% Ct_mat                          # n×K
-  D     <- -2 * cross + x_norms + rep(c_norms, each = nrow(X_mat))
+  D <- sweep(-2 * cross + x_norms, 2L, c_norms, "+")
   max.col(-D, ties.method = "first")
 }
 
@@ -2340,11 +2380,38 @@ am_set_dimnames <- function(x, value) {
 # ── Distance / Kernel helpers ──────────────────────────────────────────────
 
 .am_as_double_matrix <- function(x) {
+  if (!(inherits(x, c("aMatrix", "Matrix")) || is.matrix(x))) {
+    stop("x must be a matrix-like object", call. = FALSE)
+  }
   if (inherits(x, c("adgeMatrix", "adgCMatrix")))
     x <- amatrix_materialize_host(x)
   if (!is.matrix(x)) x <- as.matrix(x)
+  if (length(dim(x)) != 2L) {
+    stop("x must be a matrix-like object", call. = FALSE)
+  }
+  if (is.complex(x)) {
+    stop("complex matrices are not supported", call. = FALSE)
+  }
   if (!is.double(x)) storage.mode(x) <- "double"
   x
+}
+
+.am_metric_checked_matrix <- function(x, name) {
+  mat <- .am_as_double_matrix(x)
+  if (anyNA(mat) || any(!is.finite(mat))) {
+    stop(sprintf("%s must contain only finite non-missing values", name), call. = FALSE)
+  }
+  mat
+}
+
+.am_kernel_finalize <- function(out, kernel, y_host, zero_diag) {
+  if (is.null(y_host) && identical(kernel, "rbf")) {
+    diag(out) <- 1
+  }
+  if (isTRUE(zero_diag) && is.null(y_host)) {
+    diag(out) <- 0
+  }
+  out
 }
 
 # GPU dispatch helpers for distance/kernel computation.
@@ -2471,21 +2538,22 @@ am_set_dimnames <- function(x, value) {
   pmax(outer(nx, ny, "+") - 2 * G, 0)
 }
 
-.am_kernel_gpu <- function(X, Y = NULL, kernel, sigma, degree, coef, spec = .am_metric_backend_spec(X, Y)) {
+.am_kernel_gpu <- function(X, Y = NULL, kernel, sigma, degree, coef, zero_diag = FALSE, spec = .am_metric_backend_spec(X, Y)) {
   x_host <- .am_as_double_matrix(X)
   y_host <- if (is.null(Y)) NULL else .am_as_double_matrix(Y)
   y_eff <- if (is.null(y_host)) x_host else y_host
 
   # AF bridge computes entire kernel in C — no R allocation overhead.
   if ((identical(spec$name, "arrayfire") || identical(spec$name, "auto")) && isTRUE(.am_af_ok())) {
-    return(.Call("am_af_kernel_bridge", x_host, y_host, kernel,
+    out <- .Call("am_af_kernel_bridge", x_host, y_host, kernel,
                  as.double(sigma), as.integer(degree), as.double(coef),
-                 PACKAGE = "amatrix.arrayfire"))
+                 PACKAGE = "amatrix.arrayfire")
+    return(.am_kernel_finalize(out, kernel, y_host, zero_diag))
   }
   # MLX: GPU GEMM + R-level transforms (cheap for linear/poly/cosine; heavier for rbf/lap)
   if (identical(spec$name, "mlx") && isTRUE(.am_mlx_ok())) {
     G <- .Call("amatrix_mlx_tcrossprod_bridge", x_host, y_host, PACKAGE = "amatrix.mlx")
-    return(switch(kernel,
+    return(.am_kernel_finalize(switch(kernel,
       linear     = G,
       polynomial = (coef + G)^degree,
       cosine     = {
@@ -2496,20 +2564,24 @@ am_set_dimnames <- function(x, value) {
         nx <- rowSums(x_host^2); ny <- if (is.null(y_host)) nx else rowSums(y_eff^2)
         D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
         if (is.null(y_host)) diag(D_sq) <- 0
-        exp(-D_sq / (2 * sigma^2))
+        out <- exp(-D_sq / (2 * sigma^2))
+        if (isTRUE(zero_diag) && is.null(y_host)) diag(out) <- 0
+        out
       },
       laplacian  = {
         nx <- rowSums(x_host^2); ny <- if (is.null(y_host)) nx else rowSums(y_eff^2)
         D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
         if (is.null(y_host)) diag(D_sq) <- 0
-        exp(-sqrt(D_sq) / sigma)
+        out <- exp(-sqrt(D_sq) / sigma)
+        if (isTRUE(zero_diag) && is.null(y_host)) diag(out) <- 0
+        out
       }
-    ))
+    ), kernel, y_host, zero_diag))
   }
   # CPU fallback
   G <- .am_metric_tcrossprod_backend(X, Y, spec = spec)
 
-  switch(kernel,
+  .am_kernel_finalize(switch(kernel,
     linear     = G,
     polynomial = (coef + G)^degree,
     cosine     = {
@@ -2521,15 +2593,19 @@ am_set_dimnames <- function(x, value) {
       nx   <- rowSums(x_host^2); ny <- if (is.null(y_host)) nx else rowSums(y_eff^2)
       D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
       if (is.null(y_host)) diag(D_sq) <- 0
-      exp(-D_sq / (2 * sigma^2))
+      out <- exp(-D_sq / (2 * sigma^2))
+      if (isTRUE(zero_diag) && is.null(y_host)) diag(out) <- 0
+      out
     },
     laplacian  = {
       nx   <- rowSums(x_host^2); ny <- if (is.null(y_host)) nx else rowSums(y_eff^2)
       D_sq <- pmax(outer(nx, ny, "+") - 2 * G, 0)
       if (is.null(y_host)) diag(D_sq) <- 0
-      exp(-sqrt(D_sq) / sigma)
+      out <- exp(-sqrt(D_sq) / sigma)
+      if (isTRUE(zero_diag) && is.null(y_host)) diag(out) <- 0
+      out
     }
-  )
+  ), kernel, y_host, zero_diag)
 }
 
 # Tiled pairwise distance for large n (avoids GPU OOM on n > 50k).
@@ -2600,8 +2676,8 @@ dist_matrix <- function(X, Y = NULL,
                     tile_size = NULL) {
   method <- match.arg(method)
   spec <- .am_metric_backend_spec(X, Y)
-  X_mat <- .am_as_double_matrix(X)
-  Y_mat <- if (!is.null(Y)) .am_as_double_matrix(Y) else NULL
+  X_mat <- .am_metric_checked_matrix(X, "X")
+  Y_mat <- if (!is.null(Y)) .am_metric_checked_matrix(Y, "Y") else NULL
 
   # Auto-tile for large self-distance to prevent GPU OOM
   if (is.null(tile_size) && is.null(Y_mat) && nrow(X_mat) > 50000L)
@@ -2615,6 +2691,7 @@ dist_matrix <- function(X, Y = NULL,
     return(.am_kernel_gpu(X, Y, "cosine", 1.0, 2L, 0.0, spec = spec))
 
   D_sq <- .dist_matrix_sq_gpu(X, Y, spec = spec)
+  if (!is.null(Y_mat) && identical(X_mat, Y_mat)) diag(D_sq) <- 0
   if (is.null(Y_mat)) diag(D_sq) <- 0   # fix float32/float64 diagonal mismatch
   if (method == "sqeuclidean") return(D_sq)
   sqrt(D_sq)
@@ -2654,9 +2731,14 @@ kernel_matrix <- function(X, Y = NULL,
                       sigma = 1.0, degree = 2L, coef = 0.0,
                       preferred_backend = NULL, zero_diag = FALSE) {
   kernel <- match.arg(kernel)
+  if (kernel %in% c("rbf", "laplacian")) {
+    if (!is.numeric(sigma) || length(sigma) != 1L || is.na(sigma) || !is.finite(sigma) || sigma <= 0) {
+      stop("sigma must be a single positive finite number", call. = FALSE)
+    }
+  }
   spec <- .am_metric_backend_spec(X, Y, preferred_backend = preferred_backend)
-  X_mat  <- .am_as_double_matrix(X)
-  Y_mat  <- if (!is.null(Y)) .am_as_double_matrix(Y) else NULL
+  X_mat  <- .am_metric_checked_matrix(X, "X")
+  Y_mat  <- if (!is.null(Y)) .am_metric_checked_matrix(Y, "Y") else NULL
 
   # Resident path: compute on GPU and store directly, skipping CPU round-trip.
   # Returns an adgeMatrix with a live resident key bound, so the next GPU op
@@ -2675,8 +2757,16 @@ kernel_matrix <- function(X, Y = NULL,
     }
   }
 
-  .am_kernel_gpu(X, Y, kernel,
-                 sigma = sigma, degree = degree, coef = coef, spec = spec)
+  .am_kernel_gpu(
+    X,
+    Y,
+    kernel,
+    sigma = sigma,
+    degree = degree,
+    coef = coef,
+    zero_diag = zero_diag,
+    spec = spec
+  )
 }
 
 # ---------------------------------------------------------------------------

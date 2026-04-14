@@ -48,6 +48,7 @@
 #'   \code{\link{rh_colSums}}
 #' @export
 resident_handle <- function(x, backend = NULL) {
+  reused_existing_key <- FALSE
   if (inherits(x, "adgeMatrix")) {
     bk_name <- if (!is.null(backend)) backend else x@preferred_backend
     policy <- x@policy
@@ -73,6 +74,7 @@ resident_handle <- function(x, backend = NULL) {
     if (!is.null(entry) && identical(entry$backend, bk_name) &&
         isTRUE(backend_obj$resident_has(entry$resident_key))) {
       key <- entry$resident_key
+      reused_existing_key <- TRUE
     }
   }
   if (is.null(key)) {
@@ -90,10 +92,11 @@ resident_handle <- function(x, backend = NULL) {
   h$policy <- policy
   h$precision <- precision
   h$active <- TRUE
+  h$owns_key <- !reused_existing_key
   class(h) <- "resident_handle"
 
   reg.finalizer(h, function(env) {
-    if (isTRUE(env$active) && !is.null(env$resident_key)) {
+    if (isTRUE(env$active) && isTRUE(env$owns_key) && !is.null(env$resident_key)) {
       bk <- tryCatch(.amatrix_get_backend(env$backend_name), error = function(e) NULL)
       if (!is.null(bk) && is.function(bk$resident_drop) &&
           isTRUE(bk$resident_has(env$resident_key))) {
@@ -245,6 +248,7 @@ am_sweep_inplace <- function(h, MARGIN, STATS, FUN = "+") {
       as.integer(MARGIN),
       as.character(FUN)
     )
+    h$owns_key <- identical(.amatrix_update_resident_aliases(h$backend_name, h$resident_key), 0L)
     return(invisible(h))
   }
   if (!is.function(backend$broadcast_ewise_resident))
@@ -252,13 +256,31 @@ am_sweep_inplace <- function(h, MARGIN, STATS, FUN = "+") {
 
   old_key <- h$resident_key
   new_key <- .amatrix_next_resident_key(h$backend_name)
-  backend$broadcast_ewise_resident(old_key, as.double(STATS),
-                                    as.integer(MARGIN), as.character(FUN),
-                                    new_key, defer = TRUE)
+  err <- NULL
+  tryCatch(
+    backend$broadcast_ewise_resident(
+      old_key,
+      as.double(STATS),
+      as.integer(MARGIN),
+      as.character(FUN),
+      new_key,
+      defer = TRUE
+    ),
+    error = function(e) {
+      err <<- e
+      .rh_drop_key(backend, new_key)
+    }
+  )
+  if (!is.null(err)) {
+    stop(err)
+  }
+
+  alias_count <- .amatrix_update_resident_aliases(h$backend_name, old_key, new_key)
   # Drop the old key and update handle
   if (isTRUE(backend$resident_has(old_key)))
     backend$resident_drop(old_key)
   h$resident_key <- new_key
+  h$owns_key <- identical(alias_count, 0L)
   invisible(h)
 }
 
@@ -295,10 +317,23 @@ am_ewise_inplace <- function(h, rhs, op) {
 
   old_key <- h$resident_key
   new_key <- .amatrix_next_resident_key(h$backend_name)
-  backend$ewise_resident(old_key, rhs_payload, op, new_key, defer = TRUE)
+  err <- NULL
+  tryCatch(
+    backend$ewise_resident(old_key, rhs_payload, op, new_key, defer = TRUE),
+    error = function(e) {
+      err <<- e
+      .rh_drop_key(backend, new_key)
+    }
+  )
+  if (!is.null(err)) {
+    stop(err)
+  }
+
+  alias_count <- .amatrix_update_resident_aliases(h$backend_name, old_key, new_key)
   if (isTRUE(backend$resident_has(old_key)))
     backend$resident_drop(old_key)
   h$resident_key <- new_key
+  h$owns_key <- identical(alias_count, 0L)
   invisible(h)
 }
 
@@ -365,7 +400,7 @@ as.matrix.resident_handle <- function(x, ...) {
   .rh_check(x)
   backend <- .rh_backend(x)
   mat <- backend$resident_materialize(x$resident_key)
-  if (is.matrix(mat)) {
+  if (is.matrix(mat) && any(!vapply(x$dimnames, is.null, logical(1)))) {
     base::dimnames(mat) <- x$dimnames
   }
   mat
@@ -412,6 +447,7 @@ as_adgeMatrix.resident_handle <- function(h, ..., defer_host = FALSE) {
   .amatrix_bind_resident(obj, h$backend_name, h$resident_key)
   # Transfer ownership: handle no longer drops the key on GC
   h$active <- FALSE
+  h$owns_key <- FALSE
   h$resident_key <- NULL
   obj
 }

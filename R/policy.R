@@ -1,4 +1,4 @@
-.amatrix_valid_policies   <- c("auto", "cpu", "mlx", "metal", "arrayfire", "torch")
+.amatrix_valid_policies   <- c("auto", "cpu", "mlx", "metal", "arrayfire", "opencl", "torch")
 .amatrix_valid_precisions <- c("strict", "fast")
 .amatrix_valid_modes      <- c("exact", "balanced", "fast")
 
@@ -47,24 +47,52 @@
 # used by the internal constructors.
 #
 # mode="exact"    — strict float64, CPU-pinned. No GPU, no silent downcast.
-# mode="balanced" — strict float64, auto routing. GPU where numerically safe.
+# mode="balanced" — DEPRECATED. Historical "strict float64, auto-route to GPU
+#                   where numerically safe" mode. The float64 GPU routing was
+#                   never implemented (routes to CPU just like "exact"), so
+#                   the mode is a source of user-expectation mismatch. Track 5
+#                   maps `balanced` -> `exact` with a one-time deprecation
+#                   warning per session. See planning_docs/quality-tracking.md
+#                   §8. The `balanced` string is still accepted by
+#                   .amatrix_valid_modes for backward compatibility.
 # mode="fast"     — fast (float32-oriented), auto routing. Full GPU throughput.
 #
 # backend= is an escape hatch that overrides the mode-derived preferred_backend.
 # The legacy preferred_backend/policy/precision params still work and take
 # precedence over mode-derived values when explicitly supplied.
+
+.amatrix_balanced_deprecation_warned <- function() {
+  isTRUE(.amatrix_state$balanced_deprecation_warned)
+}
+
+.amatrix_warn_balanced_deprecation_once <- function() {
+  if (.amatrix_balanced_deprecation_warned()) return(invisible())
+  .amatrix_state$balanced_deprecation_warned <- TRUE
+  warning(
+    "mode = \"balanced\" is deprecated and will be removed in a future ",
+    "release. It currently behaves identically to mode = \"exact\" ",
+    "(CPU-pinned, strict float64); the float64 GPU routing it implied ",
+    "was never implemented. Use mode = \"exact\" for strict float64 ",
+    "CPU semantics or mode = \"fast\" for GPU throughput. See ",
+    "planning_docs/quality-tracking.md \u00a78.",
+    call. = FALSE
+  )
+}
+
 .amatrix_resolve_mode <- function(mode, backend, preferred_backend, policy, precision) {
   if (!is.null(mode)) {
     mode <- match.arg(mode, .amatrix_valid_modes)
+    if (identical(mode, "balanced")) {
+      .amatrix_warn_balanced_deprecation_once()
+      mode <- "exact"
+    }
     pol <- if (!is.null(policy)) policy else amatrix_default_policy()
     derived_precision <- switch(mode,
       exact    = "strict",
-      balanced = "strict",
       fast     = "fast"
     )
     derived_backend <- switch(mode,
       exact    = "cpu",             # hard-pinned: exact means CPU semantics
-      balanced = "cpu",             # M8: auto-route to GPU where float64-safe; currently CPU-pinned
       fast     = .amatrix_default_preferred_backend(pol, "fast")
     )
     pb  <- if (!is.null(preferred_backend)) preferred_backend else if (!is.null(backend)) backend else derived_backend
@@ -124,7 +152,11 @@ amatrix_default_policy <- function() {
 amatrix_set_default_policy <- function(policy) {
   stopifnot(is.character(policy), length(policy) == 1L, nzchar(policy))
   if (!(policy %in% .amatrix_valid_policies)) {
-    stop(sprintf("policy must be one of: %s", paste(.amatrix_valid_policies, collapse = ", ")))
+    stop(errorCondition(
+      sprintf("policy must be one of: %s", paste(.amatrix_valid_policies, collapse = ", ")),
+      class = "amatrix_bad_arg",
+      call = NULL
+    ))
   }
   .amatrix_state$default_policy <- policy
   invisible(policy)
@@ -218,7 +250,11 @@ amatrix_default_precision <- function() {
 amatrix_set_default_precision <- function(precision) {
   stopifnot(is.character(precision), length(precision) == 1L, nzchar(precision))
   if (!(precision %in% .amatrix_valid_precisions)) {
-    stop(sprintf("precision must be one of: %s", paste(.amatrix_valid_precisions, collapse = ", ")))
+    stop(errorCondition(
+      sprintf("precision must be one of: %s", paste(.amatrix_valid_precisions, collapse = ", ")),
+      class = "amatrix_bad_arg",
+      call = NULL
+    ))
   }
   .amatrix_state$default_precision <- precision
   invisible(precision)
@@ -269,9 +305,22 @@ with_amatrix <- function(policy = NULL, precision = NULL, code) {
 
 .amatrix_backend_preference <- function(x, op = NULL) {
   pinned_backend <- .amatrix_live_resident_backend(x)
+  explicit_policy <- nzchar(x@policy) && !identical(x@policy, "auto")
+
   if (!is.null(pinned_backend)) {
-    return(unique(c(pinned_backend, "cpu")))
+    return(unique(c(
+      pinned_backend,
+      if (explicit_policy) x@policy else x@preferred_backend,
+      if (explicit_policy) x@preferred_backend else x@policy,
+      amatrix_default_policy(),
+      "cpu"
+    )))
   }
 
-  unique(c(x@preferred_backend, x@policy, amatrix_default_policy(), "cpu"))
+  unique(c(
+    if (explicit_policy) x@policy else x@preferred_backend,
+    if (explicit_policy) x@preferred_backend else x@policy,
+    amatrix_default_policy(),
+    "cpu"
+  ))
 }

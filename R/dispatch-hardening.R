@@ -141,3 +141,62 @@ setMethod("tcrossprod", signature(x = "dgeMatrix", y = "adgCMatrix"), function(x
 setMethod("tcrossprod", signature(x = "dgCMatrix", y = "adgCMatrix"), function(x, y, ...) {
   am_tcrossprod(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y, ...)
 })
+
+# ── Dense RHS dispatch hardening (Matrix-family LHS × adgeMatrix RHS) ────────
+# Without these, `dgeMatrix %*% adgeMatrix` and friends fall through to the
+# Matrix package's dispatch and silently coerce the adgeMatrix to a base
+# matrix, destroying GPU residency. Pattern mirrors the sparse block above.
+# Found by tools/audit-dispatch.R — do not remove without updating that script.
+
+.amatrix_wrap_for_dense_rhs <- function(x, y, vector_as = c("row", "col")) {
+  stopifnot(inherits(y, "adgeMatrix"))
+  vector_as <- match.arg(vector_as)
+
+  if (inherits(x, "aMatrix")) {
+    return(x)
+  }
+
+  if (is.numeric(x) && is.null(dim(x))) {
+    x <- if (identical(vector_as, "row")) {
+      matrix(x, nrow = 1L)
+    } else {
+      matrix(x, ncol = 1L)
+    }
+  }
+
+  new_adgeMatrix(
+    as.matrix(x),
+    preferred_backend = y@preferred_backend,
+    policy = y@policy,
+    precision = y@precision
+  )
+}
+
+#' @noRd
+setMethod("%*%", signature(x = "dgeMatrix", y = "adgeMatrix"), function(x, y) {
+  matmul(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y)
+})
+#' @noRd
+setMethod("%*%", signature(x = "dgCMatrix", y = "adgeMatrix"), function(x, y) {
+  matmul(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y)
+})
+#' @noRd
+setMethod("crossprod", signature(x = "dgeMatrix", y = "adgeMatrix"), function(x, y, ...) {
+  am_crossprod(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "col"), y, ...)
+})
+#' @noRd
+setMethod("crossprod", signature(x = "dgCMatrix", y = "adgeMatrix"), function(x, y, ...) {
+  am_crossprod(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "col"), y, ...)
+})
+#' @noRd
+setMethod("tcrossprod", signature(x = "numeric", y = "adgeMatrix"), function(x, y, ...) {
+  am_tcrossprod(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y, ...)
+})
+#' @noRd
+setMethod("tcrossprod", signature(x = "dgeMatrix", y = "adgeMatrix"), function(x, y, ...) {
+  am_tcrossprod(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y, ...)
+})
+#' @noRd
+setMethod("tcrossprod", signature(x = "dgCMatrix", y = "adgeMatrix"), function(x, y, ...) {
+  am_tcrossprod(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y, ...)
+})

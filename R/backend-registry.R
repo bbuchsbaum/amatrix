@@ -118,8 +118,12 @@
 amatrix_register_backend <- function(name, backend, overwrite = FALSE) {
   stopifnot(is.character(name), length(name) == 1L, nzchar(name))
 
+  .bad_backend <- function(msg) {
+    stop(errorCondition(msg, class = "amatrix_bad_backend", call = sys.call(-1L)))
+  }
+
   if (!is.list(backend)) {
-    stop("backend must be a named list")
+    .bad_backend("backend must be a named list")
   }
 
   required_fields <- c(
@@ -137,7 +141,7 @@ amatrix_register_backend <- function(name, backend, overwrite = FALSE) {
   )
   missing_fields <- setdiff(required_fields, names(backend))
   if (length(missing_fields) > 0L) {
-    stop(sprintf("backend is missing required fields: %s", paste(missing_fields, collapse = ", ")))
+    .bad_backend(sprintf("backend is missing required fields: %s", paste(missing_fields, collapse = ", ")))
   }
 
   if (!is.function(backend$capabilities)) {
@@ -162,6 +166,9 @@ amatrix_register_backend <- function(name, backend, overwrite = FALSE) {
   if (!is.character(backend_precision_modes)) {
     stop("backend$precision_modes() must return a character vector")
   }
+  if (length(backend_precision_modes) == 0L) {
+    stop("backend$precision_modes() must return at least one precision mode")
+  }
   if (!all(backend_precision_modes %in% .amatrix_valid_precisions)) {
     stop(sprintf(
       "backend$precision_modes() must be a subset of: %s",
@@ -171,7 +178,11 @@ amatrix_register_backend <- function(name, backend, overwrite = FALSE) {
 
   exists_already <- exists(name, envir = .amatrix_state$backends, inherits = FALSE)
   if (exists_already && !overwrite) {
-    stop(sprintf("backend '%s' is already registered", name))
+    stop(errorCondition(
+      sprintf("backend '%s' is already registered", name),
+      class = c("amatrix_backend_exists", "amatrix_bad_backend"),
+      call = NULL
+    ))
   }
 
   assign(name, backend, envir = .amatrix_state$backends)
@@ -325,9 +336,12 @@ amatrix_backend_status <- function(names = NULL) {
     if (is.null(backend)) {
       stop(sprintf("backend '%s' is not registered", name))
     }
+    health <- .amatrix_backend_health_get(name)
     data.frame(
       name = name,
       available = isTRUE(backend$available()),
+      health = health$status,
+      health_reason = health$reason %||% NA_character_,
       precision_modes = paste(amatrix_backend_precision_modes(name), collapse = ","),
       features = paste(amatrix_backend_features(name), collapse = ","),
       residency_capable = .amatrix_backend_residency_capable(backend),
@@ -337,4 +351,220 @@ amatrix_backend_status <- function(names = NULL) {
   })
 
   do.call(rbind, rows)
+}
+
+# ============================================================================
+# Track 5: Backend health, fallback telemetry, and honest tiering
+# ============================================================================
+#
+# Infrastructure for the three Track 5 contracts:
+#
+#   1. Health state:        Every backend has a health record. Default is
+#                           "unprobed". A runtime failure in dispatch marks
+#                           it "unhealthy:<reason>"; a successful canary
+#                           probe or a clean dispatch marks it "healthy".
+#                           amatrix_backend_status() surfaces this.
+#
+#   2. Fallback telemetry:  When a backend call fails and dispatch falls
+#                           back to CPU, a structured event is appended to
+#                           .amatrix_state$fallback_log. amatrix_fallback_log()
+#                           returns the log as a data.frame. The conformance
+#                           suite asserts the log is empty after a clean run —
+#                           a non-empty log means a backend claimed support
+#                           for an op it cannot actually execute.
+#
+#   3. Canary probe:        amatrix_backend_health_probe(name) runs a small
+#                           10x10 matmul + residual check against base R
+#                           and marks the backend healthy/unhealthy.
+#
+# See planning_docs/quality-tracking.md §7 (stop-ship rule 7) and §8.
+
+.amatrix_backend_health_init <- function() {
+  if (is.null(.amatrix_state$backend_health)) {
+    .amatrix_state$backend_health <- new.env(parent = emptyenv())
+  }
+  if (is.null(.amatrix_state$fallback_log)) {
+    .amatrix_state$fallback_log <- list()
+  }
+  invisible()
+}
+
+.amatrix_backend_health_mark <- function(name, status, reason = NULL) {
+  .amatrix_backend_health_init()
+  .amatrix_state$backend_health[[name]] <- list(
+    status = status,
+    reason = reason,
+    timestamp = Sys.time()
+  )
+  invisible()
+}
+
+.amatrix_backend_health_get <- function(name) {
+  .amatrix_backend_health_init()
+  rec <- .amatrix_state$backend_health[[name]]
+  if (is.null(rec)) {
+    return(list(status = "unprobed", reason = NA_character_, timestamp = NA))
+  }
+  rec
+}
+
+#' Run a canary health probe against a registered backend
+#'
+#' Executes a small matmul round-trip against the named backend and
+#' compares the result to the base R reference. On success the backend
+#' is marked \code{healthy}; on failure it is marked
+#' \code{unhealthy:<reason>}. Subsequent calls to
+#' \code{amatrix_backend_status()} reflect the recorded health.
+#'
+#' The probe is intentionally tiny (10x10 double-precision matmul) so it
+#' completes in milliseconds even on cold GPU. It is not a benchmark; it
+#' is a liveness check.
+#'
+#' @param name Character string. Name of a registered backend.
+#' @param tol Numeric. Residual tolerance for the probe, default
+#'   \code{1e-8} (float64) or \code{1e-4} (if the backend only supports
+#'   fast precision).
+#'
+#' @return Invisibly, the health record as a list with elements
+#'   \code{status}, \code{reason}, \code{timestamp}.
+#'
+#' @examples
+#' amatrix_backend_health_probe("cpu")
+#'
+#' @seealso \code{\link{amatrix_backend_status}},
+#'   \code{\link{amatrix_fallback_log}}
+#' @export
+amatrix_backend_health_probe <- function(name, tol = NULL) {
+  stopifnot(is.character(name), length(name) == 1L, nzchar(name))
+
+  backend <- tryCatch(.amatrix_get_backend(name), error = function(e) NULL)
+  if (is.null(backend)) {
+    .amatrix_backend_health_mark(name, "unhealthy", "not registered")
+    return(invisible(.amatrix_backend_health_get(name)))
+  }
+
+  if (!isTRUE(backend$available())) {
+    .amatrix_backend_health_mark(name, "unhealthy", "backend$available() returned FALSE")
+    return(invisible(.amatrix_backend_health_get(name)))
+  }
+
+  if (!is.function(backend$matmul)) {
+    .amatrix_backend_health_mark(name, "unhealthy", "backend$matmul is not a function")
+    return(invisible(.amatrix_backend_health_get(name)))
+  }
+
+  # Determine tolerance from precision modes.
+  modes <- tryCatch(unique(backend$precision_modes()), error = function(e) character())
+  if (is.null(tol)) {
+    tol <- if ("strict" %in% modes) 1e-8 else 1e-4
+  }
+
+  canary <- tryCatch({
+    set.seed(2026041500L)
+    x_host <- matrix(rnorm(100L), nrow = 10L, ncol = 10L)
+    y_host <- matrix(rnorm(100L), nrow = 10L, ncol = 10L)
+    x_a <- new_adgeMatrix(x_host, preferred_backend = name,
+                          policy = "cpu", precision = if ("strict" %in% modes) "strict" else "fast")
+    y_a <- new_adgeMatrix(y_host, preferred_backend = name,
+                          policy = "cpu", precision = if ("strict" %in% modes) "strict" else "fast")
+    result <- backend$matmul(x_a, y_a)
+    host_result <- if (inherits(result, "aMatrix")) as.matrix(result)
+      else if (inherits(result, "Matrix")) as.matrix(result)
+      else result
+    reference <- x_host %*% y_host
+    max_err <- max(abs(host_result - reference))
+    if (!is.finite(max_err) || max_err > tol) {
+      list(ok = FALSE, reason = sprintf("canary residual %.2e exceeds tol %.2e", max_err, tol))
+    } else {
+      list(ok = TRUE, reason = NULL)
+    }
+  }, error = function(e) {
+    list(ok = FALSE, reason = sprintf("canary error: %s", conditionMessage(e)))
+  })
+
+  if (isTRUE(canary$ok)) {
+    .amatrix_backend_health_mark(name, "healthy", NULL)
+  } else {
+    .amatrix_backend_health_mark(name, "unhealthy", canary$reason)
+  }
+
+  invisible(.amatrix_backend_health_get(name))
+}
+
+# ---------------------------------------------------------------------------
+# Fallback telemetry
+# ---------------------------------------------------------------------------
+
+.amatrix_log_fallback <- function(op, backend, reason,
+                                  from_backend = NULL, to_backend = "cpu") {
+  .amatrix_backend_health_init()
+  idx <- length(.amatrix_state$fallback_log) + 1L
+  .amatrix_state$fallback_log[[idx]] <- list(
+    timestamp = Sys.time(),
+    op = op,
+    from_backend = from_backend %||% backend,
+    to_backend = to_backend,
+    reason = reason
+  )
+  invisible()
+}
+
+#' Return the amatrix backend fallback log
+#'
+#' The fallback log records every runtime fall-through from a preferred
+#' backend to the CPU reference path. A non-empty log after a clean
+#' conformance run is a stop-ship condition (planning_docs/quality-tracking.md
+#' §7 rule 7): it means a backend claimed support for an op it cannot
+#' actually execute.
+#'
+#' @return A data.frame with columns \code{timestamp}, \code{op},
+#'   \code{from_backend}, \code{to_backend}, \code{reason}. Zero rows
+#'   means no fallbacks have been recorded.
+#'
+#' @examples
+#' amatrix_fallback_log()
+#' amatrix_fallback_log_reset()
+#'
+#' @seealso \code{\link{amatrix_fallback_log_reset}},
+#'   \code{\link{amatrix_backend_health_probe}}
+#' @export
+amatrix_fallback_log <- function() {
+  .amatrix_backend_health_init()
+  events <- .amatrix_state$fallback_log
+  if (length(events) == 0L) {
+    return(data.frame(
+      timestamp = as.POSIXct(character(0)),
+      op = character(0),
+      from_backend = character(0),
+      to_backend = character(0),
+      reason = character(0),
+      stringsAsFactors = FALSE
+    ))
+  }
+  do.call(rbind, lapply(events, function(e) {
+    data.frame(
+      timestamp = e$timestamp,
+      op = e$op %||% NA_character_,
+      from_backend = e$from_backend %||% NA_character_,
+      to_backend = e$to_backend %||% NA_character_,
+      reason = e$reason %||% NA_character_,
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+#' Clear the amatrix backend fallback log
+#'
+#' Resets the fallback log to empty. Typically called at the start of a
+#' test block to isolate the assertion that the log is empty after a
+#' clean run.
+#'
+#' @return Invisibly, \code{NULL}.
+#'
+#' @seealso \code{\link{amatrix_fallback_log}}
+#' @export
+amatrix_fallback_log_reset <- function() {
+  .amatrix_backend_health_init()
+  .amatrix_state$fallback_log <- list()
+  invisible()
 }

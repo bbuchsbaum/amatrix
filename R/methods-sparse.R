@@ -185,6 +185,14 @@ setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", valu
   am_subassign(x, i, j, ..., value = value)
 })
 
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "ANY"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "ANY"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
 #' @noRd
 setMethod("norm", "adgCMatrix", function(x, type = "1", ...) {
   Matrix::norm(amatrix_materialize_host(x), type = type)
@@ -272,6 +280,18 @@ setMethod("diag", "adgCMatrix", function(x = 1, nrow, ncol, names = TRUE) {
 })
 
 #' @noRd
+setMethod("Math", "adgCMatrix", function(x) {
+  .amatrix_rewrap_value(x, callGeneric(amatrix_materialize_host(x)))
+})
+
+#' @noRd
+setReplaceMethod("diag", "adgCMatrix", function(x, value) {
+  host_x <- amatrix_materialize_host(x)
+  base::diag(host_x) <- value
+  .amatrix_rewrap_value(x, host_x)
+})
+
+#' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "ANY"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
@@ -309,6 +329,11 @@ setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "Matrix"), function(e1, e2) {
 })
 
 #' @noRd
+setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "dgCMatrix"), function(e1, e2) {
+  ewise(.Generic, e1, e2)
+})
+
+#' @noRd
 setMethod("Ops", signature(e1 = "ANY", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
@@ -335,5 +360,10 @@ setMethod("Ops", signature(e1 = "matrix", e2 = "adgCMatrix"), function(e1, e2) {
 
 #' @noRd
 setMethod("Ops", signature(e1 = "Matrix", e2 = "adgCMatrix"), function(e1, e2) {
+  ewise(.Generic, e1, e2)
+})
+
+#' @noRd
+setMethod("Ops", signature(e1 = "dgCMatrix", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })

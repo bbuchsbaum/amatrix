@@ -278,7 +278,17 @@ amatrix_backend_matrix <- function(
       chosen = plan$chosen,
       chosen_path = plan$chosen_path,
       resident_reuse = identical(plan$chosen_path, "resident"),
-      cpu_fallback = identical(plan$chosen, "cpu") && !identical(plan$preferred[[1]], "cpu"),
+      cpu_fallback = identical(plan$chosen, "cpu") && any(vapply(
+        plan$candidates,
+        function(candidate) {
+          !identical(candidate$name, "cpu") &&
+            isTRUE(candidate$registered) &&
+            isTRUE(candidate$available) &&
+            isTRUE(candidate$precision_compatible) &&
+            (isTRUE(candidate$supported_cold) || isTRUE(candidate$supported_resident))
+        },
+        logical(1)
+      )),
       candidate_summary = paste(
         vapply(
           plan$candidates,
@@ -339,9 +349,19 @@ amatrix_backend_matrix <- function(
 amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fallback) {
   stopifnot(is.function(fallback))
   choice <- .amatrix_backend_for(x, op, y = y)
+  chosen_name <- choice$name
   backend_method <- choice$backend[[method]]
 
   if (!is.function(backend_method)) {
+    if (!identical(chosen_name, "cpu")) {
+      .amatrix_log_fallback(
+        op = op,
+        backend = chosen_name,
+        reason = sprintf("backend '%s' does not implement method '%s'",
+                         chosen_name, method),
+        from_backend = chosen_name
+      )
+    }
     return(fallback())
   }
 
@@ -358,7 +378,19 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
         out_key <- .amatrix_next_resident_key(resident_backend_name)
         result <- tryCatch(
           backend[[resident_op_name]](lhs$key, out_key),
-          error = function(e) NULL
+          error = function(e) {
+            .amatrix_log_fallback(
+              op = op,
+              backend = resident_backend_name,
+              reason = sprintf("resident %s error: %s", method, conditionMessage(e)),
+              from_backend = resident_backend_name
+            )
+            .amatrix_backend_health_mark(
+              resident_backend_name, "unhealthy",
+              sprintf("resident %s error: %s", method, conditionMessage(e))
+            )
+            NULL
+          }
         )
         .amatrix_cleanup_temp_resident(list(lhs), resident_backend_name)
         if (!is.null(result)) {
@@ -373,5 +405,27 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
     # the binding so future ops on x don't need to re-upload.
   }
 
-  do.call(backend_method, c(list(x = amatrix_materialize_host(x)), args))
+  # Wrap the cold-path backend call in tryCatch: on runtime error we log a
+  # structured fallback event, mark the backend unhealthy, and re-dispatch
+  # via the caller-supplied fallback. See planning_docs/quality-tracking.md
+  # §7 rule 7 (non-empty fallback log is stop-ship).
+  tryCatch(
+    do.call(backend_method, c(list(x = amatrix_materialize_host(x)), args)),
+    error = function(e) {
+      if (!identical(chosen_name, "cpu")) {
+        .amatrix_log_fallback(
+          op = op,
+          backend = chosen_name,
+          reason = sprintf("%s runtime error: %s", method, conditionMessage(e)),
+          from_backend = chosen_name
+        )
+        .amatrix_backend_health_mark(
+          chosen_name, "unhealthy",
+          sprintf("%s runtime error: %s", method, conditionMessage(e))
+        )
+        return(fallback())
+      }
+      stop(e)  # CPU errors are real bugs; don't swallow them.
+    }
+  )
 }

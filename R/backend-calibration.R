@@ -245,7 +245,10 @@ amatrix_calibration_info <- function() {
   if (is.null(thresh)) return(TRUE)     # op not benchmarked
   if (is.infinite(thresh)) return(FALSE) # GPU never wins
 
-  .amatrix_dispatch_workload(x, op, y = y) >= thresh
+  workload <- .amatrix_dispatch_workload(x, op, y = y)
+  if (identical(workload, 0L)) return(TRUE)
+
+  workload >= thresh
 }
 
 # Benchmark one (backend, op, size) cell. Returns a one-row list.
@@ -353,16 +356,29 @@ amatrix_calibration_info <- function() {
   )
 }
 
-# For each op, find the smallest element count where gpu_wins is TRUE.
-# Returns Inf if GPU never wins, 0L if GPU wins at every tested size.
+# For each op, find the smallest element count from which gpu_wins remains
+# TRUE for all larger tested workloads. Returns Inf if GPU never wins.
 .amatrix_derive_thresholds <- function(results, ops) {
   thresholds <- list()
   for (op in ops) {
     sub <- results[results$op == op, , drop = FALSE]
     if (nrow(sub) == 0L) next
     sub <- sub[order(sub$elements), ]
-    winning <- sub$elements[sub$gpu_wins]
-    thresholds[[op]] <- if (length(winning) == 0L) Inf else min(winning)
+    winners <- which(sub$gpu_wins)
+    if (length(winners) == 0L) {
+      thresholds[[op]] <- Inf
+      next
+    }
+
+    threshold_idx <- NA_integer_
+    for (idx in winners) {
+      if (all(sub$gpu_wins[idx:nrow(sub)])) {
+        threshold_idx <- idx
+        break
+      }
+    }
+
+    thresholds[[op]] <- if (is.na(threshold_idx)) Inf else sub$elements[[threshold_idx]]
   }
   thresholds
 }

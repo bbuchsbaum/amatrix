@@ -6,6 +6,12 @@
 .amatrix_make_finalizer_env <- function(object_id) {
   e <- new.env(parent = emptyenv())
   e$object_id <- object_id
+  # cache_state holds the host_cache_valid flag in a child env that the
+  # residency registry can reference WITHOUT creating a cycle back to `e`.
+  # Previously the registry stored `finalizer_env = e` directly, which kept
+  # `e` alive forever and prevented its reg.finalizer from ever firing —
+  # causing residency entries to leak across GC cycles.
+  e$cache_state <- new.env(parent = emptyenv())
   reg.finalizer(
     e,
     function(env) {
@@ -87,17 +93,55 @@
     return(x)
   }
 
+  # Store cache_state (a forward-only child env), NOT finalizer_env itself —
+  # a direct ref to finalizer_env would form a cycle that prevents GC from
+  # firing its finalizer, leaking residency entries.
+  cache_state <- if (inherits(x, "adgeMatrix")) x@finalizer_env$cache_state else NULL
   assign(
     object_key,
-    list(backend = backend, resident_key = resident_key, sparse = isTRUE(sparse)),
+    list(
+      backend = backend,
+      resident_key = resident_key,
+      sparse = isTRUE(sparse),
+      cache_state = cache_state
+    ),
     envir = .amatrix_state$residency
   )
 
   if (inherits(x, "adgeMatrix") && !isTRUE(sparse) && !isTRUE(x@finalizer_env$host_deferred)) {
-    x@finalizer_env$host_cache_valid <- TRUE
+    x@finalizer_env$cache_state$host_cache_valid <- TRUE
   }
 
   x
+}
+
+.amatrix_update_resident_aliases <- function(backend, old_key, new_key = NULL, sparse = FALSE) {
+  registry_keys <- ls(envir = .amatrix_state$residency, all.names = TRUE)
+  updated <- 0L
+
+  for (registry_key in registry_keys) {
+    entry <- get0(registry_key, envir = .amatrix_state$residency, inherits = FALSE)
+    if (is.null(entry) ||
+        !identical(entry$backend, backend) ||
+        !identical(entry$resident_key, old_key) ||
+        !identical(isTRUE(entry$sparse), isTRUE(sparse))) {
+      next
+    }
+
+    if (!is.null(new_key)) {
+      entry$resident_key <- new_key
+    }
+
+    cs <- entry$cache_state
+    if (!is.null(cs) && is.environment(cs)) {
+      cs$host_cache_valid <- FALSE
+    }
+
+    assign(registry_key, entry, envir = .amatrix_state$residency)
+    updated <- updated + 1L
+  }
+
+  updated
 }
 
 .amatrix_drop_resident_binding <- function(x) {
@@ -322,6 +366,59 @@ amatrix_residency_info <- function(x) {
   )
 }
 
+# ── Residency tripwire ──────────────────────────────────────────────────────
+#
+# Track 3 mechanism: every real GPU-to-host copy is routed through
+# `.amatrix_tripwire_record()`. Tests that enable the tripwire (via the
+# `amatrix.residency.tripwire` option or the `AMATRIX_RESIDENCY_TRIPWIRE=1`
+# env var) assert that the counter is 0 after an op, which would mean S4
+# dispatch silently fell through to a base/Matrix generic and pulled a
+# resident tensor home. See planning_docs/quality-tracking.md §7 rule 6.
+#
+# The tripwire does NOT fire on host-only reads (e.g. an adgeMatrix that
+# was never pushed to GPU) — only on actual backend$resident_materialize()
+# calls.
+
+.amatrix_tripwire_enabled <- function() {
+  opt <- getOption("amatrix.residency.tripwire")
+  if (!is.null(opt)) {
+    return(isTRUE(opt))
+  }
+  identical(Sys.getenv("AMATRIX_RESIDENCY_TRIPWIRE", unset = "0"), "1")
+}
+
+.amatrix_tripwire_record <- function(op, backend_name, resident_key, dim = NULL) {
+  if (!.amatrix_tripwire_enabled()) return(invisible())
+  if (is.null(.amatrix_state$tripwire_events)) {
+    .amatrix_state$tripwire_count <- 0L
+    .amatrix_state$tripwire_events <- list()
+  }
+  .amatrix_state$tripwire_count <- .amatrix_state$tripwire_count + 1L
+  idx <- length(.amatrix_state$tripwire_events) + 1L
+  .amatrix_state$tripwire_events[[idx]] <- list(
+    op = op,
+    backend = backend_name,
+    key = resident_key,
+    dim = dim,
+    timestamp = Sys.time()
+  )
+  invisible()
+}
+
+.amatrix_tripwire_count <- function() {
+  .amatrix_state$tripwire_count %||% 0L
+}
+
+.amatrix_tripwire_events <- function() {
+  .amatrix_state$tripwire_events %||% list()
+}
+
+.amatrix_tripwire_reset <- function() {
+  .amatrix_state$tripwire_count <- 0L
+  .amatrix_state$tripwire_events <- list()
+  invisible()
+}
+
 amatrix_materialize_dense <- function(x) {
   stopifnot(inherits(x, "adgeMatrix"))
 
@@ -335,8 +432,14 @@ amatrix_materialize_dense <- function(x) {
         backend <- tryCatch(.amatrix_get_backend(entry$backend), error = function(e) NULL)
         if (!is.null(backend) && is.function(backend$resident_materialize) &&
             isTRUE(backend$resident_has(entry$resident_key))) {
+          .amatrix_tripwire_record(
+            "materialize_dense.deferred",
+            entry$backend, entry$resident_key, x@Dim
+          )
           mat <- backend$resident_materialize(entry$resident_key)
-          fenv$host_x <- if (is.matrix(mat)) mat else as.matrix(mat)
+          host_mat <- if (is.matrix(mat)) mat else as.matrix(mat)
+          base::dimnames(host_mat) <- x@Dimnames
+          fenv$host_x <- host_mat
         }
       }
       if (is.null(fenv$host_x)) {
@@ -346,7 +449,7 @@ amatrix_materialize_dense <- function(x) {
     return(.amatrix_dense_base(fenv$host_x))
   }
 
-  if (isTRUE(fenv$host_cache_valid)) {
+  if (isTRUE(fenv$cache_state$host_cache_valid)) {
     return(new("dgeMatrix", x = x@x, Dim = x@Dim, Dimnames = x@Dimnames, factors = x@factors))
   }
 
@@ -361,6 +464,10 @@ amatrix_materialize_dense <- function(x) {
     return(new("dgeMatrix", x = x@x, Dim = x@Dim, Dimnames = x@Dimnames, factors = x@factors))
   }
 
+  .amatrix_tripwire_record(
+    "materialize_dense.eager",
+    entry$backend, entry$resident_key, x@Dim
+  )
   materialized <- backend$resident_materialize(entry$resident_key)
   if (inherits(materialized, "dgeMatrix")) {
     return(materialized)

@@ -563,15 +563,20 @@ svd_factor <- function(X,
                           n_oversamples = .amatrix_svd_factor_default_oversamples(k),
                           n_iter = 2L) {
   if (!inherits(X, "aMatrix")) {
-    stop("X must be an aMatrix", call. = FALSE)
+    stop(errorCondition("X must be an aMatrix",
+                        class = "amatrix_bad_arg", call = sys.call(-1L)))
   }
   k <- as.integer(k)
   if (is.na(k) || k < 1L) {
-    stop("k must be a positive integer", call. = FALSE)
+    stop(errorCondition("k must be a positive integer",
+                        class = "amatrix_bad_arg", call = sys.call(-1L)))
   }
   max_k <- as.integer(min(dim(X)))
   if (k > max_k) {
-    stop(sprintf("k (%d) cannot exceed min(dim(X)) (%d)", k, max_k), call. = FALSE)
+    stop(errorCondition(
+      sprintf("k (%d) cannot exceed min(dim(X)) (%d)", k, max_k),
+      class = "amatrix_bad_arg", call = sys.call(-1L)
+    ))
   }
 
   n_oversamples <- as.integer(n_oversamples)

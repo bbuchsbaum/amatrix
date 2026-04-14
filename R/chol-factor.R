@@ -1,3 +1,9 @@
+# Track 6 classed-condition helper. Uses base R errorCondition() to attach a
+# condition class so callers can expect_error(..., class = "amatrix_bad_arg").
+.amatrix_abort_bad_arg <- function(msg) {
+  stop(errorCondition(msg, class = "amatrix_bad_arg", call = sys.call(-1L)))
+}
+
 .validate_amChol <- function(object) {
   R <- object@factor
   if (!is.matrix(R)) {
@@ -124,7 +130,7 @@ as.matrix.amChol <- function(x, ...) .amatrix_amchol_factor_matrix(x)
 #' @export
 chol_factor <- function(X) {
   if (!inherits(X, "adgeMatrix")) {
-    stop("X must be an adgeMatrix (symmetric positive definite)", call. = FALSE)
+    .amatrix_abort_bad_arg("X must be an adgeMatrix (symmetric positive definite)")
   }
 
   cache_key <- paste0("chol:", X@object_id)
@@ -432,7 +438,7 @@ chol_factor <- function(X) {
 #' @export
 chol_solve <- function(factor, B) {
   if (!inherits(factor, "amChol")) {
-    stop("factor must be an amChol object", call. = FALSE)
+    .amatrix_abort_bad_arg("factor must be an amChol object")
   }
 
   B_in <- B
@@ -496,7 +502,7 @@ chol_solve <- function(factor, B) {
 #' @export
 chol_solve_batches <- function(factor, B) {
   if (!inherits(factor, "amChol")) {
-    stop("factor must be an amChol object", call. = FALSE)
+    .amatrix_abort_bad_arg("factor must be an amChol object")
   }
 
   rhs_list <- .amatrix_rhs_batches_to_list(B, "B")
@@ -560,7 +566,7 @@ chol_solve_batches <- function(factor, B) {
 #' @export
 chol_diag <- function(factor) {
   if (!inherits(factor, "amChol")) {
-    stop("factor must be an amChol object", call. = FALSE)
+    .amatrix_abort_bad_arg("factor must be an amChol object")
   }
   diag(.amatrix_amchol_factor_matrix(factor))
 }
@@ -586,7 +592,7 @@ chol_diag <- function(factor) {
 #' @export
 chol_logdet <- function(factor) {
   if (!inherits(factor, "amChol")) {
-    stop("factor must be an amChol object", call. = FALSE)
+    .amatrix_abort_bad_arg("factor must be an amChol object")
   }
   2 * sum(log(diag(.amatrix_amchol_factor_matrix(factor))))
 }
@@ -698,7 +704,7 @@ solve_triangular <- function(R, B, lower = FALSE) {
 #' @export
 quad_form <- function(factor, v) {
   if (!inherits(factor, "amChol")) {
-    stop("factor must be an amChol object", call. = FALSE)
+    .amatrix_abort_bad_arg("factor must be an amChol object")
   }
   z <- chol_solve(factor, v)
   if (is.vector(v)) {
@@ -785,7 +791,7 @@ lu_factor <- function(A) {
     m
   }
   if (nrow(A_mat) != ncol(A_mat)) {
-    stop("A must be a square matrix", call. = FALSE)
+    .amatrix_abort_bad_arg("A must be a square matrix")
   }
   src  <- if (inherits(A, "adgeMatrix")) A@object_id else NA_character_
   prec <- if (inherits(A, "adgeMatrix")) A@precision  else NA_character_
@@ -817,7 +823,7 @@ lu_factor <- function(A) {
 #' @export
 lu_solve <- function(factor, B) {
   if (!inherits(factor, "amLU")) {
-    stop("factor must be an amLU object", call. = FALSE)
+    .amatrix_abort_bad_arg("factor must be an amLU object")
   }
   scalar_out <- is.vector(B) || (is.matrix(B) && ncol(B) == 1L)
   B_mat <- if (is.vector(B)) matrix(B, ncol = 1L) else as.matrix(B)
