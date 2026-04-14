@@ -306,21 +306,41 @@ with_amatrix <- function(policy = NULL, precision = NULL, code) {
 .amatrix_backend_preference <- function(x, op = NULL) {
   pinned_backend <- .amatrix_live_resident_backend(x)
   explicit_policy <- nzchar(x@policy) && !identical(x@policy, "auto")
-
-  if (!is.null(pinned_backend)) {
-    return(unique(c(
-      pinned_backend,
-      if (explicit_policy) x@policy else x@preferred_backend,
-      if (explicit_policy) x@preferred_backend else x@policy,
-      amatrix_default_policy(),
-      "cpu"
-    )))
+  force_cpu <- explicit_policy && identical(x@policy, "cpu")
+  preferred_candidates <- function(...) {
+    candidates <- c(...)
+    candidates <- candidates[!is.na(candidates) & nzchar(candidates) & candidates != "auto"]
+    unique(candidates)
   }
 
-  unique(c(
-    if (explicit_policy) x@policy else x@preferred_backend,
-    if (explicit_policy) x@preferred_backend else x@policy,
+  if (!is.null(pinned_backend)) {
+    pinned_available <- tryCatch(
+      isTRUE(.amatrix_get_backend(pinned_backend)$available()),
+      error = function(e) FALSE
+    )
+
+    if (isTRUE(pinned_available)) {
+      return(preferred_candidates(
+        pinned_backend,
+        "cpu"
+      ))
+    }
+
+    return(preferred_candidates(
+      pinned_backend,
+      if (force_cpu) "cpu" else x@preferred_backend,
+      if (explicit_policy && !force_cpu) x@policy else NULL,
+      if (force_cpu) x@preferred_backend else NULL,
+      amatrix_default_policy(),
+      "cpu"
+    ))
+  }
+
+  preferred_candidates(
+    if (force_cpu) "cpu" else x@preferred_backend,
+    if (explicit_policy && !force_cpu) x@policy else NULL,
+    if (force_cpu) x@preferred_backend else NULL,
     amatrix_default_policy(),
     "cpu"
-  ))
+  )
 }

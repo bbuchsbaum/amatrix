@@ -209,6 +209,7 @@
   }
 
   if (inherits(value, "adgCMatrix") && is.function(backend$sparse_resident_store)) {
+    current_backend <- .amatrix_live_resident_backend(value)
     resident_key <- .amatrix_resident_key(value, backend = backend_name)
     if (!is.null(resident_key) && isTRUE(backend$sparse_resident_has(resident_key))) {
       return(list(key = resident_key, temporary = FALSE, tracked = TRUE, sparse = TRUE))
@@ -219,6 +220,9 @@
     resident_key <- .amatrix_next_resident_key(backend_name)
     host <- amatrix_materialize_host(value)  # returns dgCMatrix
     backend$sparse_resident_store(resident_key, host)
+    if (!is.null(current_backend) && !identical(current_backend, backend_name)) {
+      return(list(key = resident_key, temporary = TRUE, tracked = FALSE, sparse = TRUE))
+    }
     .amatrix_bind_resident(value, backend_name, resident_key, sparse = TRUE)
     return(list(key = resident_key, temporary = FALSE, tracked = TRUE, sparse = TRUE))
   }
@@ -258,6 +262,7 @@
   }
 
   if (inherits(value, "adgeMatrix")) {
+    current_backend <- .amatrix_live_resident_backend(value)
     resident_key <- .amatrix_resident_key(value, backend = backend_name)
     if (!is.null(resident_key) && isTRUE(backend$resident_has(resident_key))) {
       return(list(key = resident_key, temporary = FALSE, tracked = TRUE))
@@ -268,6 +273,9 @@
 
     resident_key <- .amatrix_next_resident_key(backend_name)
     backend$resident_store(resident_key, amatrix_materialize_host(value))
+    if (!is.null(current_backend) && !identical(current_backend, backend_name)) {
+      return(list(key = resident_key, temporary = TRUE, tracked = FALSE))
+    }
     .amatrix_bind_resident(value, backend_name, resident_key)
     return(list(key = resident_key, temporary = FALSE, tracked = TRUE))
   }

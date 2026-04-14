@@ -278,17 +278,12 @@ amatrix_backend_matrix <- function(
       chosen = plan$chosen,
       chosen_path = plan$chosen_path,
       resident_reuse = identical(plan$chosen_path, "resident"),
-      cpu_fallback = identical(plan$chosen, "cpu") && any(vapply(
-        plan$candidates,
-        function(candidate) {
-          !identical(candidate$name, "cpu") &&
-            isTRUE(candidate$registered) &&
-            isTRUE(candidate$available) &&
-            isTRUE(candidate$precision_compatible) &&
-            (isTRUE(candidate$supported_cold) || isTRUE(candidate$supported_resident))
-        },
-        logical(1)
-      )),
+      # cpu_fallback is TRUE iff cpu was chosen AND the user's first
+      # preference was NOT cpu. Matches the authoritative semantics from
+      # amatrix-15n (tests/testthat/test-regression-backend-preference-summary.R).
+      cpu_fallback = identical(plan$chosen, "cpu") &&
+        length(plan$preferred) >= 1L &&
+        !identical(plan$preferred[[1]], "cpu"),
       candidate_summary = paste(
         vapply(
           plan$candidates,
