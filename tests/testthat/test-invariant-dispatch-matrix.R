@@ -111,13 +111,13 @@ test_that("generated coercion round-trips preserve metadata across class grid", 
     list(
       name = "sparse_to_dense",
       source = sparse,
-      mid_class = "dgeMatrix",
+      mid_class = "dgCMatrix",
       out_class = "adgeMatrix"
     ),
     list(
       name = "dense_to_sparse",
       source = dense,
-      mid_class = "dgCMatrix",
+      mid_class = "dgeMatrix",
       out_class = "adgCMatrix"
     )
   )

@@ -516,7 +516,7 @@ setAs("dgeMatrix", "adgCMatrix", function(from) {
   meta <- attr(from, "amatrix_metadata", exact = TRUE)
   restored <- .amatrix_restore_metadata(meta)
   new_adgCMatrix(
-    from,
+    as.matrix(from),
     preferred_backend = restored$preferred_backend,
     policy = restored$policy,
     precision = restored$precision

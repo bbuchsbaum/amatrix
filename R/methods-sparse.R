@@ -193,6 +193,46 @@ setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", va
   am_subassign(x, i, j, ..., value = value)
 })
 
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "numeric"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "integer"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "logical"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "matrix"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "Matrix"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "numeric"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "integer"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "logical"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "matrix"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "Matrix"), function(x, i, j, ..., value) {
+  am_subassign(x, i, j, ..., value = value)
+})
+
 #' @noRd
 setMethod("norm", "adgCMatrix", function(x, type = "1", ...) {
   Matrix::norm(amatrix_materialize_host(x), type = type)
