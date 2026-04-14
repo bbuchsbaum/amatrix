@@ -759,16 +759,19 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
     } else {
 
     reps <- 5L
-    runner <- switch(
+    timing <- switch(
       variant,
-      cold = function() {
-        x <- make_sparse_operand(case$X_host, requested_backend)
-        y <- make_dense_operand(case$rhs_host, requested_backend)
-        on.exit({
-          release_residency(x)
-          release_residency(y)
-        }, add = TRUE)
-        invisible(x %*% y)
+      cold = {
+        runner <- function() {
+          x <- make_sparse_operand(case$X_host, requested_backend)
+          y <- make_dense_operand(case$rhs_host, requested_backend)
+          on.exit({
+            release_residency(x)
+            release_residency(y)
+          }, add = TRUE)
+          invisible(x %*% y)
+        }
+        benchmark_time_ms(runner, reps = reps, warmup = 0L)
       },
       resident = {
         resident_x <- make_sparse_operand(case$X_host, requested_backend)
@@ -783,13 +786,17 @@ run_sparse_case <- function(requested_backend, op, size_label, density, rhs_widt
           release_residency(resident_x)
           release_residency(resident_y)
         }, add = TRUE)
-        invisible(resident_x %*% resident_y)
-        function() invisible(resident_x %*% resident_y)
+
+        runner <- function() invisible(resident_x %*% resident_y)
+        # Explicit prime: run once outside the timer so the warm variant
+        # measures a primed state. benchmark_time_ms is then called with
+        # warmup = 0L so every timed rep is genuinely warm.
+        runner()
+        benchmark_time_ms(runner, reps = reps, warmup = 0L)
       },
       stop(sprintf("unknown sparse variant '%s'", variant), call. = FALSE)
     )
 
-    timing <- benchmark_time_ms(runner, reps = reps)
     list(
       dispatch = dispatch,
       reps = reps,
@@ -897,44 +904,40 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
     }
 
     reps <- 3L
-    runner <- switch(
+    timing <- switch(
       variant,
-      cold = function() {
-        x <- make_sparse_operand(case$X_host, requested_backend)
-        on.exit(release_residency(x), add = TRUE)
-        if (identical(op, "block_lanczos")) {
-          invisible(block_lanczos(
-            x,
-            nv = params$k,
-            nu = params$k,
-            block_size = params$block_size,
-            n_steps = params$n_steps
-          ))
-        } else {
-          invisible(svd_factor(
-            x,
-            k = params$k,
-            method = "subspace",
-            n_oversamples = params$n_oversamples,
-            n_iter = params$n_iter
-          ))
+      cold = {
+        runner <- function() {
+          x <- make_sparse_operand(case$X_host, requested_backend)
+          on.exit(release_residency(x), add = TRUE)
+          if (identical(op, "block_lanczos")) {
+            invisible(block_lanczos(
+              x,
+              nv = params$k,
+              nu = params$k,
+              block_size = params$block_size,
+              n_steps = params$n_steps
+            ))
+          } else {
+            invisible(svd_factor(
+              x,
+              k = params$k,
+              method = "subspace",
+              n_oversamples = params$n_oversamples,
+              n_iter = params$n_iter
+            ))
+          }
         }
+        benchmark_time_ms(runner, reps = reps, warmup = 0L)
       },
       warm = {
         resident_x <- make_sparse_operand(case$X_host, requested_backend)
         if (requested_backend %in% c("mlx", "metal", "arrayfire")) {
           resident_x <- amatrix::amatrix_bind_resident(resident_x, backend = requested_backend, op = "matmul")
         }
-
         on.exit(release_residency(resident_x), add = TRUE)
-        if (identical(op, "block_lanczos")) {
-          invisible(block_lanczos(
-            resident_x,
-            nv = params$k,
-            nu = params$k,
-            block_size = params$block_size,
-            n_steps = params$n_steps
-          ))
+
+        runner <- if (identical(op, "block_lanczos")) {
           function() invisible(block_lanczos(
             resident_x,
             nv = params$k,
@@ -943,19 +946,6 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
             n_steps = params$n_steps
           ))
         } else {
-          drop_svd_factor_cache(
-            resident_x,
-            k = params$k,
-            n_oversamples = params$n_oversamples,
-            n_iter = params$n_iter
-          )
-          invisible(svd_factor(
-            resident_x,
-            k = params$k,
-            method = "subspace",
-            n_oversamples = params$n_oversamples,
-            n_iter = params$n_iter
-          ))
           function() {
             drop_svd_factor_cache(
               resident_x,
@@ -972,11 +962,15 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
             ))
           }
         }
+        # Explicit prime: execute once outside the timer so every timed rep
+        # runs against a primed resident state. benchmark_time_ms is called
+        # with warmup = 0L so the prime is not double-counted.
+        runner()
+        benchmark_time_ms(runner, reps = reps, warmup = 0L)
       },
       stop(sprintf("unknown sparse iterative variant '%s'", variant), call. = FALSE)
     )
 
-    timing <- benchmark_time_ms(runner, reps = reps)
     list(
       requested_supported = requested_supported,
       requested_support_reason = requested_support_reason,
