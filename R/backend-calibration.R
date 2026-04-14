@@ -267,16 +267,16 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
       key <- paste(raw$op, raw$size, raw$backend, sep = "\001")
       cold_idx <- raw$variant == "cold"
       warm_idx <- raw$variant == "warm"
-      cold_map <- setNames(raw$median_ms[cold_idx], key[cold_idx])
-      warm_map <- setNames(raw$median_ms[warm_idx], key[warm_idx])
+      cold_map <- stats::setNames(raw$median_ms[cold_idx], key[cold_idx])
+      warm_map <- stats::setNames(raw$median_ms[warm_idx], key[warm_idx])
       all_keys <- unique(c(names(cold_map), names(warm_map)))
 
       # Carry speedup_vs_cpu from whichever variant is present (prefer cold).
-      speedup_cold <- setNames(
+      speedup_cold <- stats::setNames(
         raw$speedup_vs_cpu[cold_idx] %||% NA_real_,
         key[cold_idx]
       )
-      speedup_warm <- setNames(
+      speedup_warm <- stats::setNames(
         raw$speedup_vs_cpu[warm_idx] %||% NA_real_,
         key[warm_idx]
       )
