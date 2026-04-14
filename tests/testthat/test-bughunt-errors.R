@@ -286,8 +286,12 @@ test_that("amatrix-833: svd_factor signals condition when subspace fails", {
   expect_s3_class(cond, "condition")
 
   # Regression: if a future refactor removes the classed stop, this
-  # assertion (evaluated against the source) will fail.
-  src <- readLines(testthat::test_path("..", "..", "R", "svd-factor.R"), warn = FALSE)
+  # assertion (evaluated against the source) will fail. Only runs from the
+  # source tree; the R/ directory is not present when R CMD check executes
+  # tests against the installed package.
+  src_path <- testthat::test_path("..", "..", "R", "svd-factor.R")
+  skip_if_not(file.exists(src_path), "svd-factor.R source not reachable in installed-pkg context")
+  src <- readLines(src_path, warn = FALSE)
   expect_true(
     any(grepl("amatrix_subspace_error", src, fixed = TRUE)),
     info = "R/svd-factor.R must stop() with class = 'amatrix_subspace_error'"

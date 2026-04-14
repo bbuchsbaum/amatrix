@@ -6,8 +6,14 @@
 # Issue: amatrix-c6v
 
 test_that("zero-dimension metric wrappers do not crash in auto mode", {
+  # Uses callr + pkgload::load_all which requires the source tree (needs
+  # DESCRIPTION at the working directory). R CMD check runs tests from an
+  # installed-package temp dir where this is unavailable — skip there.
+  skip_on_cran()
   skip_if_not_installed("callr")
   skip_if_not_installed("pkgload")
+  skip_if_not(file.exists("DESCRIPTION"),
+              "source tree not reachable (installed-pkg context)")
 
   result <- callr::r(
     function(path) {

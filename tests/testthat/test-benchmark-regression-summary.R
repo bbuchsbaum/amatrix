@@ -1,7 +1,16 @@
 benchmark_regression_context <- function() {
-  repo_root <- normalizePath(file.path(testthat::test_path(), "..", ".."), winslash = "/", mustWork = TRUE)
+  # tools/ is not shipped in the installed package; skip when R CMD check
+  # runs tests from an installed-pkg temp dir.
+  repo_root <- normalizePath(
+    file.path(testthat::test_path(), "..", ".."),
+    winslash = "/", mustWork = FALSE
+  )
   helper_path <- file.path(repo_root, "tools", "benchmark-helpers.R")
   script_path <- file.path(repo_root, "tools", "benchmark-regression.R")
+  testthat::skip_if_not(
+    file.exists(helper_path),
+    "tools/benchmark-helpers.R not reachable (installed-pkg context)"
+  )
 
   env <- new.env(parent = globalenv())
   sys.source(helper_path, envir = env)

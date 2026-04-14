@@ -1,7 +1,16 @@
 benchmark_harness_context <- function() {
-  repo_root <- normalizePath(file.path(testthat::test_path(), "..", ".."), winslash = "/", mustWork = TRUE)
+  # tools/ is not shipped in the installed package; skip when R CMD check
+  # runs tests from an installed-pkg temp dir.
+  repo_root <- normalizePath(
+    file.path(testthat::test_path(), "..", ".."),
+    winslash = "/", mustWork = FALSE
+  )
   helper_path <- file.path(repo_root, "tools", "benchmark-helpers.R")
   script_path <- file.path(repo_root, "tools", "benchmark-regression.R")
+  testthat::skip_if_not(
+    file.exists(helper_path),
+    "tools/benchmark-helpers.R not reachable (installed-pkg context)"
+  )
 
   env <- new.env(parent = globalenv())
   sys.source(helper_path, envir = env)
@@ -129,7 +138,10 @@ test_that("add_baseline_compare join is stable when nnz drifts between runs", {
 
 test_that("tools/baseline.csv joins against every synthetic CPU result", {
   ctx <- benchmark_harness_context()
-  repo_root <- normalizePath(file.path(testthat::test_path(), "..", ".."), winslash = "/", mustWork = TRUE)
+  repo_root <- normalizePath(
+    file.path(testthat::test_path(), "..", ".."),
+    winslash = "/", mustWork = FALSE
+  )
   baseline_path <- file.path(repo_root, "tools", "baseline.csv")
   skip_if_not(file.exists(baseline_path), "tools/baseline.csv missing")
 

@@ -1,6 +1,16 @@
 benchmark_helper_context <- function() {
-  repo_root <- normalizePath(file.path(testthat::test_path(), "..", ".."), winslash = "/", mustWork = TRUE)
+  # tools/ is a source-tree-only directory and is NOT shipped in the
+  # installed package. When R CMD check runs tests against the installed
+  # package, the path does not exist — we skip rather than error.
+  repo_root <- normalizePath(
+    file.path(testthat::test_path(), "..", ".."),
+    winslash = "/", mustWork = FALSE
+  )
   helper_path <- file.path(repo_root, "tools", "benchmark-helpers.R")
+  testthat::skip_if_not(
+    file.exists(helper_path),
+    "tools/benchmark-helpers.R not reachable (installed-pkg context)"
+  )
   helper_env <- new.env(parent = globalenv())
   sys.source(helper_path, envir = helper_env)
   list(
