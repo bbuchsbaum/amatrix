@@ -13,7 +13,7 @@ kron(A, B)
 An \code{adgeMatrix} of dimension \code{(nrow(A)*nrow(B)) x (ncol(A)*ncol(B))}.
 }
 \description{
-Computes \code{A ⊗ B} and returns the result as an \code{adgeMatrix}.
+Computes the Kronecker product \eqn{A \otimes B} and returns the result as an \code{adgeMatrix}.
 Accepts plain matrices or any \code{aMatrix} subclass.
 For a lazy variant that avoids forming the full product see
 \code{\link{kron_matrix}}.

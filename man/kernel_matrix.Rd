@@ -26,7 +26,7 @@ kernel_matrix(
 
 \item{degree}{Polynomial degree for \code{"polynomial"}.}
 
-\item{coef}{Constant term for \code{"polynomial"}: (coef + x·y)^degree.}
+\item{coef}{Constant term for \code{"polynomial"}: \eqn{(\mathrm{coef} + x^\top y)^{\mathrm{degree}}}.}
 
 \item{preferred_backend}{Optional backend name to override the default
 dispatch (e.g., \code{"mlx"}, \code{"opencl"}).}
@@ -45,11 +45,11 @@ sqrt, pow) run on CPU.
 \details{
 Kernels:
 \describe{
-  \item{linear}{k(x,y) = x·y}
-  \item{rbf}{k(x,y) = exp(-||x-y||² / (2σ²))}
-  \item{polynomial}{k(x,y) = (coef + x·y)^degree}
-  \item{cosine}{k(x,y) = x·y / (||x|| ||y||)}
-  \item{laplacian}{k(x,y) = exp(-||x-y|| / σ)}
+  \item{linear}{\eqn{k(x,y) = x^\top y}}
+  \item{rbf}{\eqn{k(x,y) = \exp(-\|x - y\|^2 / (2 \sigma^2))}}
+  \item{polynomial}{\eqn{k(x,y) = (\mathrm{coef} + x^\top y)^{\mathrm{degree}}}}
+  \item{cosine}{\eqn{k(x,y) = (x^\top y) / (\|x\| \|y\|)}}
+  \item{laplacian}{\eqn{k(x,y) = \exp(-\|x - y\| / \sigma)}}
 }
 }
 \seealso{

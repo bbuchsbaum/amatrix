@@ -4,6 +4,8 @@
 \alias{as.matrix,adgeMatrix-method}
 \alias{as.matrix,adgCMatrix-method}
 \alias{as.matrix,aTransposeView-method}
+\alias{as.matrix,amChol-method}
+\alias{as.matrix,KronMatrix-method}
 \alias{as.numeric,adgeMatrix-method}
 \alias{as.vector,adgeMatrix-method}
 \alias{as.array,adgeMatrix-method}
@@ -15,6 +17,10 @@
 \S4method{as.matrix}{adgCMatrix}(x, ...)
 
 \S4method{as.matrix}{aTransposeView}(x, ...)
+
+\S4method{as.matrix}{amChol}(x, ...)
+
+\S4method{as.matrix}{KronMatrix}(x, ...)
 
 \S4method{as.numeric}{adgeMatrix}(x, ...)
 
