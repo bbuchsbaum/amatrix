@@ -1238,7 +1238,7 @@ run_group <- function(group) {
 key_columns <- c(
   "suite", "op", "size_label", "variant", "requested_backend",
   "dispatch_backend", "dispatch_path", "nrow", "ncol", "rhs_width",
-  "density", "nnz", "density_bucket"
+  "density", "density_bucket"
 )
 
 baseline_min_key <- c("op", "size_label", "variant", "requested_backend")
@@ -1247,14 +1247,14 @@ add_cpu_reference <- function(results) {
   cpu <- results[
     results$status == "ok" &
       results$requested_backend == "cpu",
-    c("suite", "op", "size_label", "variant", "nrow", "ncol", "rhs_width", "density", "nnz", "density_bucket", "median_ms")
+    c("suite", "op", "size_label", "variant", "nrow", "ncol", "rhs_width", "density", "density_bucket", "median_ms")
   ]
   names(cpu)[names(cpu) == "median_ms"] <- "cpu_reference_ms"
 
   merge(
     results,
     cpu,
-    by = c("suite", "op", "size_label", "variant", "nrow", "ncol", "rhs_width", "density", "nnz", "density_bucket"),
+    by = c("suite", "op", "size_label", "variant", "nrow", "ncol", "rhs_width", "density", "density_bucket"),
     all.x = TRUE
   )
 }
