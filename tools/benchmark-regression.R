@@ -73,9 +73,55 @@ benchmark_launch_debug <- function(...) {
   invisible(TRUE)
 }
 
+benchmark_regression_usage <- function() {
+  paste(
+    "amatrix benchmark harness",
+    "",
+    "Convenience entry point:",
+    "  bash tools/benchmark-regression.sh [options]",
+    "",
+    "Stable direct entry point:",
+    "  Rscript tools/benchmark-regression-cli.R [options]",
+    "",
+    "Historical direct entry point:",
+    "  Rscript tools/benchmark-regression.R [options]",
+    "",
+    "Options:",
+    "  --help                    Show this help and exit",
+    "  --update                  Refresh tools/baseline.csv from the current run",
+    "  --against-baseline        Explicit no-op alias for compare-against-baseline mode",
+    "  --warm-only               Shorten the console summary to warm/resident rows",
+    "  --baseline=PATH           Baseline CSV to compare against",
+    "  --output-dir=PATH         Result bundle directory (default: tools/benchmark-results/<timestamp>)",
+    "  --suites=dense,sparse     Suites to run",
+    "  --backends=cpu,opencl     Requested backends",
+    "  --include-arrayfire=1     Include ArrayFire during backend discovery",
+    "",
+    "Result bundle:",
+    "  raw-results.csv           Per-cell measurements",
+    "  summary.csv               Decorated summary with routing/performance states",
+    "  regressions.csv           Cells slower than baseline by >20%",
+    "  warm-ratios.csv           Cold-vs-warm/resident comparisons",
+    "  routing-summary.csv       Backend/status/routing counts",
+    "  benchmark-summary.md      Human-readable markdown summary",
+    "  benchmark-report.qmd      Quarto source report",
+    "  benchmark-report.html     Rendered HTML report when Quarto is available",
+    "  benchmark-report.pdf      Rendered PDF report when Quarto is available",
+    "  plots/*.png               Baseline, warm-state, and routing charts",
+    "",
+    "Notes:",
+    "  - Baseline comparison is on by default when the baseline file exists.",
+    "  - On Apple Silicon, prefer cpu/mlx/metal for canonical runs.",
+    "  - ArrayFire on Apple is diagnostic-only and may require the direct Rscript entry path.",
+    sep = "\n"
+  )
+}
+
 parse_args <- function(args) {
   out <- list(
+    help = any(args %in% c("--help", "-h")),
     update = "--update" %in% args,
+    against_baseline = "--against-baseline" %in% args,
     warm_only = "--warm-only" %in% args,
     worker = "--worker" %in% args,
     safe_main = "--safe-main" %in% args,
@@ -189,13 +235,20 @@ initialize_regression_benchmark_context <- local({
   }
 })
 
-canonical_backend_specs <- function(include_arrayfire = .benchmark_arrayfire_requested()) {
+canonical_backend_specs <- function(include_arrayfire = .benchmark_arrayfire_requested(), only = NULL) {
+  requested <- if (is.null(only)) {
+    NULL
+  } else {
+    unique(only[nzchar(only)])
+  }
+
   available_benchmark_backends(
-    include_cpu = TRUE,
-    include_mlx = benchmark_worker_mlx_enabled(),
-    include_metal = TRUE,
-    include_opencl = TRUE,
-    include_arrayfire = benchmark_worker_arrayfire_enabled(include_arrayfire)
+    include_cpu = is.null(requested) || "cpu" %in% requested,
+    include_mlx = (is.null(requested) || "mlx" %in% requested) && benchmark_worker_mlx_enabled(),
+    include_metal = is.null(requested) || "metal" %in% requested,
+    include_opencl = is.null(requested) || "opencl" %in% requested,
+    include_arrayfire = (is.null(requested) || "arrayfire" %in% requested) &&
+      benchmark_worker_arrayfire_enabled(include_arrayfire)
   )
 }
 
@@ -204,8 +257,25 @@ benchmark_running_on_apple_silicon <- function() {
     grepl("arm64|aarch64", R.version$arch, ignore.case = TRUE)
 }
 
+benchmark_metadata_on_apple_silicon <- function(metadata) {
+  platform <- tolower(as.character(metadata$platform %||% ""))
+  sysname <- as.character(metadata$sysname %||% "")
+  arch <- tolower(as.character(metadata$arch %||% ""))
+
+  grepl("apple-darwin", platform, fixed = TRUE) ||
+    (identical(sysname, "Darwin") && grepl("arm64|aarch64", arch))
+}
+
 benchmark_worker_mlx_enabled <- function() {
-  identical(Sys.getenv("AMATRIX_BENCHMARK_MLX_WORKERS", unset = ""), "1")
+  flag <- Sys.getenv("AMATRIX_BENCHMARK_MLX_WORKERS", unset = "")
+  if (identical(flag, "1")) {
+    return(TRUE)
+  }
+  if (identical(flag, "0")) {
+    return(FALSE)
+  }
+
+  benchmark_running_on_apple_silicon()
 }
 
 benchmark_worker_arrayfire_enabled <- function(include_arrayfire = .benchmark_arrayfire_requested()) {
@@ -239,13 +309,16 @@ benchmark_worker_backend_block_reason <- function(backend_name, include_arrayfir
   }
 
   if (identical(backend_name, "mlx")) {
-    return("MLX is disabled in canonical regression workers; use tools/benchmark-mlx-native-rsvd.R or set AMATRIX_BENCHMARK_MLX_WORKERS=1")
+    if (benchmark_running_on_apple_silicon()) {
+      return("MLX disabled via AMATRIX_BENCHMARK_MLX_WORKERS=0")
+    }
+    return("MLX canonical workers require Apple Silicon or AMATRIX_BENCHMARK_MLX_WORKERS=1")
   }
 
   if (identical(backend_name, "arrayfire") &&
       benchmark_running_on_apple_silicon() &&
       !identical(Sys.getenv("AMATRIX_BENCHMARK_ARRAYFIRE_UNSAFE", unset = ""), "1")) {
-    return("ArrayFire is disabled on Apple benchmark workers unless AMATRIX_BENCHMARK_ARRAYFIRE_UNSAFE=1")
+    return("ArrayFire is diagnostic-only on Apple benchmark workers unless AMATRIX_BENCHMARK_ARRAYFIRE_UNSAFE=1")
   }
 
   sprintf("backend '%s' is disabled in canonical regression workers", backend_name)
@@ -1486,7 +1559,789 @@ summarize_results <- function(results) {
   display
 }
 
-write_outputs <- function(results, output_dir) {
+benchmark_size_levels <- function() c("small", "medium", "large", "xlarge")
+
+benchmark_ordered_size_label <- function(x) {
+  factor(x, levels = benchmark_size_levels(), ordered = TRUE)
+}
+
+benchmark_report_regressions <- function(summary) {
+  rows <- summary[
+    summary$status == "ok" &
+      summary$dispatch_state != "cpu_fallback" &
+      !is.na(summary$ratio_vs_baseline) &
+      summary$ratio_vs_baseline > 1.2,
+    c(
+      "suite", "op", "size_label", "variant", "requested_backend",
+      "dispatch_backend", "median_ms", "baseline_ms", "ratio_vs_baseline"
+    ),
+    drop = FALSE
+  ]
+  if (nrow(rows) == 0L) {
+    return(rows)
+  }
+  rows$regression_pct <- (rows$ratio_vs_baseline - 1) * 100
+  rows[order(-rows$ratio_vs_baseline, rows$suite, rows$op, rows$size_label, rows$variant), , drop = FALSE]
+}
+
+benchmark_report_incidents <- function(summary) {
+  summary[
+    summary$status != "ok",
+    c(
+      "suite", "op", "size_label", "variant", "requested_backend",
+      "status", "error_message", "requested_support_reason"
+    ),
+    drop = FALSE
+  ]
+}
+
+benchmark_report_fallbacks <- function(summary) {
+  summary[
+    summary$status == "ok" &
+      summary$requested_backend != "cpu" &
+      summary$dispatch_state == "cpu_fallback",
+    c(
+      "suite", "op", "size_label", "variant", "requested_backend",
+      "dispatch_backend", "median_ms", "cpu_reference_ms", "requested_support_reason"
+    ),
+    drop = FALSE
+  ]
+}
+
+benchmark_report_warm_pairs <- function(summary) {
+  cold <- summary[
+    summary$status == "ok" & summary$variant == "cold",
+    c(
+      "suite", "op", "size_label", "requested_backend", "nrow", "ncol",
+      "rhs_width", "density", "density_bucket", "median_ms", "sd_ms"
+    ),
+    drop = FALSE
+  ]
+  warm <- summary[
+    summary$status == "ok" & summary$variant %in% c("warm", "resident"),
+    c(
+      "suite", "op", "size_label", "requested_backend", "nrow", "ncol",
+      "rhs_width", "density", "density_bucket", "variant", "median_ms", "sd_ms"
+    ),
+    drop = FALSE
+  ]
+  if (nrow(cold) == 0L || nrow(warm) == 0L) {
+    return(data.frame())
+  }
+
+  names(cold)[names(cold) == "median_ms"] <- "cold_ms"
+  names(cold)[names(cold) == "sd_ms"] <- "cold_sd_ms"
+  names(warm)[names(warm) == "variant"] <- "warm_variant"
+  names(warm)[names(warm) == "median_ms"] <- "warm_ms"
+  names(warm)[names(warm) == "sd_ms"] <- "warm_sd_ms"
+
+  join_cols <- c("suite", "op", "size_label", "requested_backend", "nrow", "ncol", "rhs_width", "density", "density_bucket")
+  pairs <- merge(cold, warm, by = join_cols, all = FALSE, sort = FALSE)
+  if (nrow(pairs) == 0L) {
+    return(pairs)
+  }
+
+  pairs$cold_to_warm_gain <- pairs$cold_ms / pairs$warm_ms
+  pairs$warm_vs_cold_ratio <- pairs$warm_ms / pairs$cold_ms
+  pairs$ms_saved <- pairs$cold_ms - pairs$warm_ms
+  pairs[order(-pairs$cold_to_warm_gain, pairs$suite, pairs$op, pairs$size_label), , drop = FALSE]
+}
+
+benchmark_report_acceleration <- function(summary) {
+  rows <- summary[
+    summary$status == "ok" &
+      summary$requested_backend != "cpu" &
+      summary$dispatch_state == "accelerated",
+    c(
+      "suite", "op", "size_label", "variant", "requested_backend",
+      "dispatch_backend", "median_ms", "cpu_reference_ms",
+      "speedup_vs_cpu", "ratio_vs_baseline", "rel_err"
+    ),
+    drop = FALSE
+  ]
+  if (nrow(rows) == 0L) {
+    return(rows)
+  }
+  rows[order(-rows$speedup_vs_cpu, rows$suite, rows$op, rows$size_label), , drop = FALSE]
+}
+
+benchmark_report_backend_overview <- function(summary, regressions) {
+  backend_names <- unique(summary$requested_backend)
+  rows <- lapply(backend_names, function(backend_name) {
+    subset <- summary[summary$requested_backend == backend_name, , drop = FALSE]
+    data.frame(
+      requested_backend = backend_name,
+      total_cells = nrow(subset),
+      executed_cells = sum(subset$status == "ok"),
+      accelerated_cells = sum(subset$dispatch_state == "accelerated", na.rm = TRUE),
+      cpu_fallback_cells = sum(subset$dispatch_state == "cpu_fallback", na.rm = TRUE),
+      incident_cells = sum(subset$status != "ok"),
+      regression_cells = sum(regressions$requested_backend == backend_name),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  out[order(out$requested_backend), , drop = FALSE]
+}
+
+benchmark_report_suite_overview <- function(summary) {
+  suites <- unique(summary$suite)
+  rows <- lapply(suites, function(suite_name) {
+    subset <- summary[summary$suite == suite_name, , drop = FALSE]
+    data.frame(
+      suite = suite_name,
+      ops = length(unique(subset$op)),
+      requested_backends = paste(sort(unique(subset$requested_backend)), collapse = ", "),
+      total_cells = nrow(subset),
+      executed_cells = sum(subset$status == "ok"),
+      non_cpu_executed = sum(subset$status == "ok" & !is.na(subset$dispatch_backend) & subset$dispatch_backend != "cpu"),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  out[order(out$suite), , drop = FALSE]
+}
+
+benchmark_report_op_coverage <- function(summary) {
+  keys <- unique(summary[, c("suite", "op"), drop = FALSE])
+  rows <- lapply(seq_len(nrow(keys)), function(idx) {
+    subset <- summary[
+      summary$suite == keys$suite[[idx]] &
+        summary$op == keys$op[[idx]],
+      ,
+      drop = FALSE
+    ]
+    executed_dispatch <- sort(unique(subset$dispatch_backend[subset$status == "ok" & nzchar(subset$dispatch_backend)]))
+    data.frame(
+      suite = keys$suite[[idx]],
+      op = keys$op[[idx]],
+      requested_backends = paste(sort(unique(subset$requested_backend)), collapse = ", "),
+      executed_backends = if (length(executed_dispatch) > 0L) paste(executed_dispatch, collapse = ", ") else "none",
+      variants = paste(sort(unique(subset$variant)), collapse = ", "),
+      cells = nrow(subset),
+      executed_cells = sum(subset$status == "ok"),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  out[order(out$suite, out$op), , drop = FALSE]
+}
+
+benchmark_report_backend_status <- function() {
+  status <- tryCatch(amatrix_backend_status(), error = function(e) NULL)
+  if (is.null(status) || !is.data.frame(status) || nrow(status) == 0L) {
+    return(data.frame())
+  }
+
+  keep <- intersect(
+    c("name", "available", "health", "precision_modes", "residency_capable", "capabilities"),
+    names(status)
+  )
+  status <- status[, keep, drop = FALSE]
+  if ("capabilities" %in% names(status)) {
+    status$capabilities <- vapply(
+      status$capabilities,
+      function(x) {
+        x <- as.character(x)
+        if (nchar(x) > 72L) {
+          paste0(substr(x, 1L, 69L), "...")
+        } else {
+          x
+        }
+      },
+      character(1)
+    )
+  }
+  status[order(status$name), , drop = FALSE]
+}
+
+benchmark_report_routing_summary <- function(summary) {
+  if (nrow(summary) == 0L) {
+    return(data.frame())
+  }
+
+  keys <- unique(summary[, c("requested_backend", "routing_state", "execution_state"), drop = FALSE])
+  counts <- integer(nrow(keys))
+  for (idx in seq_len(nrow(keys))) {
+    counts[[idx]] <- sum(
+      summary$requested_backend == keys$requested_backend[[idx]] &
+        summary$routing_state == keys$routing_state[[idx]] &
+        summary$execution_state == keys$execution_state[[idx]]
+    )
+  }
+  keys$cells <- counts
+  keys[order(keys$requested_backend, keys$routing_state, keys$execution_state), , drop = FALSE]
+}
+
+benchmark_report_metrics <- function(summary, regressions, incidents, fallbacks, warm_pairs, baseline_path) {
+  data.frame(
+    metric = c(
+      "total_cells",
+      "executed_cells",
+      "baseline_matched_cells",
+      "regressions_gt_20pct",
+      "incidents",
+      "cpu_fallbacks",
+      "warm_pairs",
+      "requested_backends"
+    ),
+    value = c(
+      nrow(summary),
+      sum(summary$status == "ok"),
+      sum(summary$status == "ok" & !is.na(summary$baseline_ms)),
+      nrow(regressions),
+      nrow(incidents),
+      nrow(fallbacks),
+      nrow(warm_pairs),
+      length(unique(summary$requested_backend))
+    ),
+    detail = c(
+      "Total benchmark cells in summary.csv",
+      "Rows that completed successfully",
+      if (file.exists(baseline_path)) "Executed rows with a baseline comparison" else "Baseline file not present",
+      "Rows slower than baseline by more than 20%",
+      "Rows with status != ok",
+      "Successful rows that routed back to CPU",
+      "Matched cold vs warm/resident pairs",
+      paste(unique(summary$requested_backend), collapse = ", ")
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+benchmark_report_requires_cli_entry <- function(summary, metadata) {
+  benchmark_metadata_on_apple_silicon(metadata) &&
+    "arrayfire" %in% unique(summary$requested_backend)
+}
+
+benchmark_report_policy_notes <- function(summary, metadata) {
+  rows <- list(
+    data.frame(
+      area = "Scope",
+      policy = "Bundle-scoped results only",
+      detail = "This report only covers the suites, operations, variants, and backends requested for this bundle. Missing algorithms or backends were not benchmarked here.",
+      stringsAsFactors = FALSE
+    ),
+    data.frame(
+      area = "Algorithmic scripts",
+      policy = "Standalone scripts are separate from the canonical bundle",
+      detail = paste(
+        "Standalone exploratory scripts such as tools/benchmark-kmeans.R,",
+        "tools/benchmark-cancor.R, and tools/benchmark-krr.R are not part of",
+        "summary.csv unless their operations are promoted into tools/benchmark-regression.R."
+      ),
+      stringsAsFactors = FALSE
+    )
+  )
+
+  if (benchmark_report_requires_cli_entry(summary, metadata)) {
+    rows[[length(rows) + 1L]] <- data.frame(
+      area = "Apple ArrayFire",
+      policy = "Diagnostic-only on Apple Silicon",
+      detail = paste(
+        "For Apple Silicon bundles that include ArrayFire, prefer cpu/mlx/metal",
+        "for canonical regression runs. ArrayFire requires explicit opt-in and",
+        "the direct Rscript launcher; the shell wrapper is not the authoritative",
+        "entry path for this case."
+      ),
+      stringsAsFactors = FALSE
+    )
+  } else if ("arrayfire" %in% unique(summary$requested_backend)) {
+    rows[[length(rows) + 1L]] <- data.frame(
+      area = "ArrayFire",
+      policy = "Opt-in backend",
+      detail = "ArrayFire only appears in the canonical harness when it is explicitly requested during backend discovery.",
+      stringsAsFactors = FALSE
+    )
+  }
+
+  do.call(rbind, rows)
+}
+
+benchmark_report_snippets <- function(summary, output_dir, baseline_path, metadata) {
+  backend_arg <- paste(unique(summary$requested_backend), collapse = ",")
+  suite_arg <- paste(unique(summary$suite), collapse = ",")
+  summary_cols <- paste(names(summary), collapse = ", ")
+  run_entry <- if (benchmark_report_requires_cli_entry(summary, metadata)) {
+    "Rscript tools/benchmark-regression-cli.R"
+  } else {
+    "bash tools/benchmark-regression.sh"
+  }
+  arrayfire_debug <- if (benchmark_report_requires_cli_entry(summary, metadata)) {
+    paste(
+      "Rscript tools/debug-arrayfire-gpu.R --runtime=cpu",
+      "Rscript tools/debug-arrayfire-gpu.R --runtime=opencl",
+      sep = "\n"
+    )
+  } else {
+    NULL
+  }
+
+  list(
+    run_bundle = paste(
+      run_entry,
+      sprintf("--backends=%s", backend_arg),
+      sprintf("--suites=%s", suite_arg),
+      sprintf("--output-dir=%s", output_dir)
+    ),
+    render_html = paste(
+      sprintf("cd %s", output_dir),
+      "quarto render benchmark-report.qmd --to html --output benchmark-report.html",
+      sep = "\n"
+    ),
+    render_pdf = paste(
+      sprintf("cd %s", output_dir),
+      "quarto render benchmark-report.qmd --to pdf --output benchmark-report.pdf",
+      sep = "\n"
+    ),
+    read_bundle_r = paste(
+      "report <- readRDS(\"report-data.rds\")",
+      "summary <- read.csv(\"summary.csv\", stringsAsFactors = FALSE)",
+      "str(report$tables$backend_overview)",
+      "summary[c(\"suite\", \"op\", \"size_label\", \"variant\", \"median_ms\")]",
+      sep = "\n"
+    ),
+    summary_schema = summary_cols,
+    baseline_path = baseline_path,
+    arrayfire_debug = arrayfire_debug
+  )
+}
+
+benchmark_report_bundle <- function(summary, baseline_path, output_dir, metadata) {
+  regressions <- benchmark_report_regressions(summary)
+  incidents <- benchmark_report_incidents(summary)
+  fallbacks <- benchmark_report_fallbacks(summary)
+  warm_pairs <- benchmark_report_warm_pairs(summary)
+  acceleration <- benchmark_report_acceleration(summary)
+  backend_overview <- benchmark_report_backend_overview(summary, regressions)
+  suite_overview <- benchmark_report_suite_overview(summary)
+  op_coverage <- benchmark_report_op_coverage(summary)
+  backend_status <- benchmark_report_backend_status()
+  routing_summary <- benchmark_report_routing_summary(summary)
+  metrics <- benchmark_report_metrics(summary, regressions, incidents, fallbacks, warm_pairs, baseline_path)
+  policy_notes <- benchmark_report_policy_notes(summary, metadata)
+
+  list(
+    summary = summary,
+    tables = list(
+      metrics = metrics,
+      policy_notes = policy_notes,
+      backend_overview = backend_overview,
+      suite_overview = suite_overview,
+      op_coverage = op_coverage,
+      backend_status = backend_status,
+      regressions = regressions,
+      warm_pairs = warm_pairs,
+      acceleration = acceleration,
+      incidents = incidents,
+      fallbacks = fallbacks,
+      routing_summary = routing_summary
+    ),
+    metadata = metadata,
+    snippets = benchmark_report_snippets(summary, output_dir, baseline_path, metadata),
+    baseline_path = baseline_path,
+    baseline_present = file.exists(baseline_path),
+    output_dir = output_dir
+  )
+}
+
+benchmark_report_theme <- function() {
+  ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold", size = 15, colour = "#12263A"),
+      plot.subtitle = ggplot2::element_text(colour = "#40566B"),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major.y = ggplot2::element_blank(),
+      legend.position = "top",
+      legend.title = ggplot2::element_blank(),
+      axis.title = ggplot2::element_text(face = "bold", colour = "#12263A"),
+      axis.text = ggplot2::element_text(colour = "#23384D")
+    )
+}
+
+benchmark_plot_colours <- function() {
+  c(
+    accelerated = "#00798C",
+    cpu_baseline = "#4F6D7A",
+    cpu_fallback = "#D1495B",
+    not_run = "#B8C5D6",
+    rerouted = "#EDAe49",
+    available = "#3BB273",
+    unavailable = "#8D99AE",
+    dense = "#2563EB",
+    sparse = "#F59E0B"
+  )
+}
+
+benchmark_write_placeholder_plot <- function(path, title, subtitle) {
+  grDevices::png(path, width = 1600, height = 900, res = 160)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  graphics::par(mar = c(0, 0, 0, 0), bg = "#F8FAFC")
+  graphics::plot.new()
+  graphics::rect(0, 0, 1, 1, col = "#F8FAFC", border = NA)
+  graphics::text(0.5, 0.60, labels = title, cex = 2, font = 2, col = "#12263A")
+  graphics::text(0.5, 0.46, labels = subtitle, cex = 1.2, col = "#40566B")
+  invisible(path)
+}
+
+benchmark_write_plot <- function(plot, path, width = 1800, height = 1000, res = 160) {
+  grDevices::png(path, width = width, height = height, res = res)
+  on.exit(grDevices::dev.off(), add = TRUE)
+  print(plot)
+  invisible(path)
+}
+
+benchmark_write_report_plots <- function(bundle, output_dir) {
+  plots_dir <- file.path(output_dir, "plots")
+  dir.create(plots_dir, recursive = TRUE, showWarnings = FALSE)
+
+  paths <- list(
+    baseline = file.path(plots_dir, "baseline-drift.png"),
+    warm = file.path(plots_dir, "warm-cold-gains.png"),
+    routing = file.path(plots_dir, "routing-overview.png"),
+    speedup = file.path(plots_dir, "speedup-vs-cpu.png")
+  )
+
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    benchmark_write_placeholder_plot(paths$baseline, "Baseline drift unavailable", "Install ggplot2 to render benchmark charts.")
+    benchmark_write_placeholder_plot(paths$warm, "Warm-state plot unavailable", "Install ggplot2 to render benchmark charts.")
+    benchmark_write_placeholder_plot(paths$routing, "Routing plot unavailable", "Install ggplot2 to render benchmark charts.")
+    benchmark_write_placeholder_plot(paths$speedup, "Speedup plot unavailable", "Install ggplot2 to render benchmark charts.")
+    return(paths)
+  }
+
+  cols <- benchmark_plot_colours()
+  regressions <- bundle$tables$regressions
+  warm_pairs <- bundle$tables$warm_pairs
+  routing <- bundle$tables$routing_summary
+  acceleration <- bundle$tables$acceleration
+
+  drift_rows <- bundle$summary[
+    bundle$summary$status == "ok" & !is.na(bundle$summary$ratio_vs_baseline),
+    c("suite", "op", "size_label", "variant", "requested_backend", "ratio_vs_baseline"),
+    drop = FALSE
+  ]
+  if (nrow(drift_rows) > 0L) {
+    drift_rows$drift_rank <- abs(log2(drift_rows$ratio_vs_baseline))
+    drift_rows <- drift_rows[order(-drift_rows$drift_rank), , drop = FALSE]
+    drift_rows <- utils::head(drift_rows, 14L)
+    drift_rows$cell <- paste(
+      drift_rows$suite,
+      drift_rows$op,
+      drift_rows$size_label,
+      drift_rows$variant,
+      drift_rows$requested_backend,
+      sep = " / "
+    )
+    drift_rows$cell <- factor(drift_rows$cell, levels = unique(rev(drift_rows$cell)))
+    drift_rows$direction <- ifelse(drift_rows$ratio_vs_baseline > 1, "slower", "faster")
+    drift_plot <- ggplot2::ggplot(drift_rows, ggplot2::aes(x = ratio_vs_baseline, y = cell, fill = direction)) +
+      ggplot2::geom_col(width = 0.72) +
+      ggplot2::geom_vline(xintercept = 1, linetype = "dashed", colour = "#12263A") +
+      ggplot2::scale_fill_manual(values = c(faster = "#3BB273", slower = "#D1495B")) +
+      ggplot2::labs(
+        title = "Current runtime versus baseline",
+        subtitle = "Top cells by absolute drift; the dashed line is parity with baseline.csv.",
+        x = "Current / baseline median runtime",
+        y = NULL
+      ) +
+      benchmark_report_theme()
+    benchmark_write_plot(drift_plot, paths$baseline)
+  } else {
+    benchmark_write_placeholder_plot(paths$baseline, "No baseline comparison", "This run did not match any rows in the baseline file.")
+  }
+
+  if (nrow(warm_pairs) > 0L) {
+    warm_rows <- utils::head(warm_pairs, 14L)
+    warm_rows$cell <- paste(
+      warm_rows$suite,
+      warm_rows$op,
+      warm_rows$size_label,
+      warm_rows$requested_backend,
+      sep = " / "
+    )
+    warm_rows$cell <- factor(warm_rows$cell, levels = unique(rev(warm_rows$cell)))
+    warm_plot <- ggplot2::ggplot(warm_rows, ggplot2::aes(x = cold_to_warm_gain, y = cell, fill = suite)) +
+      ggplot2::geom_col(width = 0.72) +
+      ggplot2::geom_text(
+        ggplot2::aes(label = sprintf("%.2fx", cold_to_warm_gain)),
+        hjust = -0.1,
+        size = 3.6,
+        colour = "#12263A"
+      ) +
+      ggplot2::scale_fill_manual(values = c(dense = cols[["dense"]], sparse = cols[["sparse"]])) +
+      ggplot2::labs(
+        title = "Best warm-state wins",
+        subtitle = "Cold-to-warm gain highlights the payoff from reuse and residency.",
+        x = "Cold median / warm median",
+        y = NULL
+      ) +
+      ggplot2::expand_limits(x = max(warm_rows$cold_to_warm_gain) * 1.15) +
+      benchmark_report_theme()
+    benchmark_write_plot(warm_plot, paths$warm)
+  } else {
+    benchmark_write_placeholder_plot(paths$warm, "No warm pairs", "This run did not produce matching cold and warm/resident cells.")
+  }
+
+  if (nrow(routing) > 0L) {
+    routing$requested_backend <- factor(routing$requested_backend, levels = unique(routing$requested_backend))
+    routing_plot <- ggplot2::ggplot(routing, ggplot2::aes(x = requested_backend, y = cells, fill = routing_state)) +
+      ggplot2::geom_col(width = 0.7) +
+      ggplot2::scale_fill_manual(values = cols[names(cols) %in% unique(routing$routing_state)], drop = FALSE) +
+      ggplot2::labs(
+        title = "Routing outcomes by requested backend",
+        subtitle = "Counts are grouped by the requested backend and the actual routing state.",
+        x = NULL,
+        y = "Benchmark cells"
+      ) +
+      benchmark_report_theme()
+    benchmark_write_plot(routing_plot, paths$routing)
+  } else {
+    benchmark_write_placeholder_plot(paths$routing, "No routing rows", "The summary did not contain any routing metadata.")
+  }
+
+  if (nrow(acceleration) > 0L) {
+    speedup_rows <- acceleration
+    speedup_rows$size_label <- benchmark_ordered_size_label(speedup_rows$size_label)
+    line_groups <- interaction(speedup_rows$requested_backend, speedup_rows$op, speedup_rows$variant, drop = TRUE)
+    speedup_plot <- ggplot2::ggplot(
+      speedup_rows,
+      ggplot2::aes(x = size_label, y = speedup_vs_cpu, colour = requested_backend, group = interaction(requested_backend, op, variant))
+    ) +
+      ggplot2::geom_hline(yintercept = 1, linetype = "dashed", colour = "#12263A") +
+      ggplot2::geom_point(size = 2.4) +
+      ggplot2::facet_wrap(~ op, scales = "free_y") +
+      ggplot2::labs(
+        title = "Observed acceleration versus CPU",
+        subtitle = "Only rows that truly executed on the requested non-CPU backend are shown.",
+        x = "Size label",
+        y = "CPU median / backend median"
+      ) +
+      benchmark_report_theme()
+    if (any(table(line_groups) > 1L)) {
+      speedup_plot <- speedup_plot + ggplot2::geom_line(alpha = 0.75)
+    }
+    benchmark_write_plot(speedup_plot, paths$speedup, width = 1800, height = 1200)
+  } else {
+    benchmark_write_placeholder_plot(paths$speedup, "No accelerated cells", "Every executed row stayed on CPU in this run.")
+  }
+
+  paths
+}
+
+benchmark_markdown_table <- function(df, digits = 3L, max_rows = 12L) {
+  if (nrow(df) == 0L) {
+    return("_None._")
+  }
+
+  df <- utils::head(df, max_rows)
+  numeric_cols <- vapply(df, is.numeric, logical(1))
+  for (name in names(df)[numeric_cols]) {
+    df[[name]] <- round(df[[name]], digits = digits)
+  }
+
+  if (requireNamespace("knitr", quietly = TRUE)) {
+    return(paste(capture.output(knitr::kable(df, format = "pipe")), collapse = "\n"))
+  }
+
+  paste0("```\n", paste(capture.output(print(df, row.names = FALSE)), collapse = "\n"), "\n```")
+}
+
+benchmark_write_markdown_summary <- function(bundle, output_dir, output_paths) {
+  metrics <- bundle$tables$metrics
+  metric_value <- function(name) metrics$value[match(name, metrics$metric)][[1L]]
+  report_html <- file.path(output_dir, "benchmark-report.html")
+  report_pdf <- file.path(output_dir, "benchmark-report.pdf")
+
+  lines <- c(
+    "# amatrix benchmark summary",
+    "",
+    sprintf("- Generated: `%s`", format(bundle$metadata$created_at, "%Y-%m-%d %H:%M:%S %Z")),
+    sprintf("- Host: `%s`", bundle$metadata$hostname),
+    sprintf("- Baseline: `%s`", if (bundle$baseline_present) bundle$baseline_path else "not found"),
+    sprintf("- Requested backends: `%s`", paste(unique(bundle$summary$requested_backend), collapse = ", ")),
+    sprintf("- Executed cells: `%s / %s`", metric_value("executed_cells"), metric_value("total_cells")),
+    sprintf("- Regressions >20%%: `%s`", metric_value("regressions_gt_20pct")),
+    sprintf("- Incidents: `%s`", metric_value("incidents")),
+    sprintf("- CPU fallbacks: `%s`", metric_value("cpu_fallbacks")),
+    "",
+    "## Reproduce and render",
+    "",
+    "```bash",
+    bundle$snippets$run_bundle,
+    "```",
+    "",
+    "```bash",
+    bundle$snippets$render_pdf,
+    "```",
+    "",
+    if (!is.null(bundle$snippets$arrayfire_debug)) "### ArrayFire diagnostics" else NULL,
+    if (!is.null(bundle$snippets$arrayfire_debug)) "" else NULL,
+    if (!is.null(bundle$snippets$arrayfire_debug)) "```bash" else NULL,
+    if (!is.null(bundle$snippets$arrayfire_debug)) bundle$snippets$arrayfire_debug else NULL,
+    if (!is.null(bundle$snippets$arrayfire_debug)) "```" else NULL,
+    if (!is.null(bundle$snippets$arrayfire_debug)) "" else NULL,
+    "## Policy notes",
+    "",
+    benchmark_markdown_table(bundle$tables$policy_notes, digits = 2L, max_rows = 12L),
+    "",
+    "## Backend overview",
+    "",
+    benchmark_markdown_table(bundle$tables$backend_overview, digits = 2L, max_rows = 12L),
+    "",
+    "## Top regressions",
+    "",
+    benchmark_markdown_table(bundle$tables$regressions, digits = 3L, max_rows = 12L),
+    "",
+    "## Warm-state gains",
+    "",
+    benchmark_markdown_table(bundle$tables$warm_pairs, digits = 3L, max_rows = 12L),
+    "",
+    "## Accelerated cells",
+    "",
+    benchmark_markdown_table(bundle$tables$acceleration, digits = 3L, max_rows = 12L),
+    "",
+    "## Incidents",
+    "",
+    benchmark_markdown_table(bundle$tables$incidents, digits = 3L, max_rows = 12L),
+    "",
+    "## Artifacts",
+    "",
+    "- Raw results: `raw-results.csv`",
+    "- Decorated summary: `summary.csv`",
+    "- Regressions: `regressions.csv`",
+    "- Warm ratios: `warm-ratios.csv`",
+    "- Routing summary: `routing-summary.csv`",
+    "- Quarto source: `benchmark-report.qmd`",
+    sprintf("- Rendered HTML: `%s`", if (file.exists(report_html)) basename(report_html) else "not rendered"),
+    sprintf("- Rendered PDF: `%s`", if (file.exists(report_pdf)) basename(report_pdf) else "not rendered"),
+    "- Charts: `plots/`"
+  )
+
+  path <- file.path(output_dir, "benchmark-summary.md")
+  writeLines(lines, path)
+  path
+}
+
+benchmark_render_quarto_report <- function(qmd_path, output_dir) {
+  if (identical(Sys.getenv("AMATRIX_BENCHMARK_SKIP_INLINE_RENDER", unset = ""), "1")) {
+    return(NA_character_)
+  }
+
+  quarto <- Sys.which("quarto")
+  if (!nzchar(quarto)) {
+    return(NA_character_)
+  }
+
+  html_path <- file.path(output_dir, "benchmark-report.html")
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(output_dir)
+  capture_fun <- if (exists("benchmark_system2_capture", mode = "function")) {
+    get("benchmark_system2_capture", mode = "function")
+  } else {
+    function(command, args) {
+      warned_status <- NULL
+      quoted_args <- vapply(args, shQuote, character(1), USE.NAMES = FALSE)
+      output <- withCallingHandlers(
+        system2(command, quoted_args, stdout = TRUE, stderr = TRUE),
+        warning = function(w) {
+          warned_status <<- attr(w, "status") %||% warned_status
+          invokeRestart("muffleWarning")
+        }
+      )
+      list(
+        output = output,
+        status = attr(output, "status") %||% warned_status %||% 0L
+      )
+    }
+  }
+  render <- capture_fun(
+    quarto,
+    c("render", basename(qmd_path), "--to", "html", "--output", basename(html_path))
+  )
+  if (render$status != 0L) {
+    message("Quarto render failed: ", paste(render$output, collapse = "\n"))
+    return(NA_character_)
+  }
+
+  if (!file.exists(html_path)) {
+    return(NA_character_)
+  }
+  html_path
+}
+
+benchmark_regression_repo_root <- function() {
+  script_path <- getOption("amatrix.benchmark_regression.script_path", "tools/benchmark-regression.R")
+  env_root <- Sys.getenv("AMATRIX_BENCHMARK_REPO_ROOT", unset = "")
+  candidates <- unique(c(
+    env_root,
+    dirname(dirname(script_path)),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "..", "..")
+  ))
+  candidates <- candidates[nzchar(candidates)]
+  for (candidate in candidates) {
+    candidate <- normalizePath(candidate, winslash = "/", mustWork = FALSE)
+    if (file.exists(file.path(candidate, "tools", "benchmark-report-template.qmd"))) {
+      return(candidate)
+    }
+  }
+  normalizePath(dirname(dirname(script_path)), winslash = "/", mustWork = FALSE)
+}
+
+benchmark_prepare_report <- function(summary, output_dir, baseline_path, metadata) {
+  bundle <- benchmark_report_bundle(summary, baseline_path, output_dir, metadata)
+  plot_paths <- benchmark_write_report_plots(bundle, output_dir)
+
+  bundle$plots <- lapply(plot_paths, basename)
+
+  report_data_path <- file.path(output_dir, "report-data.rds")
+  saveRDS(bundle, report_data_path)
+
+  repo_root <- benchmark_regression_repo_root()
+  qmd_template <- file.path(repo_root, "tools", "benchmark-report-template.qmd")
+  css_template <- file.path(repo_root, "tools", "benchmark-report.css")
+  tex_template <- file.path(repo_root, "tools", "benchmark-report-preamble.tex")
+  report_qmd <- file.path(output_dir, "benchmark-report.qmd")
+  report_css <- file.path(output_dir, "benchmark-report.css")
+  report_tex <- file.path(output_dir, "benchmark-report-preamble.tex")
+  if (file.exists(qmd_template)) {
+    file.copy(qmd_template, report_qmd, overwrite = TRUE)
+  }
+  if (file.exists(css_template)) {
+    file.copy(css_template, report_css, overwrite = TRUE)
+  }
+  if (file.exists(tex_template)) {
+    file.copy(tex_template, report_tex, overwrite = TRUE)
+  }
+
+  paths <- list(
+    regressions = file.path(output_dir, "regressions.csv"),
+    warm_ratios = file.path(output_dir, "warm-ratios.csv"),
+    routing_summary = file.path(output_dir, "routing-summary.csv"),
+    backend_overview = file.path(output_dir, "backend-overview.csv"),
+    report_data = report_data_path,
+    report_qmd = report_qmd,
+    report_css = report_css,
+    report_tex = report_tex
+  )
+
+  write.csv(bundle$tables$regressions, paths$regressions, row.names = FALSE)
+  write.csv(bundle$tables$warm_pairs, paths$warm_ratios, row.names = FALSE)
+  write.csv(bundle$tables$routing_summary, paths$routing_summary, row.names = FALSE)
+  write.csv(bundle$tables$backend_overview, paths$backend_overview, row.names = FALSE)
+
+  report_html <- if (file.exists(report_qmd)) benchmark_render_quarto_report(report_qmd, output_dir) else NA_character_
+  paths$report_html <- report_html
+  paths$summary_md <- benchmark_write_markdown_summary(bundle, output_dir, c(paths, list(report_html = report_html)))
+  paths$plots_dir <- file.path(output_dir, "plots")
+
+  paths
+}
+
+write_outputs <- function(results, output_dir, baseline_path = "tools/baseline.csv") {
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
   raw_path <- file.path(output_dir, "raw-results.csv")
@@ -1509,18 +2364,23 @@ write_outputs <- function(results, output_dir) {
   write.csv(summary, summary_path, row.names = FALSE)
   write.csv(incidents, incidents_path, row.names = FALSE)
   write.csv(fallbacks, fallbacks_path, row.names = FALSE)
-  saveRDS(
-    list(
-      created_at = Sys.time(),
-      hostname = Sys.info()[["nodename"]],
-      r_version = paste(R.version$major, R.version$minor, sep = "."),
-      platform = R.version$platform,
-      timezone = Sys.timezone()
-    ),
-    meta_path
+  metadata <- list(
+    created_at = Sys.time(),
+    hostname = Sys.info()[["nodename"]],
+    r_version = paste(R.version$major, R.version$minor, sep = "."),
+    platform = R.version$platform,
+    sysname = Sys.info()[["sysname"]],
+    arch = R.version$arch,
+    timezone = Sys.timezone()
   )
+  saveRDS(metadata, meta_path)
 
-  list(raw = raw_path, summary = summary_path, incidents = incidents_path, fallbacks = fallbacks_path, metadata = meta_path)
+  report_paths <- benchmark_prepare_report(summary, output_dir, baseline_path, metadata)
+
+  c(
+    list(raw = raw_path, summary = summary_path, incidents = incidents_path, fallbacks = fallbacks_path, metadata = meta_path),
+    report_paths
+  )
 }
 
 print_run_summary <- function(results, baseline_path, output_paths, warm_only = FALSE) {
@@ -1563,20 +2423,47 @@ print_run_summary <- function(results, baseline_path, output_paths, warm_only = 
     message("\nNo incidents recorded.")
   }
 
-  ok_rows <- display[
-    display$status == "ok" & display$dispatch_state != "cpu_fallback",
-    c(
-      "suite", "op", "size_label", "variant", "requested_backend",
-      "dispatch_backend", "dispatch_state", "rhs_width", "density_bucket", "median_ms",
-      "cpu_reference_ms", "speedup_vs_cpu", "ratio_vs_baseline"
+  backend_overview <- benchmark_report_backend_overview(display, regressions)
+  message("\nBackend overview:")
+  print(backend_overview, row.names = FALSE)
+
+  warm_pairs <- benchmark_report_warm_pairs(display)
+  if (nrow(warm_pairs) > 0L) {
+    message("\nTop warm-state gains:")
+    print(
+      utils::head(
+        warm_pairs[
+          ,
+          c("suite", "op", "size_label", "requested_backend", "warm_variant", "cold_ms", "warm_ms", "cold_to_warm_gain"),
+          drop = FALSE
+        ],
+        8L
+      ),
+      row.names = FALSE
     )
-  ]
-  message("\nSummary:")
-  print(ok_rows, row.names = FALSE)
+  }
+
+  accelerated <- benchmark_report_acceleration(display)
+  if (nrow(accelerated) > 0L) {
+    message("\nFastest accelerated rows:")
+    print(
+      utils::head(
+        accelerated[
+          ,
+          c("suite", "op", "size_label", "variant", "requested_backend", "median_ms", "cpu_reference_ms", "speedup_vs_cpu"),
+          drop = FALSE
+        ],
+        8L
+      ),
+      row.names = FALSE
+    )
+  } else {
+    message("\nNo rows executed on a requested non-CPU backend in this run.")
+  }
 
   if (nrow(fallbacks) > 0L) {
-    message("\nCPU Fallbacks:")
-    print(fallbacks, row.names = FALSE)
+    message("\nCPU fallbacks:")
+    print(utils::head(fallbacks, 8L), row.names = FALSE)
   }
 
   message("\nArtifacts:")
@@ -1584,6 +2471,17 @@ print_run_summary <- function(results, baseline_path, output_paths, warm_only = 
   message("  summary: ", output_paths$summary)
   message("  incidents: ", output_paths$incidents)
   message("  fallbacks: ", output_paths$fallbacks)
+  message("  regressions: ", output_paths$regressions)
+  message("  warm ratios: ", output_paths$warm_ratios)
+  message("  routing summary: ", output_paths$routing_summary)
+  message("  markdown summary: ", output_paths$summary_md)
+  message("  quarto source: ", output_paths$report_qmd)
+  if (!is.na(output_paths$report_html)) {
+    message("  html report: ", output_paths$report_html)
+  } else {
+    message("  html report: not rendered (Quarto unavailable)")
+  }
+  message("  plots: ", output_paths$plots_dir)
   message("  metadata: ", output_paths$metadata)
 }
 
@@ -1607,7 +2505,10 @@ run_worker <- function(args) {
 }
 
 run_master <- function(args) {
-  specs <- canonical_backend_specs(include_arrayfire = args$include_arrayfire)
+  specs <- canonical_backend_specs(
+    include_arrayfire = args$include_arrayfire,
+    only = args$backends
+  )
   specs <- filter_backend_specs(specs, args$backends)
   detected_backend_names <- vapply(specs, `[[`, character(1), "name")
   benchmark_launch_debug(
@@ -1674,9 +2575,10 @@ run_master <- function(args) {
     mustWork = FALSE
   )
 
-  for (group in groups) {
+  for (idx in seq_along(groups)) {
+    group <- groups[[idx]]
     out_path <- tempfile(sprintf("%s-", group$group_id), fileext = ".rds")
-    message(sprintf("  %s", group$group_id))
+    message(sprintf("  [%02d/%02d] %s", idx, length(groups), group$group_id))
     launch <- benchmark_system2_capture(
       file.path(R.home("bin"), "Rscript"),
       benchmark_rscript_source_args(
@@ -1714,7 +2616,7 @@ run_master <- function(args) {
   results <- add_baseline_compare(results, args$baseline)
   results <- results[order(results$suite, results$op, results$size_label, results$variant, results$requested_backend), ]
 
-  output_paths <- write_outputs(results, args$output_dir)
+  output_paths <- write_outputs(results, args$output_dir, baseline_path = args$baseline)
 
   history_path <- getOption(
     "amatrix.benchmark_history_path",
@@ -1742,6 +2644,10 @@ run_master <- function(args) {
 
 benchmark_regression_dispatch <- function(command_args = commandArgs(trailingOnly = TRUE), allow_relaunch = TRUE) {
   args <- parse_args(command_args)
+  if (isTRUE(args$help)) {
+    cat(benchmark_regression_usage(), sep = "\n")
+    return(invisible(TRUE))
+  }
   if (isTRUE(allow_relaunch)) {
     relaunch_safe_master_if_needed(args)
   }
@@ -1792,6 +2698,10 @@ benchmark_regression_invoked_directly <- function() {
   !is.null(benchmark_regression_direct_file_info())
 }
 
+benchmark_regression_autorun_enabled <- function() {
+  isTRUE(getOption("amatrix.benchmark_regression.autorun", TRUE))
+}
+
 benchmark_regression_direct_relaunch <- function(command_args = commandArgs(trailingOnly = TRUE)) {
   info <- benchmark_regression_direct_file_info()
   if (is.null(info)) {
@@ -1825,7 +2735,7 @@ benchmark_regression_direct_relaunch <- function(command_args = commandArgs(trai
   quit(save = "no", status = relaunch_status)
 }
 
-if (benchmark_regression_invoked_directly()) {
+if (benchmark_regression_autorun_enabled() && benchmark_regression_invoked_directly()) {
   direct_args <- commandArgs(trailingOnly = TRUE)
   parsed_args <- parse_args(direct_args)
 

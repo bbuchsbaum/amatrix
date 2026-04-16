@@ -151,3 +151,81 @@ test_that("tools/baseline.csv joins against every synthetic CPU result", {
   expect_true(all(!is.na(merged$baseline_ms)),
               info = "tools/baseline.csv must successfully join all synthetic rows")
 })
+
+test_that("write_outputs creates a readable benchmark report bundle", {
+  ctx <- benchmark_harness_context()
+
+  results <- data.frame(
+    suite = c("dense", "dense", "dense", "dense"),
+    op = c("matmul", "matmul", "crossprod", "crossprod"),
+    size_label = c("small", "small", "medium", "medium"),
+    variant = c("cold", "warm", "cold", "warm"),
+    requested_backend = c("cpu", "cpu", "opencl", "opencl"),
+    dispatch_probe_op = c("matmul", "matmul", "crossprod", "crossprod"),
+    requested_supported = c(TRUE, TRUE, TRUE, TRUE),
+    requested_support_reason = c("cold supported", "cold supported", "cold supported", "cold supported"),
+    dispatch_backend = c("cpu", "cpu", "opencl", "opencl"),
+    dispatch_path = c("cold", "cold", "cold", "cold"),
+    status = c("ok", "ok", "ok", "ok"),
+    error_message = NA_character_,
+    nrow = c(256L, 256L, 1024L, 1024L),
+    ncol = c(32L, 32L, 128L, 128L),
+    rhs_width = c(32L, 32L, 0L, 0L),
+    density = c(0, 0, 0, 0),
+    density_bucket = c("dense", "dense", "dense", "dense"),
+    nnz = c(0L, 0L, 0L, 0L),
+    reps = c(7L, 7L, 7L, 7L),
+    median_ms = c(2.0, 1.0, 5.0, 3.0),
+    mean_ms = c(2.1, 1.1, 5.1, 3.2),
+    sd_ms = c(0.2, 0.1, 0.4, 0.2),
+    p05_ms = c(1.8, 0.9, 4.8, 2.9),
+    p95_ms = c(2.3, 1.2, 5.5, 3.4),
+    n_reps = c(7L, 7L, 7L, 7L),
+    rel_err = c(NA_real_, NA_real_, 1e-5, 1e-5),
+    cpu_reference_ms = c(2.0, 1.0, 6.0, 4.5),
+    baseline_ms = c(1.7, 1.0, 4.0, 2.0),
+    ratio_vs_baseline = c(2.0 / 1.7, 1.0 / 1.0, 5.0 / 4.0, 3.0 / 2.0),
+    stringsAsFactors = FALSE
+  )
+
+  out_dir <- tempfile("benchmark-report-bundle-")
+  unlink(out_dir, recursive = TRUE, force = TRUE)
+  on.exit(unlink(out_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  baseline_path <- tempfile(fileext = ".csv")
+  write.csv(results[, c("op", "size_label", "variant", "requested_backend", "median_ms")], baseline_path, row.names = FALSE)
+  on.exit(unlink(baseline_path), add = TRUE)
+
+  paths <- ctx$write_outputs(results, out_dir, baseline_path = baseline_path)
+
+  expect_true(file.exists(paths$raw))
+  expect_true(file.exists(paths$summary))
+  expect_true(file.exists(paths$regressions))
+  expect_true(file.exists(paths$warm_ratios))
+  expect_true(file.exists(paths$routing_summary))
+  expect_true(file.exists(paths$summary_md))
+  expect_true(file.exists(paths$report_data))
+  expect_true(file.exists(paths$report_qmd))
+  expect_true(file.exists(paths$report_css))
+  expect_true(file.exists(paths$report_tex))
+  expect_true(dir.exists(paths$plots_dir))
+  expect_true(file.exists(file.path(paths$plots_dir, "baseline-drift.png")))
+  expect_true(file.exists(file.path(paths$plots_dir, "warm-cold-gains.png")))
+  expect_true(file.exists(file.path(paths$plots_dir, "routing-overview.png")))
+
+  report <- readRDS(paths$report_data)
+  expect_true("policy_notes" %in% names(report$tables))
+  expect_true("backend_overview" %in% names(report$tables))
+  expect_true("suite_overview" %in% names(report$tables))
+  expect_true("op_coverage" %in% names(report$tables))
+  expect_gt(nrow(report$tables$backend_overview), 0L)
+  expect_gt(nrow(report$tables$suite_overview), 0L)
+  expect_gt(nrow(report$tables$op_coverage), 0L)
+  expect_gt(nrow(report$tables$warm_pairs), 0L)
+  expect_true("snippets" %in% names(report))
+  expect_match(report$snippets$render_pdf, "benchmark-report\\.pdf")
+
+  if (!is.na(paths$report_html)) {
+    expect_true(file.exists(paths$report_html))
+  }
+})
