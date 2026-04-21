@@ -20,17 +20,25 @@
 #' @rdname coerce-methods
 #' @aliases as.matrix,adgeMatrix-method
 #' @exportMethod as.matrix
-setMethod("as.matrix", "adgeMatrix",      function(x, ...) as.matrix(amatrix_materialize_host(x), ...))
+setMethod("as.matrix", "adgeMatrix", function(x, ...) {
+  host <- amatrix_materialize_host(x)
+  base::as.matrix(host, ...)
+})
 #' @export
 as.matrix.adgeMatrix <- function(x, ...) {
-  as.matrix(amatrix_materialize_host(x), ...)
+  host <- amatrix_materialize_host(x)
+  base::as.matrix(host, ...)
 }
 #' @rdname coerce-methods
 #' @aliases as.matrix,adgCMatrix-method
-setMethod("as.matrix", "adgCMatrix",      function(x, ...) as.matrix(amatrix_materialize_host(x), ...))
+setMethod("as.matrix", "adgCMatrix", function(x, ...) {
+  host <- amatrix_materialize_host(x)
+  base::as.matrix(host, ...)
+})
 #' @export
 as.matrix.adgCMatrix <- function(x, ...) {
-  as.matrix(amatrix_materialize_host(x), ...)
+  host <- amatrix_materialize_host(x)
+  base::as.matrix(host, ...)
 }
 #' @rdname coerce-methods
 #' @aliases as.matrix,aTransposeView-method
@@ -56,10 +64,16 @@ setMethod("as.matrix", "KronMatrix", function(x, ...) as.matrix.KronMatrix(x, ..
 
 #' @rdname coerce-methods
 #' @aliases as.numeric,adgeMatrix-method
-setMethod("as.numeric", "adgeMatrix", function(x, ...) as.numeric(as.matrix(amatrix_materialize_host(x)), ...))
+setMethod("as.numeric", "adgeMatrix", function(x, ...) {
+  host <- as.matrix(amatrix_materialize_host(x))
+  as.numeric(host, ...)
+})
 #' @rdname coerce-methods
 #' @aliases as.vector,adgeMatrix-method
-setMethod("as.vector",  "adgeMatrix", function(x, mode = "any") as.vector(as.matrix(amatrix_materialize_host(x)), mode))
+setMethod("as.vector",  "adgeMatrix", function(x, mode = "any") {
+  host <- as.matrix(amatrix_materialize_host(x))
+  as.vector(host, mode)
+})
 
 #' @rdname coerce-methods
 #' @aliases as.array,adgeMatrix-method

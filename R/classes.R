@@ -153,6 +153,10 @@ setClass(
 
 #' @noRd
 setMethod("show", "adgeMatrix", function(object) {
+  if (.amatrix_is_dead_deferred(object)) {
+    .amatrix_dead_deferred_error()
+  }
+
   cat(sprintf(
     "An amatrix dense matrix [%s|policy=%s|precision=%s]\n",
     object@preferred_backend,

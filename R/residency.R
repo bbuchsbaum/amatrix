@@ -87,6 +87,36 @@
   get0(object_key, envir = .amatrix_state$residency, inherits = FALSE)
 }
 
+.amatrix_is_dead_deferred <- function(x) {
+  if (!inherits(x, "adgeMatrix")) {
+    return(FALSE)
+  }
+
+  fenv <- x@finalizer_env
+  if (!isTRUE(fenv$host_deferred) || !is.null(fenv$host_x)) {
+    return(FALSE)
+  }
+
+  entry <- .amatrix_resident_entry(x)
+  if (is.null(entry)) {
+    return(TRUE)
+  }
+
+  backend <- tryCatch(.amatrix_get_backend(entry$backend), error = function(e) NULL)
+  if (is.null(backend) || !is.function(backend$resident_has)) {
+    return(TRUE)
+  }
+
+  !isTRUE(backend$resident_has(entry$resident_key))
+}
+
+.amatrix_dead_deferred_error <- function() {
+  stop(
+    "deferred adgeMatrix cannot survive saveRDS/readRDS without host materialization; GPU resident data is unavailable",
+    call. = FALSE
+  )
+}
+
 .amatrix_bind_resident <- function(x, backend, resident_key, sparse = FALSE) {
   object_key <- .amatrix_object_key(x)
   if (is.null(object_key)) {
@@ -425,6 +455,10 @@ amatrix_materialize_dense <- function(x) {
   # ── Deferred path: host data not yet downloaded ──────────────────────────
   fenv <- x@finalizer_env
   if (isTRUE(fenv$host_deferred)) {
+    if (.amatrix_is_dead_deferred(x)) {
+      .amatrix_dead_deferred_error()
+    }
+
     if (is.null(fenv$host_x)) {
       # First host access — download from GPU and cache in the shared env
       entry <- .amatrix_resident_entry(x)
