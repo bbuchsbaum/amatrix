@@ -1,5 +1,71 @@
 .amatrix_rewrap_like <- function(template, value) {
+  if (inherits(template, "adlgeMatrix")) {
+    if (inherits(value, "sparseMatrix") && inherits(value, "lsparseMatrix")) {
+      return(new_adlgCMatrix(
+        as(value, "lgCMatrix"),
+        preferred_backend = template@preferred_backend,
+        policy = template@policy,
+        precision = template@precision
+      ))
+    }
+    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+      return(new_adlgeMatrix(
+        value,
+        preferred_backend = template@preferred_backend,
+        policy = template@policy,
+        precision = template@precision
+      ))
+    }
+    return(new_adgeMatrix(
+      as.matrix(value),
+      preferred_backend = template@preferred_backend,
+      policy = template@policy,
+      precision = template@precision
+    ))
+  }
+
+  if (inherits(template, "adlgCMatrix")) {
+    if (inherits(value, "sparseMatrix") && inherits(value, "lsparseMatrix")) {
+      return(new_adlgCMatrix(
+        as(value, "lgCMatrix"),
+        preferred_backend = template@preferred_backend,
+        policy = template@policy,
+        precision = template@precision
+      ))
+    }
+    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+      return(new_adlgeMatrix(
+        value,
+        preferred_backend = template@preferred_backend,
+        policy = template@policy,
+        precision = template@precision
+      ))
+    }
+    if (inherits(value, "sparseMatrix")) {
+      return(new_adgCMatrix(
+        as(value, "dgCMatrix"),
+        preferred_backend = template@preferred_backend,
+        policy = template@policy,
+        precision = template@precision
+      ))
+    }
+    return(new_adgeMatrix(
+      as.matrix(value),
+      preferred_backend = template@preferred_backend,
+      policy = template@policy,
+      precision = template@precision
+    ))
+  }
+
   if (inherits(template, "adgeMatrix")) {
+    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+      return(new_adlgeMatrix(
+        value,
+        preferred_backend = template@preferred_backend,
+        policy = template@policy,
+        precision = template@precision
+      ))
+    }
     return(new_adgeMatrix(
       value,
       preferred_backend = template@preferred_backend,
@@ -9,6 +75,22 @@
   }
 
   if (inherits(template, "adgCMatrix")) {
+    if (inherits(value, "sparseMatrix") && inherits(value, "lsparseMatrix")) {
+      return(new_adlgCMatrix(
+        as(value, "lgCMatrix"),
+        preferred_backend = template@preferred_backend,
+        policy = template@policy,
+        precision = template@precision
+      ))
+    }
+    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+      return(new_adlgeMatrix(
+        value,
+        preferred_backend = template@preferred_backend,
+        policy = template@policy,
+        precision = template@precision
+      ))
+    }
     if (inherits(value, "sparseMatrix")) {
       return(new_adgCMatrix(
         as(value, "dgCMatrix"),
@@ -35,6 +117,22 @@
   value
 }
 
+.amatrix_logical_host_arg <- function(value) {
+  if (inherits(value, "adlgCMatrix")) {
+    return(as(amatrix_materialize_host(value), "lgCMatrix"))
+  }
+
+  if (inherits(value, "adlgeMatrix")) {
+    return(as(amatrix_materialize_host(value), "lgeMatrix"))
+  }
+
+  if (inherits(value, "aMatrix")) {
+    return(as.matrix(amatrix_materialize_host(value)))
+  }
+
+  value
+}
+
 .amatrix_is_numeric_matrix_value <- function(value) {
   if (inherits(value, "Matrix")) {
     if ("x" %in% slotNames(value)) {
@@ -50,8 +148,24 @@
   FALSE
 }
 
+.amatrix_is_logical_matrix_value <- function(value) {
+  if (inherits(value, "Matrix")) {
+    if ("x" %in% slotNames(value)) {
+      return(is.logical(value@x))
+    }
+    return(FALSE)
+  }
+
+  if (is.matrix(value)) {
+    return(is.logical(value))
+  }
+
+  FALSE
+}
+
 .amatrix_rewrap_value <- function(template, value) {
-  if ((inherits(value, "Matrix") || is.matrix(value)) && .amatrix_is_numeric_matrix_value(value)) {
+  if ((inherits(value, "Matrix") || is.matrix(value)) &&
+      (.amatrix_is_numeric_matrix_value(value) || .amatrix_is_logical_matrix_value(value))) {
     return(.amatrix_rewrap_like(template, value))
   }
   value

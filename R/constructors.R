@@ -16,6 +16,21 @@
   )
 }
 
+.amatrix_build_lgeMatrix <- function(x, dn = base::dimnames(x)) {
+  stopifnot(is.matrix(x))
+  storage.mode(x) <- "logical"
+  if (is.null(dn)) {
+    dn <- vector("list", 2L)
+  }
+  new(
+    "lgeMatrix",
+    x = as.logical(x),
+    Dim = as.integer(dim(x)),
+    Dimnames = dn,
+    factors = list()
+  )
+}
+
 .amatrix_dense_slot_matrix <- function(x) {
   stopifnot(inherits(x, "denseMatrix") || inherits(x, "adgeMatrix"))
   out <- x@x
@@ -60,6 +75,36 @@
   )
 }
 
+.amatrix_new_dense_logical <- function(
+  data,
+  dim,
+  dimnames = NULL,
+  factors = list(),
+  preferred_backend = .amatrix_default_preferred_backend(policy, precision),
+  policy = amatrix_default_policy(),
+  precision = amatrix_default_precision(),
+  src_id = ""
+) {
+  storage.mode(data) <- "logical"
+  if (is.null(dimnames)) {
+    dimnames <- vector("list", 2L)
+  }
+  object_id <- .amatrix_next_object_id()
+  new(
+    "adlgeMatrix",
+    x = as.logical(data),
+    Dim = as.integer(dim),
+    Dimnames = dimnames,
+    factors = factors,
+    preferred_backend = preferred_backend,
+    policy = policy,
+    precision = precision,
+    object_id = object_id,
+    src_id = src_id,
+    finalizer_env = .amatrix_make_finalizer_env(object_id)
+  )
+}
+
 .amatrix_dense_base <- function(x) {
   if (inherits(x, "dgeMatrix")) {
     return(x)
@@ -71,6 +116,19 @@
     return(.amatrix_build_dgeMatrix(x))
   }
   stop("x must be a base matrix or dgeMatrix")
+}
+
+.amatrix_dense_logical_base <- function(x) {
+  if (inherits(x, "lgeMatrix")) {
+    return(x)
+  }
+  if (inherits(x, "denseMatrix")) {
+    return(.amatrix_build_lgeMatrix(as.matrix(x), dn = base::dimnames(x)))
+  }
+  if (is.matrix(x)) {
+    return(.amatrix_build_lgeMatrix(x))
+  }
+  stop("x must be a base matrix or lgeMatrix")
 }
 
 .amatrix_sparse_base <- function(x) {
@@ -95,6 +153,27 @@
     return(as(base, "dgCMatrix"))
   }
   stop("x must be a base matrix or dgCMatrix")
+}
+
+.amatrix_sparse_logical_base <- function(x) {
+  if (inherits(x, "lgCMatrix")) {
+    return(x)
+  }
+  if (inherits(x, "sparseMatrix")) {
+    base <- x
+    if (!inherits(base, "generalMatrix")) {
+      base <- as(base, "generalMatrix")
+    }
+    return(as(base, "lgCMatrix"))
+  }
+  if (is.matrix(x)) {
+    base <- Matrix::Matrix(x, sparse = TRUE)
+    if (!inherits(base, "generalMatrix")) {
+      base <- as(base, "generalMatrix")
+    }
+    return(as(base, "lgCMatrix"))
+  }
+  stop("x must be a base matrix or lgCMatrix")
 }
 
 #' Construct an adgeMatrix from a matrix or dgeMatrix
@@ -234,6 +313,82 @@ new_adgCMatrix <- function(
   object_id <- .amatrix_next_object_id()
   new(
     "adgCMatrix",
+    i = base@i,
+    p = base@p,
+    Dim = base@Dim,
+    Dimnames = base@Dimnames,
+    x = base@x,
+    factors = base@factors,
+    preferred_backend = preferred_backend,
+    policy = policy,
+    precision = precision,
+    object_id = object_id,
+    finalizer_env = .amatrix_make_finalizer_env(object_id)
+  )
+}
+
+#' Construct an adlgeMatrix from a matrix or lgeMatrix
+#'
+#' @keywords internal
+new_adlgeMatrix <- function(
+  x,
+  preferred_backend = .amatrix_default_preferred_backend(policy, precision),
+  policy = amatrix_default_policy(),
+  precision = amatrix_default_precision(),
+  src_id = ""
+) {
+  if (inherits(x, "lgeMatrix")) {
+    return(.amatrix_new_dense_logical(
+      data = x@x,
+      dim = x@Dim,
+      dimnames = x@Dimnames,
+      factors = x@factors,
+      preferred_backend = preferred_backend,
+      policy = policy,
+      precision = precision,
+      src_id = src_id
+    ))
+  }
+
+  if (is.matrix(x)) {
+    return(.amatrix_new_dense_logical(
+      data = x,
+      dim = dim(x),
+      dimnames = base::dimnames(x),
+      factors = list(),
+      preferred_backend = preferred_backend,
+      policy = policy,
+      precision = precision,
+      src_id = src_id
+    ))
+  }
+
+  base <- .amatrix_dense_logical_base(x)
+  .amatrix_new_dense_logical(
+    data = base@x,
+    dim = base@Dim,
+    dimnames = base@Dimnames,
+    factors = base@factors,
+    preferred_backend = preferred_backend,
+    policy = policy,
+    precision = precision,
+    src_id = src_id
+  )
+}
+
+#' Construct an adlgCMatrix from a sparse or dense logical matrix
+#'
+#' @keywords internal
+new_adlgCMatrix <- function(
+  x,
+  preferred_backend = .amatrix_default_preferred_backend(policy, precision),
+  policy = amatrix_default_policy(),
+  precision = amatrix_default_precision()
+) {
+  base <- .amatrix_sparse_logical_base(x)
+  object_id <- .amatrix_next_object_id()
+  new(
+    "adlgCMatrix",
     i = base@i,
     p = base@p,
     Dim = base@Dim,
@@ -455,6 +610,7 @@ as_adgCMatrix <- function(
 }
 
 setAs("matrix", "adgeMatrix", function(from) new_adgeMatrix(from))
+setAs("matrix", "adlgeMatrix", function(from) new_adlgeMatrix(from))
 setAs("dgeMatrix", "adgeMatrix", function(from) {
   meta <- attr(from, "amatrix_metadata", exact = TRUE)
   restored <- .amatrix_restore_metadata(meta)
@@ -465,11 +621,32 @@ setAs("dgeMatrix", "adgeMatrix", function(from) {
     precision = restored$precision
   )
 })
+setAs("lgeMatrix", "adlgeMatrix", function(from) {
+  meta <- attr(from, "amatrix_metadata", exact = TRUE)
+  restored <- .amatrix_restore_metadata(meta)
+  new_adlgeMatrix(
+    from,
+    preferred_backend = restored$preferred_backend,
+    policy = restored$policy,
+    precision = restored$precision
+  )
+})
 setAs("matrix", "adgCMatrix", function(from) new_adgCMatrix(from))
+setAs("matrix", "adlgCMatrix", function(from) new_adlgCMatrix(from))
 setAs("dgCMatrix", "adgCMatrix", function(from) {
   meta <- attr(from, "amatrix_metadata", exact = TRUE)
   restored <- .amatrix_restore_metadata(meta)
   new_adgCMatrix(
+    from,
+    preferred_backend = restored$preferred_backend,
+    policy = restored$policy,
+    precision = restored$precision
+  )
+})
+setAs("lgCMatrix", "adlgCMatrix", function(from) {
+  meta <- attr(from, "amatrix_metadata", exact = TRUE)
+  restored <- .amatrix_restore_metadata(meta)
+  new_adlgCMatrix(
     from,
     preferred_backend = restored$preferred_backend,
     policy = restored$policy,
@@ -481,8 +658,18 @@ setAs("adgeMatrix", "dgeMatrix", function(from) {
   attr(out, "amatrix_metadata") <- .amatrix_extract_metadata(from)
   out
 })
+setAs("adlgeMatrix", "lgeMatrix", function(from) {
+  out <- new("lgeMatrix", x = from@x, Dim = from@Dim, Dimnames = from@Dimnames, factors = from@factors)
+  attr(out, "amatrix_metadata") <- .amatrix_extract_metadata(from)
+  out
+})
 setAs("adgCMatrix", "dgCMatrix", function(from) {
   out <- new("dgCMatrix", i = from@i, p = from@p, Dim = from@Dim, Dimnames = from@Dimnames, x = from@x, factors = from@factors)
+  attr(out, "amatrix_metadata") <- .amatrix_extract_metadata(from)
+  out
+})
+setAs("adlgCMatrix", "lgCMatrix", function(from) {
+  out <- new("lgCMatrix", i = from@i, p = from@p, Dim = from@Dim, Dimnames = from@Dimnames, x = from@x, factors = from@factors)
   attr(out, "amatrix_metadata") <- .amatrix_extract_metadata(from)
   out
 })

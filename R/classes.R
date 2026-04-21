@@ -102,6 +102,30 @@ setClass(
   contains = c("aMatrix", "dgCMatrix")
 )
 
+#' Dense logical matrix with backend-dispatch metadata
+#'
+#' \code{adlgeMatrix} extends both \code{aMatrix} and
+#' \code{Matrix::lgeMatrix}, adding backend-dispatch slots to a
+#' column-major dense logical matrix.
+#'
+#' @exportClass adlgeMatrix
+setClass(
+  "adlgeMatrix",
+  contains = c("aMatrix", "lgeMatrix")
+)
+
+#' Sparse logical matrix with backend-dispatch metadata
+#'
+#' \code{adlgCMatrix} extends both \code{aMatrix} and
+#' \code{Matrix::lgCMatrix}, adding backend-dispatch slots to a
+#' compressed-column sparse logical matrix.
+#'
+#' @exportClass adlgCMatrix
+setClass(
+  "adlgCMatrix",
+  contains = c("aMatrix", "lgCMatrix")
+)
+
 #' Lazy transpose view of an adgeMatrix
 #'
 #' \code{aTransposeView} is a zero-copy structural view representing
@@ -148,6 +172,28 @@ setMethod("show", "adgeMatrix", function(object) {
 setMethod("show", "adgCMatrix", function(object) {
   cat(sprintf(
     "An amatrix sparse matrix [%s|policy=%s|precision=%s]\n",
+    object@preferred_backend,
+    object@policy,
+    object@precision
+  ))
+  callNextMethod()
+})
+
+#' @noRd
+setMethod("show", "adlgeMatrix", function(object) {
+  cat(sprintf(
+    "An amatrix dense logical matrix [%s|policy=%s|precision=%s]\n",
+    object@preferred_backend,
+    object@policy,
+    object@precision
+  ))
+  callNextMethod()
+})
+
+#' @noRd
+setMethod("show", "adlgCMatrix", function(object) {
+  cat(sprintf(
+    "An amatrix sparse logical matrix [%s|policy=%s|precision=%s]\n",
     object@preferred_backend,
     object@policy,
     object@precision

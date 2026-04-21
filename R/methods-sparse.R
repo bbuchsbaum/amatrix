@@ -423,3 +423,28 @@ setMethod("Ops", signature(e1 = "Matrix", e2 = "adgCMatrix"), function(e1, e2) {
 setMethod("Ops", signature(e1 = "dgCMatrix", e2 = "adgCMatrix"), function(e1, e2) {
   ewise(.Generic, e1, e2)
 })
+
+#' @noRd
+setMethod("Ops", signature(e1 = "adlgCMatrix", e2 = "ANY"), function(e1, e2) {
+  .amatrix_rewrap_value(e1, callGeneric(.amatrix_logical_host_arg(e1), .amatrix_logical_host_arg(e2)))
+})
+
+#' @noRd
+setMethod("Ops", signature(e1 = "adlgCMatrix", e2 = "missing"), function(e1, e2) {
+  .amatrix_rewrap_value(e1, callGeneric(.amatrix_logical_host_arg(e1)))
+})
+
+#' @noRd
+setMethod("Ops", signature(e1 = "adlgCMatrix", e2 = "adlgCMatrix"), function(e1, e2) {
+  .amatrix_rewrap_value(e1, callGeneric(.amatrix_logical_host_arg(e1), .amatrix_logical_host_arg(e2)))
+})
+
+#' @noRd
+setMethod("Ops", signature(e1 = "ANY", e2 = "adlgCMatrix"), function(e1, e2) {
+  .amatrix_rewrap_value(e2, callGeneric(.amatrix_logical_host_arg(e1), .amatrix_logical_host_arg(e2)))
+})
+
+#' @noRd
+setMethod("!", "adlgCMatrix", function(x) {
+  .amatrix_rewrap_value(x, !.amatrix_logical_host_arg(x))
+})
