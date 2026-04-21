@@ -8,6 +8,11 @@ Summary:
 - **Performance:** `Rscript tools/benchmark-regression.R` — compare to `tools/baseline.csv`
 - Every new exported op must be added to the coverage table in that doc.
 
+## Backend Startup Notes
+
+- `mlx`: avoid plain `Rscript file.R` for benchmark/probe workers on Apple Silicon. Prefer top-level `Rscript -e '...; source(...)'`. See `planning_docs/mlx-spectral-benchmark-instability.md` and `planning_docs/backend-benchmarks.md`.
+- `opencl`: GPU probing is env-gated. Use `AMATRIX_OPENCL_PROBE_GPU=1` for explicit probe runs; safe default is "unavailable". See `planning_docs/plan-amatrix-opencl.md` and `tools/benchmark-helpers.R`.
+
 ## Bug Capture Protocol (Track 6)
 
 Every discovered bug gets a **minimal repro first**, then the fix. This is

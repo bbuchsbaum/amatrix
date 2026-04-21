@@ -2,12 +2,23 @@
   !identical(getOption("amatrix.optional_backends", TRUE), FALSE)
 }
 
+.amatrix_runtime_context <- function() {
+  args <- commandArgs(trailingOnly = FALSE)
+  list(
+    interactive = interactive(),
+    direct_file_entry = any(startsWith(args, "--file=")),
+    command_args = args
+  )
+}
+
 .amatrix_optional_backend_specs <- function() {
   list(
     mlx = list(
       package = "amatrix.mlx",
       register_fun = "amatrix_mlx_register",
-      disable_option = "amatrix.disable_mlx"
+      disable_option = "amatrix.disable_mlx",
+      probe_env = "AMATRIX_MLX_PROBE_GPU",
+      unsafe_file_entry = TRUE
     ),
     metal = list(
       package = "amatrix.metal",
@@ -17,7 +28,8 @@
     opencl = list(
       package = "amatrix.opencl",
       register_fun = "amatrix_opencl_register",
-      disable_option = "amatrix.disable_opencl"
+      disable_option = "amatrix.disable_opencl",
+      probe_env = "AMATRIX_OPENCL_PROBE_GPU"
     ),
     arrayfire = list(
       package = "amatrix.arrayfire",
@@ -25,6 +37,43 @@
       disable_option = "amatrix.disable_arrayfire"
     )
   )
+}
+
+.amatrix_optional_backend_probe_policy <- function(name, spec = NULL) {
+  stopifnot(is.character(name), length(name) == 1L, nzchar(name))
+
+  spec <- spec %||% .amatrix_optional_backend_specs()[[name]]
+  context <- .amatrix_runtime_context()
+  if (is.null(spec)) {
+    return(list(allowed = TRUE, reason = NA_character_, context = context))
+  }
+
+  probe_env <- spec$probe_env %||% NA_character_
+  probe_enabled <- !is.na(probe_env) &&
+    identical(Sys.getenv(probe_env, unset = ""), "1")
+
+  if (identical(name, "mlx") &&
+      isTRUE(spec$unsafe_file_entry) &&
+      isTRUE(context$direct_file_entry) &&
+      !isTRUE(getOption("amatrix.mlx.available", FALSE))) {
+    return(list(
+      allowed = FALSE,
+      reason = "probe skipped in unsafe file-entry Rscript context; use top-level Rscript -e and source(...)",
+      context = context
+    ))
+  }
+
+  if (identical(name, "opencl") &&
+      !probe_enabled &&
+      !isTRUE(getOption("amatrix.opencl.available", FALSE))) {
+    return(list(
+      allowed = FALSE,
+      reason = "probe disabled; set AMATRIX_OPENCL_PROBE_GPU=1 for explicit probe runs",
+      context = context
+    ))
+  }
+
+  list(allowed = TRUE, reason = NA_character_, context = context)
 }
 
 .amatrix_optional_backend_enabled <- function(spec) {
@@ -51,13 +100,23 @@
     return(FALSE)
   }
   if (!.amatrix_optional_backend_enabled(spec)) {
+    .amatrix_backend_health_mark(name, "unprobed", sprintf("disabled by option %s", spec$disable_option))
+    return(FALSE)
+  }
+
+  policy <- .amatrix_optional_backend_probe_policy(name, spec)
+  if (!isTRUE(policy$allowed)) {
+    .amatrix_backend_health_mark(name, "unprobed", policy$reason)
     return(FALSE)
   }
 
   lib_locs <- unique(c(.libPaths(), .Library, .Library.site))
   ns <- tryCatch(
     loadNamespace(spec$package, lib.loc = lib_locs),
-    error = function(e) NULL
+    error = function(e) {
+      .amatrix_backend_health_mark(name, "unprobed", sprintf("namespace unavailable: %s", conditionMessage(e)))
+      NULL
+    }
   )
   if (is.null(ns)) {
     return(FALSE)
@@ -65,13 +124,17 @@
 
   register_backend <- get0(spec$register_fun, envir = ns, inherits = FALSE)
   if (!is.function(register_backend)) {
+    .amatrix_backend_health_mark(name, "unhealthy", sprintf("register function '%s' not found", spec$register_fun))
     return(FALSE)
   }
 
   isTRUE(tryCatch({
     register_backend(overwrite = TRUE)
     exists(name, envir = .amatrix_state$backends, inherits = FALSE)
-  }, error = function(e) FALSE))
+  }, error = function(e) {
+    .amatrix_backend_health_mark(name, "unhealthy", sprintf("registration error: %s", conditionMessage(e)))
+    FALSE
+  }))
 }
 
 #' Register a backend with the amatrix dispatch system
@@ -344,20 +407,51 @@ amatrix_backend_status <- function(names = NULL) {
     if (.amatrix_optional_backends_enabled()) {
       invisible(lapply(names(.amatrix_optional_backend_specs()), .amatrix_try_register_optional_backend))
     }
-    names <- amatrix_backend_names()
+    names <- sort(unique(c(
+      ls(envir = .amatrix_state$backends, all.names = FALSE),
+      names(.amatrix_optional_backend_specs())
+    )))
   }
 
   stopifnot(is.character(names))
 
   rows <- lapply(names, function(name) {
+    spec <- .amatrix_optional_backend_specs()[[name]]
     backend <- tryCatch(.amatrix_get_backend(name), error = function(e) NULL)
-    if (is.null(backend)) {
+    if (is.null(backend) && is.null(spec)) {
       stop(sprintf("backend '%s' is not registered", name))
     }
     health <- .amatrix_backend_health_get(name)
+
+    if (is.null(backend)) {
+      policy <- if (!is.null(spec)) .amatrix_optional_backend_probe_policy(name, spec) else NULL
+      return(data.frame(
+        name = name,
+        available = FALSE,
+        health = health$status,
+        health_reason = health$reason %||% if (!is.null(policy)) policy$reason else NA_character_,
+        precision_modes = NA_character_,
+        features = NA_character_,
+        residency_capable = FALSE,
+        capabilities = NA_character_,
+        stringsAsFactors = FALSE
+      ))
+    }
+
+    policy <- if (!is.null(spec)) .amatrix_optional_backend_probe_policy(name, spec) else NULL
+    available <- if (!is.null(policy) && !isTRUE(policy$allowed)) {
+      if (identical(health$status, "unprobed") && is.na(health$reason)) {
+        .amatrix_backend_health_mark(name, "unprobed", policy$reason)
+        health <- .amatrix_backend_health_get(name)
+      }
+      FALSE
+    } else {
+      isTRUE(backend$available())
+    }
+
     data.frame(
       name = name,
-      available = isTRUE(backend$available()),
+      available = available,
       health = health$status,
       health_reason = health$reason %||% NA_character_,
       precision_modes = paste(amatrix_backend_precision_modes(name), collapse = ","),
