@@ -287,7 +287,7 @@ optional_backend_specs <- function() {
       repo_dir = "backends/amatrix.mlx",
       backend = "mlx",
       option = "amatrix.mlx.available",
-      enable_option = NULL,
+      disable_option = "amatrix.disable_mlx",
       register_fun = "amatrix_mlx_register",
       capabilities_fun = "amatrix_mlx_capabilities",
       available_fun = "amatrix_mlx_is_available"
@@ -297,7 +297,7 @@ optional_backend_specs <- function() {
       repo_dir = "backends/amatrix.opencl",
       backend = "opencl",
       option = "amatrix.opencl.available",
-      enable_option = "amatrix.enable_opencl",
+      disable_option = "amatrix.disable_opencl",
       register_fun = "amatrix_opencl_register",
       capabilities_fun = "amatrix_opencl_capabilities",
       available_fun = "amatrix_opencl_is_available"
@@ -307,7 +307,7 @@ optional_backend_specs <- function() {
       repo_dir = "backends/amatrix.arrayfire",
       backend = "arrayfire",
       option = "amatrix.arrayfire.available",
-      enable_option = "amatrix.enable_arrayfire",
+      disable_option = "amatrix.disable_arrayfire",
       register_fun = "amatrix_arrayfire_register",
       capabilities_fun = "amatrix_arrayfire_capabilities",
       available_fun = "amatrix_arrayfire_is_available"
@@ -373,10 +373,10 @@ optional_backend_namespace <- function(package) {
 }
 
 with_optional_backend_available <- function(spec, code) {
-  if (!is.null(spec$enable_option)) {
-    old_enable <- getOption(spec$enable_option)
-    options(structure(list(TRUE), names = spec$enable_option))
-    on.exit(options(structure(list(old_enable), names = spec$enable_option)), add = TRUE)
+  if (!is.null(spec$disable_option)) {
+    old_disable <- getOption(spec$disable_option)
+    options(structure(list(FALSE), names = spec$disable_option))
+    on.exit(options(structure(list(old_disable), names = spec$disable_option)), add = TRUE)
   }
 
   old <- getOption(spec$option)

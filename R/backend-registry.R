@@ -7,32 +7,32 @@
     mlx = list(
       package = "amatrix.mlx",
       register_fun = "amatrix_mlx_register",
-      enabled = function() TRUE
+      disable_option = "amatrix.disable_mlx"
     ),
     metal = list(
       package = "amatrix.metal",
       register_fun = "amatrix_metal_register",
-      enabled = function() isTRUE(getOption("amatrix.enable_metal", FALSE))
+      disable_option = "amatrix.disable_metal"
     ),
     opencl = list(
       package = "amatrix.opencl",
       register_fun = "amatrix_opencl_register",
-      enabled = function() isTRUE(getOption("amatrix.enable_opencl", FALSE))
+      disable_option = "amatrix.disable_opencl"
     ),
     arrayfire = list(
       package = "amatrix.arrayfire",
       register_fun = "amatrix_arrayfire_register",
-      enabled = function() isTRUE(getOption("amatrix.enable_arrayfire", FALSE))
+      disable_option = "amatrix.disable_arrayfire"
     )
   )
 }
 
 .amatrix_optional_backend_enabled <- function(spec) {
-  enabled <- spec$enabled
-  if (is.null(enabled)) {
+  disable_option <- spec$disable_option
+  if (is.null(disable_option) || !nzchar(disable_option)) {
     return(TRUE)
   }
-  isTRUE(tryCatch(enabled(), error = function(e) FALSE))
+  !isTRUE(tryCatch(getOption(disable_option, FALSE), error = function(e) FALSE))
 }
 
 .amatrix_try_register_optional_backend <- function(name) {

@@ -47,6 +47,40 @@ test_that("health probe marks unregistered backends unhealthy", {
   expect_true(grepl("not registered", result$reason))
 })
 
+test_that("unhealthy backend is excluded from automatic planning", {
+  fake <- list(
+    capabilities    = function() "matmul",
+    features        = function() "dense_f64",
+    precision_modes = function() "strict",
+    available       = function() TRUE,
+    supports        = function(op, x, y = NULL) identical(op, "matmul"),
+    matmul          = function(x, y) x %*% y,
+    crossprod       = function(x, y = NULL, ...) base::crossprod(x, y),
+    tcrossprod      = function(x, y = NULL, ...) base::tcrossprod(x, y),
+    ewise           = function(x, lhs, rhs = NULL, op, ...) if (is.null(rhs)) do.call(op, list(lhs)) else do.call(op, list(lhs, rhs)),
+    rowSums         = function(x, ...) base::rowSums(x, ...),
+    colSums         = function(x, ...) base::colSums(x, ...)
+  )
+  amatrix_register_backend("fake_unhealthy", fake, overwrite = TRUE)
+  on.exit({
+    if (exists("fake_unhealthy", envir = amatrix:::.amatrix_state$backends, inherits = FALSE)) {
+      rm(list = "fake_unhealthy", envir = amatrix:::.amatrix_state$backends)
+    }
+  }, add = TRUE)
+
+  amatrix:::.amatrix_backend_health_mark("fake_unhealthy", "unhealthy", "forced test failure")
+
+  x <- adgeMatrix(matrix(1:4, nrow = 2), preferred_backend = "fake_unhealthy", policy = "auto", precision = "strict")
+  plan <- amatrix_backend_plan(x, "matmul", y = diag(2))
+  fake_entry <- Filter(function(entry) identical(entry$name, "fake_unhealthy"), plan$candidates)[[1]]
+
+  expect_identical(plan$chosen, "cpu")
+  expect_identical(fake_entry$health, "unhealthy")
+  expect_identical(fake_entry$health_reason, "forced test failure")
+  expect_false(fake_entry$health_eligible)
+  expect_false(fake_entry$supported)
+})
+
 test_that("amatrix_fallback_log() starts empty and accumulates events", {
   amatrix_fallback_log_reset()
   empty <- amatrix_fallback_log()

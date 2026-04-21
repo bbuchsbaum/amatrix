@@ -1,3 +1,8 @@
+.amatrix_backend_health_eligible <- function(name) {
+  health <- .amatrix_backend_health_get(name)
+  !identical(health$status, "unhealthy")
+}
+
 #' Collect full dispatch information for an aMatrix object
 #'
 #' Returns a snapshot of the dispatch state for an \code{aMatrix},
@@ -56,6 +61,7 @@ amatrix_execution_info <- function(
   if (!is.null(resident_backend)) {
     backend <- tryCatch(.amatrix_get_backend(resident_backend), error = function(e) NULL)
     if (!is.null(backend) &&
+        isTRUE(.amatrix_backend_health_eligible(resident_backend)) &&
         isTRUE(backend$available()) &&
         x@precision %in% unique(backend$precision_modes()) &&
         .amatrix_backend_supports_resident_op(backend, op, x = x, y = y)) {
@@ -123,6 +129,9 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
       capabilities = character(),
       features = character(),
       precision_modes = character(),
+      health = "unprobed",
+      health_reason = NA_character_,
+      health_eligible = TRUE,
       available = FALSE,
       precision_compatible = FALSE,
       resident_active = FALSE,
@@ -135,12 +144,16 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
     )
 
     if (entry$registered) {
+      health <- .amatrix_backend_health_get(candidate_name)
       entry$capabilities <- unique(backend$capabilities())
       entry$features <- unique(backend$features())
       entry$precision_modes <- unique(backend$precision_modes())
+      entry$health <- health$status
+      entry$health_reason <- health$reason %||% NA_character_
+      entry$health_eligible <- .amatrix_backend_health_eligible(candidate_name)
       entry$available <- isTRUE(backend$available())
       entry$precision_compatible <- x@precision %in% entry$precision_modes
-      if (entry$available && entry$precision_compatible) {
+      if (entry$available && entry$precision_compatible && entry$health_eligible) {
         entry$supported_cold <- isTRUE(backend$supports(op = op, x = x, y = y))
         entry$resident_active <- .amatrix_object_is_resident(x, candidate_name)
         entry$supported_resident <- (
@@ -163,7 +176,12 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
       }
     }
 
-    if (!found && entry$registered && entry$available && entry$precision_compatible && entry$supported) {
+    if (!found &&
+        entry$registered &&
+        entry$available &&
+        entry$precision_compatible &&
+        entry$health_eligible &&
+        entry$supported) {
       entry$chosen <- TRUE
       found <- TRUE
     }
@@ -180,6 +198,9 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
         capabilities = amatrix_backend_capabilities("cpu"),
         features = amatrix_backend_features("cpu"),
         precision_modes = amatrix_backend_precision_modes("cpu"),
+        health = .amatrix_backend_health_get("cpu")$status,
+        health_reason = .amatrix_backend_health_get("cpu")$reason %||% NA_character_,
+        health_eligible = TRUE,
         available = TRUE,
         precision_compatible = TRUE,
         resident_active = FALSE,
@@ -196,6 +217,9 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
       candidates[[cpu_idx]]$capabilities <- amatrix_backend_capabilities("cpu")
       candidates[[cpu_idx]]$features <- amatrix_backend_features("cpu")
       candidates[[cpu_idx]]$precision_modes <- amatrix_backend_precision_modes("cpu")
+      candidates[[cpu_idx]]$health <- .amatrix_backend_health_get("cpu")$status
+      candidates[[cpu_idx]]$health_reason <- .amatrix_backend_health_get("cpu")$reason %||% NA_character_
+      candidates[[cpu_idx]]$health_eligible <- TRUE
       candidates[[cpu_idx]]$available <- TRUE
       candidates[[cpu_idx]]$precision_compatible <- TRUE
       candidates[[cpu_idx]]$resident_active <- FALSE
