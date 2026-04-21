@@ -841,21 +841,7 @@ matmul <- function(x, y) {
   resident <- .amatrix_try_resident_matmul(x, y_eff, choice$name)
   if (!is.null(resident)) {
     if (isTRUE(resident$host_only)) {
-      if (y_vec) {
-        return(drop(resident$value))
-      }
       return(.amatrix_rewrap_like(x, resident$value))
-    }
-    if (y_vec) {
-      # Result is an m×1 matrix stored at out_key on device. Materialize to host,
-      # squeeze to vector, then free the out_key (not useful as a resident matrix).
-      # A's key is marked non-temporary so it stays resident for the next call.
-      bk <- .amatrix_get_backend(resident$backend)
-      mat_result <- bk$resident_materialize(resident$resident_key)
-      if (isTRUE(bk$resident_has(resident$resident_key))) {
-        bk$resident_drop(resident$resident_key)
-      }
-      return(drop(mat_result))
     }
     return(.amatrix_resident_wrap(x, resident,
                                    out_dim = c(nrow(x), ncol(y_eff))))
@@ -863,9 +849,6 @@ matmul <- function(x, y) {
 
   if (identical(choice$name, "cpu")) {
     cpu_value <- choice$backend$matmul(x, y_eff)
-    if (y_vec) {
-      return(drop(cpu_value))
-    }
     return(.amatrix_rewrap_like(x, cpu_value))
   }
 

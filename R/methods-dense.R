@@ -269,8 +269,60 @@ setMethod("cbind2", signature(x = "aMatrix", y = "aMatrix"), function(x, y, ...)
   .amatrix_bind2("cbind2", x, y)
 })
 
+# Explicit dense signatures prevent Matrix's inherited dgeMatrix methods from
+# winning before amatrix has a chance to rewrap the result.
+#' @noRd
+setMethod("cbind2", signature(x = "adgeMatrix", y = "matrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+#' @noRd
+setMethod("cbind2", signature(x = "adgeMatrix", y = "Matrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+#' @noRd
+setMethod("cbind2", signature(x = "adgeMatrix", y = "numeric"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+#' @noRd
+setMethod("cbind2", signature(x = "adgeMatrix", y = "integer"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+#' @noRd
+setMethod("cbind2", signature(x = "adgeMatrix", y = "logical"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
 #' @noRd
 setMethod("cbind2", signature(x = "aMatrix", y = "ANY"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+#' @noRd
+setMethod("cbind2", signature(x = "matrix", y = "adgeMatrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+#' @noRd
+setMethod("cbind2", signature(x = "Matrix", y = "adgeMatrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+#' @noRd
+setMethod("cbind2", signature(x = "numeric", y = "adgeMatrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+#' @noRd
+setMethod("cbind2", signature(x = "integer", y = "adgeMatrix"), function(x, y, ...) {
+  .amatrix_bind2("cbind2", x, y)
+})
+
+#' @noRd
+setMethod("cbind2", signature(x = "logical", y = "adgeMatrix"), function(x, y, ...) {
   .amatrix_bind2("cbind2", x, y)
 })
 
@@ -295,7 +347,57 @@ setMethod("rbind2", signature(x = "aMatrix", y = "aMatrix"), function(x, y, ...)
 })
 
 #' @noRd
+setMethod("rbind2", signature(x = "adgeMatrix", y = "matrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
+setMethod("rbind2", signature(x = "adgeMatrix", y = "Matrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
+setMethod("rbind2", signature(x = "adgeMatrix", y = "numeric"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
+setMethod("rbind2", signature(x = "adgeMatrix", y = "integer"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
+setMethod("rbind2", signature(x = "adgeMatrix", y = "logical"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
 setMethod("rbind2", signature(x = "aMatrix", y = "ANY"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
+setMethod("rbind2", signature(x = "matrix", y = "adgeMatrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
+setMethod("rbind2", signature(x = "Matrix", y = "adgeMatrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
+setMethod("rbind2", signature(x = "numeric", y = "adgeMatrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
+setMethod("rbind2", signature(x = "integer", y = "adgeMatrix"), function(x, y, ...) {
+  .amatrix_bind2("rbind2", x, y)
+})
+
+#' @noRd
+setMethod("rbind2", signature(x = "logical", y = "adgeMatrix"), function(x, y, ...) {
   .amatrix_bind2("rbind2", x, y)
 })
 

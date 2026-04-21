@@ -13,6 +13,9 @@
     format(Sys.time(), "%Y%m%d%H%M%OS6"), "-",
     as.hexmode(sample.int(2^31 - 1L, 1L))
   )
+  ns <- asNamespace(pkgname)
+  registerS3method("as.matrix", "KronMatrix", get("as.matrix.KronMatrix", envir = ns), envir = ns)
+  registerS3method("as.matrix", "resident_handle", get("as.matrix.resident_handle", envir = ns), envir = ns)
   .amatrix_cache_init()
   amatrix_register_backend("cpu", .amatrix_cpu_backend(), overwrite = TRUE)
 }
