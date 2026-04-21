@@ -371,6 +371,15 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
       lhs <- .amatrix_prepare_resident_arg(x, resident_backend_name)
       if (!is.null(lhs)) {
         out_key <- .amatrix_next_resident_key(resident_backend_name)
+        keep_out_key <- FALSE
+        on.exit({
+          try(.amatrix_cleanup_temp_resident_safe(list(lhs), resident_backend_name), silent = TRUE)
+          if (!isTRUE(keep_out_key) &&
+              is.function(backend$resident_has) &&
+              isTRUE(backend$resident_has(out_key))) {
+            try(backend$resident_drop(out_key), silent = TRUE)
+          }
+        }, add = TRUE)
         result <- tryCatch(
           backend[[resident_op_name]](lhs$key, out_key),
           error = function(e) {
@@ -387,12 +396,10 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
             NULL
           }
         )
-        .amatrix_cleanup_temp_resident(list(lhs), resident_backend_name)
         if (!is.null(result)) {
+          keep_out_key <- TRUE
           return(result)
         }
-        # Clean up out_key on failure
-        try(backend$resident_drop(out_key), silent = TRUE)
       }
     }
 

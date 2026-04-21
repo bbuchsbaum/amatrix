@@ -106,6 +106,60 @@ setMethod("ncol",     "aTransposeView", function(x) x@Dim[2L])
 #' @noRd
 setMethod("dimnames", "aTransposeView", function(x) x@Dimnames)
 
+.amatrix_subset_transpose_view <- function(x, i, j, ..., drop = TRUE) {
+  host <- t(as.matrix(amatrix_materialize_dense(x@source)))
+  if (missing(i) && missing(j)) {
+    value <- host[, , ..., drop = drop]
+  } else if (missing(j)) {
+    value <- host[i, , ..., drop = drop]
+  } else if (missing(i)) {
+    value <- host[, j, ..., drop = drop]
+  } else {
+    value <- host[i, j, ..., drop = drop]
+  }
+
+  if (is.matrix(value)) {
+    return(new_adgeMatrix(
+      value,
+      preferred_backend = x@preferred_backend,
+      policy = x@policy,
+      precision = x@precision,
+      src_id = x@source@object_id
+    ))
+  }
+
+  value
+}
+
+#' @noRd
+setMethod("[", signature(x = "aTransposeView", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop)
+})
+#' @noRd
+setMethod("[", signature(x = "aTransposeView", i = "index", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop)
+})
+#' @noRd
+setMethod("[", signature(x = "aTransposeView", i = "index", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = TRUE)
+})
+#' @noRd
+setMethod("[", signature(x = "aTransposeView", i = "missing", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop)
+})
+#' @noRd
+setMethod("[", signature(x = "aTransposeView", i = "missing", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = TRUE)
+})
+#' @noRd
+setMethod("[", signature(x = "aTransposeView", i = "index", j = "missing", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop)
+})
+#' @noRd
+setMethod("[", signature(x = "aTransposeView", i = "index", j = "missing", drop = "missing"), function(x, i, j, ..., drop) {
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = TRUE)
+})
+
 # t(A) %*% B — route to crossprod(A, B) using the source resident key
 #' @noRd
 setMethod("%*%", signature(x = "aTransposeView", y = "adgeMatrix"),

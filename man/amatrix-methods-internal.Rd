@@ -69,6 +69,15 @@
 \alias{norm,numeric,ANY-method}
 \alias{qr,adgCMatrix-method}
 \alias{qr,adgeMatrix-method}
+\alias{qr.Q,amQR-method}
+\alias{qr.R,amQR-method}
+\alias{qr.coef,amQR,ANY-method}
+\alias{qr.fitted,amQR,ANY-method}
+\alias{qr.qty,amQR,ANY-method}
+\alias{qr.qy,amQR,ANY-method}
+\alias{qr.resid,amQR,ANY-method}
+\alias{qr.solve,amQR,ANY-method}
+\alias{qr.solve,amQR,missing-method}
 \alias{solve,KronMatrix,matrix-method}
 \alias{solve,KronMatrix,missing-method}
 \alias{solve,KronMatrix,numeric-method}

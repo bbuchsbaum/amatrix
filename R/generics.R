@@ -1,3 +1,29 @@
+#' Internal S4 generic exports
+#'
+#' This roxygen block exists solely to emit \code{exportMethods} entries
+#' for the S4 generics created in this file. Without explicit
+#' \code{exportMethods}, methods registered by the package are visible
+#' only within the package namespace and never reach user-facing calls
+#' like \code{rowSums(adgeMatrix)} at the R console.
+#'
+#' @exportMethod rowSums
+#' @exportMethod colSums
+#' @exportMethod rowMeans
+#' @exportMethod colMeans
+#' @exportMethod solve
+#' @exportMethod chol
+#' @exportMethod qr
+#' @exportMethod eigen
+#' @exportMethod diag
+#' @exportMethod as.array
+#' @exportMethod dimnames<-
+#' @exportMethod crossprod
+#' @exportMethod tcrossprod
+#' @exportMethod t
+#' @name amatrix-generic-exports
+#' @keywords internal
+NULL
+
 if (!isGeneric("rowSums")) {
   setGeneric("rowSums")
 }

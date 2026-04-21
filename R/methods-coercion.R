@@ -19,13 +19,26 @@
 #'
 #' @rdname coerce-methods
 #' @aliases as.matrix,adgeMatrix-method
+#' @exportMethod as.matrix
 setMethod("as.matrix", "adgeMatrix",      function(x, ...) as.matrix(amatrix_materialize_host(x), ...))
+#' @export
+as.matrix.adgeMatrix <- function(x, ...) {
+  as.matrix(amatrix_materialize_host(x), ...)
+}
 #' @rdname coerce-methods
 #' @aliases as.matrix,adgCMatrix-method
 setMethod("as.matrix", "adgCMatrix",      function(x, ...) as.matrix(amatrix_materialize_host(x), ...))
+#' @export
+as.matrix.adgCMatrix <- function(x, ...) {
+  as.matrix(amatrix_materialize_host(x), ...)
+}
 #' @rdname coerce-methods
 #' @aliases as.matrix,aTransposeView-method
 setMethod("as.matrix", "aTransposeView",  function(x, ...) t(as.matrix(amatrix_materialize_dense(x@source), ...)))
+#' @export
+as.matrix.aTransposeView <- function(x, ...) {
+  t(as.matrix(amatrix_materialize_dense(x@source), ...))
+}
 
 # amChol and KronMatrix are S4 classes and need explicit S4 setMethod
 # registrations so that `as.matrix(x)` dispatches to the underlying worker.

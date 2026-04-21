@@ -73,6 +73,15 @@
 #'   norm,numeric,ANY-method
 #'   qr,adgCMatrix-method
 #'   qr,adgeMatrix-method
+#'   qr.Q,amQR-method
+#'   qr.R,amQR-method
+#'   qr.coef,amQR,ANY-method
+#'   qr.fitted,amQR,ANY-method
+#'   qr.qty,amQR,ANY-method
+#'   qr.qy,amQR,ANY-method
+#'   qr.resid,amQR,ANY-method
+#'   qr.solve,amQR,ANY-method
+#'   qr.solve,amQR,missing-method
 #'   solve,KronMatrix,matrix-method
 #'   solve,KronMatrix,missing-method
 #'   solve,KronMatrix,numeric-method

@@ -56,6 +56,20 @@ run_benchmark_regression_entry <- function(ctx, mode, output_dir, args) {
   stop(sprintf("Unknown benchmark entry mode: %s", mode), call. = FALSE)
 }
 
+test_that("benchmark regression help text is available from sourced entry", {
+  ctx <- benchmark_helper_context()
+
+  output_dir <- tempfile("benchmark-regression-help-")
+  unlink(output_dir, recursive = TRUE, force = TRUE)
+  on.exit(unlink(output_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  launch <- run_benchmark_regression_entry(ctx, "source", output_dir, c("--help"))
+
+  expect_equal(launch$status, 0L, info = paste(launch$output, collapse = "\n"))
+  expect_true(any(grepl("Preferred entry point:", launch$output, fixed = TRUE)))
+  expect_true(any(grepl("benchmark-report.qmd", launch$output, fixed = TRUE)))
+})
+
 test_that("benchmark regression worker activates OpenCL groups without blanket unavailability", {
   ctx <- benchmark_helper_context()
   repo_root <- ctx$repo_root

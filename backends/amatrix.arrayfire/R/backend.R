@@ -14,12 +14,77 @@
    invisible(isTRUE(value))
  }
 
- .amatrix_arrayfire_probe_cache_clear <- function() {
-   if (exists("native_available", envir = .amatrix_arrayfire_state, inherits = FALSE)) {
-     rm("native_available", envir = .amatrix_arrayfire_state)
-   }
-   invisible(NULL)
- }
+.amatrix_arrayfire_probe_cache_clear <- function() {
+  if (exists("native_available", envir = .amatrix_arrayfire_state, inherits = FALSE)) {
+    rm("native_available", envir = .amatrix_arrayfire_state)
+  }
+  invisible(NULL)
+}
+
+.amatrix_arrayfire_running_on_apple_silicon <- function() {
+  identical(Sys.info()[["sysname"]], "Darwin") &&
+    grepl("arm64|aarch64", R.version$arch, ignore.case = TRUE)
+}
+
+.amatrix_arrayfire_configured_runtime_backend <- function() {
+  env_backend <- trimws(Sys.getenv("AMATRIX_ARRAYFIRE_BACKEND", unset = ""))
+  opt_backend <- trimws(as.character(getOption("amatrix.arrayfire.backend", "")))
+  backend <- if (nzchar(env_backend)) {
+    env_backend
+  } else if (nzchar(opt_backend)) {
+    opt_backend
+  } else if (.amatrix_arrayfire_running_on_apple_silicon()) {
+    # ArrayFire defaults to OpenCL on Apple, which aborts inside clGetDeviceIDs
+    # on this host. Pin the runtime to ArrayFire's CPU backend unless the user
+    # explicitly requests a different runtime.
+    "cpu"
+  } else {
+    ""
+  }
+
+  if (!nzchar(backend)) {
+    return(NULL)
+  }
+
+  backend <- tolower(backend)
+  allowed <- c("cpu", "opencl", "cuda", "oneapi")
+  if (!(backend %in% allowed)) {
+    warning(
+      sprintf(
+        "Ignoring unsupported AMATRIX_ARRAYFIRE_BACKEND/amatrix.arrayfire.backend value '%s'",
+        backend
+      ),
+      call. = FALSE,
+      immediate. = TRUE
+    )
+    return(NULL)
+  }
+
+  backend
+}
+
+.amatrix_arrayfire_configure_runtime_backend <- function(quiet = FALSE) {
+  backend <- .amatrix_arrayfire_configured_runtime_backend()
+  if (is.null(backend)) {
+    return(invisible(NA_character_))
+  }
+
+  ok <- tryCatch({
+    amatrix_arrayfire_set_backend(backend)
+    TRUE
+  }, error = function(e) {
+    if (!isTRUE(quiet)) {
+      warning(
+        sprintf("Failed to configure ArrayFire runtime backend '%s': %s", backend, conditionMessage(e)),
+        call. = FALSE,
+        immediate. = TRUE
+      )
+    }
+    FALSE
+  })
+
+  if (isTRUE(ok)) backend else FALSE
+}
 
 amatrix_arrayfire_capabilities <- function() {
   c("matmul", "crossprod", "tcrossprod", "ewise", "broadcast_ewise", "argmax", "scatter_mean", "segment_sum", "segment_mean",
@@ -750,7 +815,19 @@ amatrix_arrayfire_gesvda_svd <- function(x, nu, nv) {
   }
 
   # Run probe subprocess
+  runtime_backend <- .amatrix_arrayfire_configured_runtime_backend()
+  env_setup <- c(
+    'Sys.setenv(AMATRIX_ARRAYFIRE_PROBE_GPU="1")'
+  )
+  if (!is.null(runtime_backend)) {
+    env_setup <- c(
+      env_setup,
+      sprintf('Sys.setenv(AMATRIX_ARRAYFIRE_BACKEND="%s")', runtime_backend)
+    )
+  }
+
   script <- paste0(
+    paste(env_setup, collapse = ";"), ";",
     'suppressPackageStartupMessages(library(amatrix.arrayfire));',
     'x <- matrix(rnorm(100*100), 100L, 100L);',
     'storage.mode(x) <- "double";',
@@ -1131,5 +1208,6 @@ amatrix_arrayfire_backend <- function() {
 amatrix_arrayfire_register <- function(overwrite = TRUE) {
   register_backend <- getExportedValue("amatrix", "amatrix_register_backend")
   register_backend("arrayfire", amatrix_arrayfire_backend(), overwrite = overwrite)
+  .amatrix_arrayfire_configure_runtime_backend(quiet = FALSE)
   invisible("arrayfire")
 }

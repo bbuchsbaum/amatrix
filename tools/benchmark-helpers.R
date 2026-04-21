@@ -42,7 +42,20 @@ load_benchmark_amatrix <- function() {
   prepare_benchmark_libpaths()
 
   if (requireNamespace("pkgload", quietly = TRUE) && file.exists("DESCRIPTION")) {
-    pkgload::load_all(".", quiet = TRUE)
+    suppressed_output <- utils::capture.output(
+      withCallingHandlers(
+        pkgload::load_all(".", quiet = TRUE),
+        message = function(m) invokeRestart("muffleMessage"),
+        packageStartupMessage = function(m) invokeRestart("muffleMessage")
+      ),
+      type = "output"
+    )
+    if (length(suppressed_output) > 0L) {
+      .benchmark_debug(
+        "load_benchmark_amatrix suppressed output=",
+        paste(suppressed_output, collapse = " || ")
+      )
+    }
     return(invisible(TRUE))
   }
 
@@ -199,6 +212,12 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
 
   try(get(spec$register_fun, envir = ns)(overwrite = TRUE), silent = TRUE)
   available <- try(do.call(get(spec$available_fun, envir = ns), spec$available_args), silent = TRUE)
+  backend <- try(amatrix:::.amatrix_get_backend(spec$name), silent = TRUE)
+  backend_available <- if (!inherits(backend, "try-error") && !is.null(backend)) {
+    try(isTRUE(backend$available()), silent = TRUE)
+  } else {
+    NULL
+  }
   ns_path <- getNamespaceInfo(ns, "path")
   so_path <- file.path(ns_path, "libs", paste0(spec$package, .Platform$dynlib.ext))
   if (!file.exists(so_path)) {
@@ -212,7 +231,8 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
     " ; so_mtime=", if (file.exists(so_path)) format(file.mtime(so_path), "%Y-%m-%d %H:%M:%S") else "<missing>",
     ": env=", paste(names(spec$env %||% character()), unlist(spec$env %||% character()), collapse = ","),
     " ; options=", paste(names(spec$options %||% character()), unlist(spec$options %||% character()), collapse = ","),
-    " ; available_result=", if (inherits(available, "try-error")) as.character(available) else as.character(available)
+    " ; available_result=", if (inherits(available, "try-error")) as.character(available) else as.character(available),
+    " ; backend_available=", if (inherits(backend_available, "try-error")) as.character(backend_available) else as.character(backend_available)
   )
 
   if (identical(spec$name, "opencl")) {
@@ -225,6 +245,10 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
       )
       .benchmark_debug("enable_backend opencl diagnostics ; ", paste(diag_parts, collapse = " ; "))
     }
+  }
+
+  if (isTRUE(backend_available)) {
+    return(TRUE)
   }
 
   isTRUE(available)
@@ -279,7 +303,7 @@ r_string_literal <- function(x) {
 benchmark_rscript_source_args <- function(script_path, args = character(), working_dir = getwd(), main_call = NULL) {
   script_path <- normalizePath(script_path, winslash = "/", mustWork = TRUE)
   working_dir <- normalizePath(working_dir, winslash = "/", mustWork = TRUE)
-  expr <- sprintf("setwd(%s); source(%s, local = globalenv())",
+  expr <- sprintf("setwd(%s); options(amatrix.benchmark_regression.autorun = FALSE); source(%s, local = globalenv())",
     r_string_literal(working_dir),
     r_string_literal(script_path)
   )
