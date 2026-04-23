@@ -97,13 +97,14 @@ quality gates have actually proven on the current release, not aspiration.
 | Tier             | Backend(s)                     | What it means                                                                                          |
 |------------------|--------------------------------|--------------------------------------------------------------------------------------------------------|
 | **Authoritative**| `cpu`                          | Reference of record for correctness. Always available. CPU failures are stop-ship.                    |
-| **Supported**    | `mlx` (Apple Silicon), `arrayfire` *(provisional)* | Conformance-green, benchmarked, crash-free on their intended workloads. Listed as fast paths. |
-| **Experimental** | `opencl`, `metal`              | Registered and loadable; opt-in via options. Limited op coverage. Not subject to the crash stop-ship rule. |
+| **Supported**    | `mlx` (Apple Silicon)          | Default Apple Silicon fast path when installed and healthy. Conformance-green on dense/model workloads. |
+| **Explicit probe** | `arrayfire`, `opencl`, `metal` | Installed and loadable, but enabled only by explicit runtime probes. Supported surface is backend-specific and evidence-backed. |
+| **Experimental** | other registered backends      | Limited or local-only coverage. Health probe may route away silently. Not a general beta fast-path claim. |
 
-The authoritative definitions and the gate requirements that earn each tier
-live in `planning_docs/quality-tracking.md §8`. At runtime, the same
-information (plus current health state from the first-use canary probe) is
-available via:
+The authoritative definitions, supported-op subsets, and gate evidence live in
+`planning_docs/quality-tracking.md §8` and
+`planning_docs/backend-certification.md`. At runtime, the same information
+(plus current health state from the first-use canary probe) is available via:
 
 ```r
 amatrix_backend_status()
