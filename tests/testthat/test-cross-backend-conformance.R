@@ -289,6 +289,32 @@
               label = tag("variance non-negative"))
 }
 
+.arrayfire_conformance_ready <- function() {
+  specs <- optional_backend_specs()
+  idx <- match("arrayfire", vapply(specs, `[[`, character(1), "backend"))
+  if (is.na(idx)) {
+    return(FALSE)
+  }
+
+  spec <- specs[[idx]]
+  ns <- optional_backend_namespace(spec$package)
+  if (is.null(ns)) {
+    return(FALSE)
+  }
+
+  enable_probe <- get0("amatrix_arrayfire_enable_probe", envir = ns, inherits = FALSE)
+  register_backend <- get0(spec$register_fun, envir = ns, inherits = FALSE)
+  if (!is.function(enable_probe) || !is.function(register_backend)) {
+    return(FALSE)
+  }
+
+  isTRUE(tryCatch({
+    enable_probe(register = FALSE)
+    register_backend(overwrite = TRUE)
+    TRUE
+  }, error = function(e) FALSE))
+}
+
 # -- dist_matrix / kernel_matrix wrapper-level tests ----------------------------------
 test_that("dist_matrix euclidean matches base R", {
   set.seed(11)
@@ -416,26 +442,17 @@ test_that("mlx backend: GP regression matches base R GP reference", {
 
 # -- ArrayFire backend conformance --------------------------------------------
 test_that("arrayfire backend: all core ops match base R", {
-  skip_if_not(
-    isTRUE(try(amatrix.arrayfire::amatrix_arrayfire_is_available(), silent = TRUE)),
-    "arrayfire backend not available"
-  )
+  skip_if_not(.arrayfire_conformance_ready(), "arrayfire backend not available")
   .run_backend_conformance("arrayfire", tol = .GPU_TOL)
 })
 
 test_that("arrayfire backend: rsvd reconstruction and orthonormality", {
-  skip_if_not(
-    isTRUE(try(amatrix.arrayfire::amatrix_arrayfire_is_available(), silent = TRUE)),
-    "arrayfire backend not available"
-  )
+  skip_if_not(.arrayfire_conformance_ready(), "arrayfire backend not available")
   .run_rsvd_conformance("arrayfire", tol = .CPU_TOL, precision = "strict")
 })
 
 test_that("arrayfire backend: GP regression matches base R GP reference", {
-  skip_if_not(
-    isTRUE(try(amatrix.arrayfire::amatrix_arrayfire_is_available(), silent = TRUE)),
-    "arrayfire backend not available"
-  )
+  skip_if_not(.arrayfire_conformance_ready(), "arrayfire backend not available")
   .run_gp_conformance("arrayfire", tol = .GPU_TOL)
 })
 
