@@ -195,7 +195,8 @@ amatrix_arrayfire_matmul <- function(x, y) {
     storage.mode(y_mat) <- "double"
   }
 
-  .Call("amatrix_arrayfire_matmul_bridge", x_mat, y_mat)
+  .Call("amatrix_arrayfire_matmul_correct_bridge", x_mat, y_mat,
+        PACKAGE = "amatrix.arrayfire")
 }
 
 amatrix_arrayfire_crossprod <- function(x, y = NULL) {
