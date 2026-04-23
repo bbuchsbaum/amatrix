@@ -83,6 +83,24 @@ test_that("mlx startup policy allows probe in -e context", {
   expect_true(any(grepl("^allowed=TRUE$", output)))
 })
 
+test_that("mlx optional backend registration activates the safe gpu probe hook", {
+  fake_ns <- new.env(parent = emptyenv())
+  fake_ns$called <- FALSE
+  fake_ns$amatrix_mlx_enable_gpu_probe <- function() {
+    fake_ns$called <- TRUE
+    TRUE
+  }
+
+  activated <- amatrix:::.amatrix_activate_optional_backend_probe(
+    "mlx",
+    fake_ns,
+    list(probe_env = "AMATRIX_MLX_PROBE_GPU")
+  )
+
+  expect_true(activated)
+  expect_true(fake_ns$called)
+})
+
 test_that("opencl startup policy requires explicit probe opt-in", {
   skip_on_cran()
   skip_if_not_installed("pkgload")

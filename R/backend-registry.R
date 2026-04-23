@@ -84,6 +84,29 @@
   !isTRUE(tryCatch(getOption(disable_option, FALSE), error = function(e) FALSE))
 }
 
+.amatrix_activate_optional_backend_probe <- function(name, ns, spec) {
+  if (!identical(name, "mlx")) {
+    return(invisible(FALSE))
+  }
+
+  enable_probe <- get0("amatrix_mlx_enable_gpu_probe", envir = ns, inherits = FALSE)
+  if (!is.function(enable_probe)) {
+    return(invisible(FALSE))
+  }
+
+  isTRUE(tryCatch(
+    enable_probe(),
+    error = function(e) {
+      .amatrix_backend_health_mark(
+        name,
+        "unprobed",
+        sprintf("gpu probe activation failed: %s", conditionMessage(e))
+      )
+      FALSE
+    }
+  ))
+}
+
 .amatrix_try_register_optional_backend <- function(name) {
   stopifnot(is.character(name), length(name) == 1L, nzchar(name))
 
@@ -121,6 +144,8 @@
   if (is.null(ns)) {
     return(FALSE)
   }
+
+  .amatrix_activate_optional_backend_probe(name, ns, spec)
 
   register_backend <- get0(spec$register_fun, envir = ns, inherits = FALSE)
   if (!is.function(register_backend)) {
