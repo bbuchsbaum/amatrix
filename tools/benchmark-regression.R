@@ -760,6 +760,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
   timing <- benchmark_time_ms(runner, reps = reps)
 
   rel_err <- NA_real_
+  accuracy_error <- NA_character_
   if (!identical(requested_backend, "cpu") && op %in% c("matmul", "crossprod", "rsvd", "chol")) {
     rel_err <- tryCatch({
       ref <- switch(
@@ -778,7 +779,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
       )
       assert_backend_accuracy(ref, gpu_result, op)
     }, error = function(e) {
-      warning(sprintf("assert_backend_accuracy failed for op=%s backend=%s: %s", op, requested_backend, conditionMessage(e)), call. = FALSE, immediate. = TRUE)
+      accuracy_error <<- conditionMessage(e)
       NA_real_
     })
   }
@@ -794,6 +795,8 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
     requested_support_reason = result_meta$requested_support_reason,
     dispatch_backend = result_meta$dispatch_backend,
     dispatch_path = result_meta$dispatch_path,
+    status = if (is.na(accuracy_error)) "ok" else "error",
+    error_message = accuracy_error,
     nrow = result_meta$nrow,
     ncol = result_meta$ncol,
     rhs_width = result_meta$rhs_width,
@@ -1743,6 +1746,9 @@ benchmark_report_backend_status <- function() {
       status$capabilities,
       function(x) {
         x <- as.character(x)
+        if (length(x) == 0L || is.na(x)) {
+          return(NA_character_)
+        }
         if (nchar(x) > 72L) {
           paste0(substr(x, 1L, 69L), "...")
         } else {

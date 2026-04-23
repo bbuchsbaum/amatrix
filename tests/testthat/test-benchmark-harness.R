@@ -152,6 +152,50 @@ test_that("tools/baseline.csv joins against every synthetic CPU result", {
               info = "tools/baseline.csv must successfully join all synthetic rows")
 })
 
+test_that("dense benchmark accuracy failures are classified as error rows", {
+  ctx <- benchmark_harness_context()
+  counter <- new.env(parent = emptyenv())
+  backend <- make_recording_backend(
+    counter,
+    supported_ops = "matmul",
+    precision_modes = "fast"
+  )
+
+  old_sizes <- ctx$dense_sizes
+  old_timer <- ctx$benchmark_time_ms
+  old_accuracy <- ctx$assert_backend_accuracy
+  ctx$dense_sizes <- function() {
+    list(tiny = list(n = 8L, p = 3L, sink_n = 8L))
+  }
+  ctx$benchmark_time_ms <- function(fn, reps = 7L, warmup = 1L) {
+    fn()
+    list(
+      median = 1,
+      mean = 1,
+      sd = 0,
+      p05 = 1,
+      p95 = 1,
+      n_reps = 1L,
+      samples = 1
+    )
+  }
+  ctx$assert_backend_accuracy <- function(ref, gpu, op, tol = NULL) {
+    stop("accuracy regression: synthetic failure", call. = FALSE)
+  }
+  on.exit({
+    ctx$dense_sizes <- old_sizes
+    ctx$benchmark_time_ms <- old_timer
+    ctx$assert_backend_accuracy <- old_accuracy
+  }, add = TRUE)
+
+  with_registered_backend("accuracy_fake", backend, {
+    row <- ctx$run_dense_case("accuracy_fake", "matmul", "tiny", "cold")
+  })
+
+  expect_identical(row$status, "error")
+  expect_match(row$error_message, "accuracy regression: synthetic failure", fixed = TRUE)
+})
+
 test_that("write_outputs creates a readable benchmark report bundle", {
   ctx <- benchmark_harness_context()
 
