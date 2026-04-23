@@ -763,6 +763,23 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
   accuracy_error <- NA_character_
   if (!identical(requested_backend, "cpu") && op %in% c("matmul", "crossprod", "rsvd", "chol")) {
     rel_err <- tryCatch({
+      old_seed <- if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+        get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+      } else {
+        NULL
+      }
+      on.exit({
+        if (is.null(old_seed)) {
+          if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+            rm(".Random.seed", envir = .GlobalEnv)
+          }
+        } else {
+          assign(".Random.seed", old_seed, envir = .GlobalEnv)
+        }
+      }, add = TRUE)
+      if (identical(op, "rsvd")) {
+        set.seed(8675309L)
+      }
       ref <- switch(
         op,
         matmul    = as.matrix(adgeMatrix(X, preferred_backend = "cpu") %*% adgeMatrix(B_host, preferred_backend = "cpu")),
@@ -770,6 +787,9 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
         rsvd      = { r <- rsvd(adgeMatrix(X, preferred_backend = "cpu"), k = 10L); r$u %*% diag(r$d) %*% t(r$v) },
         chol      = as.matrix(chol(adgeMatrix(SPD, preferred_backend = "cpu")))
       )
+      if (identical(op, "rsvd")) {
+        set.seed(8675309L)
+      }
       gpu_result <- switch(
         op,
         matmul    = as.matrix(adgeMatrix(X, preferred_backend = requested_backend) %*% adgeMatrix(B_host, preferred_backend = requested_backend)),

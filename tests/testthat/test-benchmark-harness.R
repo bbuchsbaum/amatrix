@@ -196,6 +196,68 @@ test_that("dense benchmark accuracy failures are classified as error rows", {
   expect_match(row$error_message, "accuracy regression: synthetic failure", fixed = TRUE)
 })
 
+test_that("dense rsvd benchmark accuracy compares the same randomized sketch", {
+  ctx <- benchmark_harness_context()
+  counter <- new.env(parent = emptyenv())
+  backend <- make_recording_backend(
+    counter,
+    supported_ops = "rsvd",
+    precision_modes = "fast"
+  )
+
+  draws <- new.env(parent = emptyenv())
+  old_sizes <- ctx$dense_sizes
+  old_timer <- ctx$benchmark_time_ms
+  old_rsvd <- ctx$rsvd
+  ctx$dense_sizes <- function() {
+    list(tiny = list(n = 8L, p = 3L, sink_n = 8L))
+  }
+  ctx$benchmark_time_ms <- function(fn, reps = 7L, warmup = 1L) {
+    fn()
+    list(
+      median = 1,
+      mean = 1,
+      sd = 0,
+      p05 = 1,
+      p95 = 1,
+      n_reps = 1L,
+      samples = 1
+    )
+  }
+  ctx$rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
+    backend_name <- if (inherits(x, "adgeMatrix")) {
+      methods::slot(x, "preferred_backend")
+    } else {
+      "plain"
+    }
+    draw <- stats::runif(1L)
+    draws[[backend_name]] <- c(draws[[backend_name]], draw)
+    list(
+      u = matrix(1, nrow = nrow(x), ncol = 1L),
+      d = 1,
+      v = matrix(1, nrow = ncol(x), ncol = 1L)
+    )
+  }
+  on.exit({
+    ctx$dense_sizes <- old_sizes
+    ctx$benchmark_time_ms <- old_timer
+    ctx$rsvd <- old_rsvd
+  }, add = TRUE)
+
+  with_registered_backend("accuracy_fake", backend, {
+    row <- ctx$run_dense_case("accuracy_fake", "rsvd", "tiny", "cold")
+  })
+
+  expect_identical(row$status, "ok")
+  expect_length(draws$cpu, 1L)
+  expect_length(draws$accuracy_fake, 2L)
+  expect_equal(
+    draws$cpu[[1L]],
+    draws$accuracy_fake[[2L]],
+    tolerance = 0
+  )
+})
+
 test_that("write_outputs creates a readable benchmark report bundle", {
   ctx <- benchmark_harness_context()
 
