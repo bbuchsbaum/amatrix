@@ -483,6 +483,8 @@ aspiration.
 These tiers are **honest provisional assessments**, not final release claims.
 The release gate (Track 2) will re-evaluate against real nightly evidence and
 the README tier matrix will be regenerated from that evidence (Track 5 task 6).
+The current backend-specific evidence ledger lives in
+`planning_docs/backend-certification.md`.
 
 | Backend | Tier | Basis |
 |---|---|---|
