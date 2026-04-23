@@ -30,7 +30,9 @@
 
   for (backend_name in ordered) {
     backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
-    if (is.null(backend) || !isTRUE(backend$available())) {
+    if (is.null(backend) ||
+        !isTRUE(.amatrix_backend_health_eligible(backend_name)) ||
+        !isTRUE(backend$available())) {
       next
     }
 

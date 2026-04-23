@@ -9,6 +9,33 @@
 #   - Dispatch auto-fallback: a failing fake backend logs an event and the
 #     CPU fallback returns the correct result
 
+.with_only_cpu_backend <- function(code) {
+  registry <- amatrix:::.amatrix_state$backends
+  backend_names <- ls(envir = registry, all.names = FALSE)
+  saved_backends <- stats::setNames(
+    lapply(backend_names, function(name) get(name, envir = registry, inherits = FALSE)),
+    backend_names
+  )
+  old_optional <- getOption("amatrix.optional_backends", TRUE)
+
+  on.exit({
+    options(amatrix.optional_backends = old_optional)
+    for (name in ls(envir = registry, all.names = FALSE)) {
+      rm(list = name, envir = registry)
+    }
+    for (name in names(saved_backends)) {
+      assign(name, saved_backends[[name]], envir = registry)
+    }
+  }, add = TRUE)
+
+  options(amatrix.optional_backends = FALSE)
+  for (name in setdiff(backend_names, "cpu")) {
+    rm(list = name, envir = registry)
+  }
+
+  force(code)
+}
+
 test_that("backend health defaults to 'unprobed' and can be marked", {
   amatrix:::.amatrix_backend_health_init()
   # Reset state for known-fixed backend ids.
@@ -79,6 +106,45 @@ test_that("unhealthy backend is excluded from automatic planning", {
   expect_identical(fake_entry$health_reason, "forced test failure")
   expect_false(fake_entry$health_eligible)
   expect_false(fake_entry$supported)
+})
+
+test_that("fast mode does not stamp new matrices with a known-unhealthy accelerator", {
+  .with_only_cpu_backend({
+    fake <- make_recording_backend(
+      counter = new.env(parent = emptyenv()),
+      supported_ops = "matmul",
+      precision_modes = "fast",
+      features = "resident_dense"
+    )
+    amatrix_register_backend("zz_unhealthy", fake, overwrite = TRUE)
+
+    amatrix:::.amatrix_backend_health_mark("zz_unhealthy", "unhealthy", "forced test failure")
+
+    x <- adgeMatrix(matrix(1:4, nrow = 2L), mode = "fast")
+
+    expect_identical(x@preferred_backend, "cpu")
+    expect_identical(x@policy, "auto")
+    expect_identical(x@precision, "fast")
+  })
+})
+
+test_that("automatic resident backend selection skips unhealthy accelerators", {
+  .with_only_cpu_backend({
+    fake <- make_recording_backend(
+      counter = new.env(parent = emptyenv()),
+      supported_ops = "matmul",
+      resident_supported_ops = "matmul",
+      precision_modes = "fast",
+      features = "resident_dense"
+    )
+    amatrix_register_backend("zz_unhealthy", fake, overwrite = TRUE)
+
+    amatrix:::.amatrix_backend_health_mark("zz_unhealthy", "unhealthy", "forced test failure")
+
+    x <- adgeMatrix(matrix(1:4, nrow = 2L), preferred_backend = "auto", precision = "fast")
+
+    expect_null(amatrix_resident_backend_for(x, op = "matmul", y = diag(2L)))
+  })
 })
 
 test_that("amatrix_fallback_log() starts empty and accumulates events", {

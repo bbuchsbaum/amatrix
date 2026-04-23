@@ -177,7 +177,7 @@ test_that("Ops methods preserve numeric amatrix results and comparisons stay log
   expect_equal(as.matrix(y), matrix(2:5, nrow = 2))
   expect_equal(as.matrix(z), 2 * matrix(1:4, nrow = 2))
   expect_true(is.matrix(cmp) || inherits(cmp, "Matrix"))
-  expect_false(inherits(cmp, "aMatrix"))
+  expect_s4_class(cmp, "adlgeMatrix")
   expect_identical(as.matrix(cmp), matrix(c(FALSE, FALSE, TRUE, TRUE), nrow = 2))
 })
 
