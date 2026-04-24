@@ -152,6 +152,53 @@ test_that("tools/baseline.csv joins against every synthetic CPU result", {
               info = "tools/baseline.csv must successfully join all synthetic rows")
 })
 
+test_that("benchmark_time_ms retains per-rep samples and uncertainty summaries", {
+  ctx <- benchmark_harness_context()
+  counter <- 0L
+
+  timing <- ctx$benchmark_time_ms(
+    function() {
+      counter <<- counter + 1L
+      invisible(counter)
+    },
+    reps = 3L,
+    warmup = 2L
+  )
+
+  expect_identical(counter, 5L)
+  expect_length(timing$samples, 3L)
+  expect_identical(timing$n_reps, 3L)
+  expect_true(all(c("median", "mean", "sd", "p05", "p95") %in% names(timing)))
+  expect_false(anyNA(unlist(timing[c("median", "mean", "sd", "p05", "p95")])))
+})
+
+test_that("append_benchmark_history appends timing rows with variance metadata", {
+  ctx <- benchmark_harness_context()
+  history_path <- tempfile(fileext = ".csv")
+  on.exit(unlink(history_path), add = TRUE)
+
+  rows <- data.frame(
+    op = "matmul",
+    size_label = "small",
+    requested_backend = "cpu",
+    variant = "cold",
+    median_ms = c(1.2, 1.4),
+    sd_ms = c(0.1, 0.2),
+    n_reps = c(7L, 9L),
+    stringsAsFactors = FALSE
+  )
+
+  ctx$append_benchmark_history(rows[1L, , drop = FALSE], history_path)
+  ctx$append_benchmark_history(rows[2L, , drop = FALSE], history_path)
+
+  history <- utils::read.csv(history_path, stringsAsFactors = FALSE)
+  expect_equal(nrow(history), 2L)
+  expect_equal(history$median_ms, rows$median_ms)
+  expect_equal(history$sd_ms, rows$sd_ms)
+  expect_equal(history$n_reps, rows$n_reps)
+  expect_true(all(c("timestamp", "git_sha", "host_os", "host_cpu") %in% names(history)))
+})
+
 test_that("dense benchmark accuracy failures are classified as error rows", {
   ctx <- benchmark_harness_context()
   counter <- new.env(parent = emptyenv())
