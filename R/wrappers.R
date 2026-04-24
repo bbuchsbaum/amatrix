@@ -117,6 +117,20 @@
   value
 }
 
+.amatrix_subscript_arg <- function(value) {
+  if (inherits(value, "aMatrix")) {
+    return(as.matrix(amatrix_materialize_host(value)))
+  }
+  if (inherits(value, "Matrix")) {
+    return(as.matrix(value))
+  }
+  value
+}
+
+.amatrix_is_logical_matrix_subscript <- function(value, target) {
+  is.matrix(value) && is.logical(value) && identical(dim(value), dim(target))
+}
+
 .amatrix_logical_host_arg <- function(value) {
   if (inherits(value, "adlgCMatrix")) {
     return(as(amatrix_materialize_host(value), "lgCMatrix"))
@@ -1175,14 +1189,20 @@ am_transpose <- function(x) {
 
 am_subset <- function(x, i, j, ..., drop = TRUE) {
   host_x <- amatrix_materialize_host(x)
+  i_arg <- if (!missing(i)) .amatrix_subscript_arg(i) else NULL
+  j_arg <- if (!missing(j)) .amatrix_subscript_arg(j) else NULL
   value <- if (missing(i) && missing(j)) {
     host_x[..., drop = drop]
   } else if (missing(j)) {
-    host_x[i, , ..., drop = drop]
+    if (.amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
+      host_x[i_arg]
+    } else {
+      host_x[i_arg, , ..., drop = drop]
+    }
   } else if (missing(i)) {
-    host_x[, j, ..., drop = drop]
+    host_x[, j_arg, ..., drop = drop]
   } else {
-    host_x[i, j, ..., drop = drop]
+    host_x[i_arg, j_arg, ..., drop = drop]
   }
   .amatrix_rewrap_value(x, value)
 }
@@ -1190,14 +1210,20 @@ am_subset <- function(x, i, j, ..., drop = TRUE) {
 am_subassign <- function(x, i, j, ..., value) {
   host_x <- amatrix_materialize_host(x)
   host_value <- .amatrix_host_arg(value)
+  i_arg <- if (!missing(i)) .amatrix_subscript_arg(i) else NULL
+  j_arg <- if (!missing(j)) .amatrix_subscript_arg(j) else NULL
   if (missing(i) && missing(j)) {
     host_x[...] <- host_value
   } else if (missing(j)) {
-    host_x[i, , ...] <- host_value
+    if (.amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
+      host_x[i_arg] <- host_value
+    } else {
+      host_x[i_arg, , ...] <- host_value
+    }
   } else if (missing(i)) {
-    host_x[, j, ...] <- host_value
+    host_x[, j_arg, ...] <- host_value
   } else {
-    host_x[i, j, ...] <- host_value
+    host_x[i_arg, j_arg, ...] <- host_value
   }
   .amatrix_cache_invalidate_object(x@object_id)
   .amatrix_rewrap_value(x, host_x)

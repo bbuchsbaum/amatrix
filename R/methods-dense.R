@@ -455,6 +455,22 @@ setReplaceMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", value = 
   am_subassign(x, i, j, ..., value = value)
 })
 
+setReplaceMethod("[", signature(x = "adgeMatrix", i = "Matrix", j = "missing", value = "ANY"), function(x, i, j, ..., value) {
+  am_subassign(x, i, value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgeMatrix", i = "ndenseMatrix", j = "missing", value = "numeric"), function(x, i, j, ..., value) {
+  am_subassign(x, i, value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgeMatrix", i = "ngeMatrix", j = "missing", value = "numeric"), function(x, i, j, ..., value) {
+  am_subassign(x, i, value = value)
+})
+
+setReplaceMethod("[", signature(x = "adgeMatrix", i = "matrix", j = "missing", value = "ANY"), function(x, i, j, ..., value) {
+  am_subassign(x, i, value = value)
+})
+
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", value = "numeric"), function(x, i, j, ..., value) {
   am_subassign(x, i, j, ..., value = value)
 })
