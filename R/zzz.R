@@ -8,6 +8,46 @@
 .amatrix_state$object_counter <- 0L
 .amatrix_state$session_id <- ""
 
+.amatrix_backend_registration_valid <- function(backend) {
+  required_fields <- c(
+    "capabilities",
+    "features",
+    "precision_modes",
+    "available",
+    "supports",
+    "matmul",
+    "crossprod",
+    "tcrossprod",
+    "ewise",
+    "rowSums",
+    "colSums"
+  )
+
+  if (!is.list(backend)) return(FALSE)
+  if (length(setdiff(required_fields, names(backend))) > 0L) return(FALSE)
+  if (!all(vapply(backend[required_fields], is.function, logical(1)))) return(FALSE)
+
+  capabilities <- tryCatch(backend$capabilities(), error = function(e) NULL)
+  features <- tryCatch(backend$features(), error = function(e) NULL)
+  precision_modes <- tryCatch(backend$precision_modes(), error = function(e) NULL)
+
+  is.character(capabilities) &&
+    is.character(features) &&
+    is.character(precision_modes) &&
+    length(precision_modes) > 0L &&
+    all(precision_modes %in% .amatrix_valid_precisions)
+}
+
+.amatrix_register_cpu_backend_on_load <- function() {
+  existing <- get0("cpu", envir = .amatrix_state$backends, inherits = FALSE)
+  if (is.null(existing)) {
+    amatrix_register_backend("cpu", .amatrix_cpu_backend(), overwrite = FALSE)
+  } else if (!isTRUE(.amatrix_backend_registration_valid(existing))) {
+    amatrix_register_backend("cpu", .amatrix_cpu_backend(), overwrite = TRUE)
+  }
+  invisible(NULL)
+}
+
 .onLoad <- function(libname, pkgname) {
   .amatrix_state$session_id <- paste0(
     format(Sys.time(), "%Y%m%d%H%M%OS6"), "-",
@@ -17,5 +57,5 @@
   registerS3method("as.matrix", "KronMatrix", get("as.matrix.KronMatrix", envir = ns), envir = ns)
   registerS3method("as.matrix", "resident_handle", get("as.matrix.resident_handle", envir = ns), envir = ns)
   .amatrix_cache_init()
-  amatrix_register_backend("cpu", .amatrix_cpu_backend(), overwrite = TRUE)
+  .amatrix_register_cpu_backend_on_load()
 }
