@@ -10,8 +10,24 @@ test_that("resident_handle materializes through generic as.matrix in a fresh loa
   skip_on_cran()
   skip_if_not_installed("callr")
   skip_if_not_installed("pkgload")
-  skip_if_not(file.exists("DESCRIPTION"),
-              "source tree not reachable (installed-pkg context)")
+
+  find_package_root <- function(path = getwd()) {
+    path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+    repeat {
+      desc <- file.path(path, "DESCRIPTION")
+      if (file.exists(desc) && any(grepl("^Package: amatrix$", readLines(desc, warn = FALSE)))) {
+        return(path)
+      }
+      parent <- dirname(path)
+      if (identical(parent, path)) {
+        return(NA_character_)
+      }
+      path <- parent
+    }
+  }
+  package_root <- find_package_root()
+  skip_if(is.na(package_root),
+          "source tree not reachable (installed-pkg context)")
 
   result <- callr::r(
     function(path) {
@@ -47,7 +63,7 @@ test_that("resident_handle materializes through generic as.matrix in a fresh loa
         generic_base = capture(base::as.matrix(h))
       )
     },
-    args = list(getwd()),
+    args = list(package_root),
     spinner = FALSE,
     show = FALSE
   )
