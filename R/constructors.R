@@ -145,6 +145,9 @@
     }
     return(as(base, "dgCMatrix"))
   }
+  if (inherits(x, "denseMatrix")) {
+    x <- as.matrix(x)
+  }
   if (is.matrix(x)) {
     base <- Matrix::Matrix(x, sparse = TRUE)
     if (!inherits(base, "generalMatrix")) {
