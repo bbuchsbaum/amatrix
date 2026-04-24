@@ -17,20 +17,33 @@ test_that("dead deferred roundtrip is detected explicitly and fails consistently
 
   expect_true(amatrix:::.amatrix_is_dead_deferred(x2))
 
+  err <- "deferred adgeMatrix cannot survive serialization \\(saveRDS/readRDS\\) without host materialization; GPU resident data is unavailable"
+
   expect_error(
     show(x2),
-    "deferred adgeMatrix cannot survive saveRDS/readRDS without host materialization; GPU resident data is unavailable"
+    err
   )
   expect_error(
     as.matrix(x2),
-    "deferred adgeMatrix cannot survive saveRDS/readRDS without host materialization; GPU resident data is unavailable"
+    err
   )
   expect_error(
     as.numeric(x2),
-    "deferred adgeMatrix cannot survive saveRDS/readRDS without host materialization; GPU resident data is unavailable"
+    err
   )
   expect_error(
     as.vector(x2),
-    "deferred adgeMatrix cannot survive saveRDS/readRDS without host materialization; GPU resident data is unavailable"
+    err
+  )
+})
+
+test_that("dead deferred unserialize roundtrip uses the same non-serializable contract [amatrix-1i1]", {
+  x <- amatrix:::new_adgeMatrix_deferred(dim = c(2L, 3L), preferred_backend = "cpu")
+  x2 <- unserialize(serialize(x, NULL))
+
+  expect_true(amatrix:::.amatrix_is_dead_deferred(x2))
+  expect_error(
+    as.matrix(x2),
+    "deferred adgeMatrix cannot survive serialization \\(saveRDS/readRDS\\) without host materialization; GPU resident data is unavailable"
   )
 })

@@ -421,13 +421,17 @@ ncol.resident_handle <- function(x) x$dim[2L]
 
 #' Convert a resident handle back to an adgeMatrix
 #'
-#' Materialises the GPU data and creates an adgeMatrix with the resident key
-#' still bound.  The handle becomes inert after this call.
+#' Creates an adgeMatrix with the resident key still bound. By default the
+#' GPU data is materialized to a host copy. If \code{defer_host = TRUE}, the
+#' host copy is not materialized until first host access.
 #'
 #' @param h A \code{resident_handle}.
 #' @param ... Reserved for future use.
 #' @param defer_host When \code{TRUE}, return a deferred-host
-#'   \code{adgeMatrix} that materializes lazily.
+#'   \code{adgeMatrix} that materializes lazily. Deferred-host objects are
+#'   not process-serializable unless materialized before persistence; after
+#'   \code{saveRDS()}/\code{readRDS()} they fail cleanly instead of returning
+#'   sentinel data.
 #' @return An \code{adgeMatrix}.
 as_adgeMatrix.resident_handle <- function(h, ..., defer_host = FALSE) {
   .rh_check(h)

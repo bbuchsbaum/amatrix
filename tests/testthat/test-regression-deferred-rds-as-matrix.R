@@ -15,6 +15,7 @@ test_that("deferred adgeMatrix roundtrip has an explicit S3 as.matrix bridge and
   x2 <- readRDS(tmp)
 
   expect_true(is.function(getS3method("as.matrix", "adgeMatrix", optional = TRUE)))
-  expect_error(as.matrix(x2), "deferred adgeMatrix cannot survive saveRDS/readRDS without host materialization; GPU resident data is unavailable")
-  expect_error(base::as.matrix(x2), "deferred adgeMatrix cannot survive saveRDS/readRDS without host materialization; GPU resident data is unavailable")
+  err <- "deferred adgeMatrix cannot survive serialization \\(saveRDS/readRDS\\) without host materialization; GPU resident data is unavailable"
+  expect_error(as.matrix(x2), err)
+  expect_error(base::as.matrix(x2), err)
 })

@@ -247,6 +247,13 @@ new_adgeMatrix <- function(
 #' \code{NaN} sentinel vector. The true data lives only on the device
 #' until the first host access, which triggers a transparent download.
 #'
+#' Deferred objects are intentionally not process-serializable: after a
+#' serialization boundary such as \code{saveRDS()}/\code{readRDS()} or
+#' \code{serialize()}/\code{unserialize()}, the device resident key is no
+#' longer valid unless the host copy was materialized before persistence.
+#' Coercion or printing of such a dead deferred object fails with a clean
+#' error rather than returning sentinel data.
+#'
 #' @param dim Integer vector of length 2 giving \code{c(nrow, ncol)}.
 #' @param dimnames List of length 2 with row and column names, or
 #'   \code{list(NULL, NULL)}.
@@ -500,7 +507,7 @@ adgCMatrix <- function(
 #' Converts a matrix-like object or a \code{resident_handle} to an
 #' \code{adgeMatrix}. When \code{x} is a \code{resident_handle},
 #' ownership of the GPU-resident buffer is transferred to the new
-#' \code{adgeMatrix} with no host-side copy.
+#' \code{adgeMatrix}.
 #'
 #' @param x A \code{resident_handle}, base R \code{matrix},
 #'   \code{dgeMatrix}, or any \code{denseMatrix}.
@@ -510,8 +517,7 @@ adgCMatrix <- function(
 #' @param policy Single string dispatch policy.
 #' @param precision Single string; \code{"strict"} or \code{"fast"}.
 #'
-#' @return An \code{adgeMatrix}. When \code{x} is a
-#'   \code{resident_handle} the host copy is deferred.
+#' @return An \code{adgeMatrix}.
 #'
 #' @examples
 #' m <- matrix(1:6, nrow = 2)

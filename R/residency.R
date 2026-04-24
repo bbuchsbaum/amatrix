@@ -112,7 +112,7 @@
 
 .amatrix_dead_deferred_error <- function() {
   stop(
-    "deferred adgeMatrix cannot survive saveRDS/readRDS without host materialization; GPU resident data is unavailable",
+    "deferred adgeMatrix cannot survive serialization (saveRDS/readRDS) without host materialization; GPU resident data is unavailable",
     call. = FALSE
   )
 }
