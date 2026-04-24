@@ -18,6 +18,13 @@ Date: 2026-04-23
 ## Latest Local Gates
 
 ```bash
+Rscript tools/check-backend-certification.R --summary=tmp/backend-certification-all.csv
+```
+
+Result on 2026-04-23: all four backend gates green; `73` test contexts, `0`
+fail, `0` error, `0` skip.
+
+```bash
 Rscript --vanilla -e 'devtools::test(filter = "backend-certification-mlx|cross-backend-conformance|arrayfire-matmul-layout|backend-health|backend-integration", stop_on_failure = FALSE)'
 ```
 

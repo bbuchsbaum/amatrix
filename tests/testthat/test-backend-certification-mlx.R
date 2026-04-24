@@ -1,7 +1,7 @@
 # MLX beta certification smoke
 #
 # Seed: 20260423
-# Dimensions: dense matmul 160x160; Cholesky solve on 96x96 SPD with 8 RHS
+# Dimensions: dense matmul 640x640; Cholesky solve on 512x512 SPD with 8 RHS
 # Backend / precision / dispatch: mlx, fast precision, safe fresh Rscript -e worker
 # R version / platform: captured by the child process sessionInfo()
 # Issues: amatrix-x3c.2, amatrix-goq.2
@@ -47,7 +47,7 @@ test_that("MLX beta certification: safe auto startup and claimed fast paths", {
       status_after <- amatrix_backend_status("mlx")
 
       set.seed(20260423L)
-      n <- 160L
+      n <- 640L
       x_host <- matrix(rnorm(n * n), n, n)
       y_host <- matrix(rnorm(n * n), n, n)
       x <- adgeMatrix(x_host, mode = "fast")
@@ -58,9 +58,9 @@ test_that("MLX beta certification: safe auto startup and claimed fast paths", {
       matmul <- as.matrix(x %*% y)
       matmul_log <- amatrix_fallback_log()
 
-      z <- matrix(rnorm(320L * 96L), nrow = 320L, ncol = 96L)
-      spd <- crossprod(z) + diag(0.75, 96L)
-      rhs <- matrix(rnorm(96L * 8L), nrow = 96L, ncol = 8L)
+      z <- matrix(rnorm(768L * 512L), nrow = 768L, ncol = 512L)
+      spd <- crossprod(z) + diag(0.75, 512L)
+      rhs <- matrix(rnorm(512L * 8L), nrow = 512L, ncol = 8L)
       spd_x <- adgeMatrix(spd, preferred_backend = "mlx", precision = "fast")
       chol_plan <- amatrix_backend_plan(spd_x, "chol")
 
