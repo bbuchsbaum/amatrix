@@ -92,6 +92,64 @@ setMethod("show", "KronMatrix", function(object) {
 as.matrix.KronMatrix <- function(x, ...) base::kronecker(x@A, x@B)
 
 # ---------------------------------------------------------------------------
+# Subsetting  (materialize-on-subset)
+# ---------------------------------------------------------------------------
+
+#' Subset a lazy Kronecker product
+#'
+#' Extracts elements of a \code{\linkS4class{KronMatrix}} using standard matrix
+#' indexing (\code{K[i, j]}, \code{K[i, ]}, \code{K[, j]}, or linear
+#' \code{K[i]}). Without this method \code{K[i, j]} fails with
+#' \dQuote{object of type 'S4' is not subsettable}.
+#'
+#' \strong{Note:} this is a materialize-on-subset implementation. The full
+#' \eqn{(mp \times nq)} Kronecker product is formed via
+#' \code{\link[base]{kronecker}} before indexing, so subsetting does not
+#' preserve the memory advantage of the lazy representation. It is intended for
+#' convenient inspection rather than large-scale extraction.
+#'
+#' @param x A \code{\linkS4class{KronMatrix}}.
+#' @param i,j Row and column subscripts, following base matrix semantics.
+#' @param drop Logical; drop dimensions when the result has a single row or
+#'   column. Defaults to \code{TRUE}, as for base matrices.
+#' @param ... Unused.
+#'
+#' @return A numeric vector or matrix, exactly as base matrix indexing of
+#'   \code{as.matrix(x)} would return.
+#'
+#' @examples
+#' K <- kron_matrix(matrix(1:4, 2, 2), diag(2))
+#' K[1, ]
+#' K[, 2]
+#' K[2, 3]
+#'
+#' @name KronMatrix-subset
+#' @aliases [,KronMatrix,ANY,ANY,ANY-method
+#' @keywords internal
+setMethod("[", signature(x = "KronMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
+  full <- as.matrix(x)
+  ndrop <- if (missing(drop)) 0L else 1L
+  # Single-subscript form K[i] / K[]: no comma in the call (nargs counts only
+  # x and i). Distinguishes linear indexing K[5] from row indexing K[2, ].
+  if (missing(j) && (nargs() - ndrop) <= 2L) {
+    if (missing(i)) {
+      return(full)
+    }
+    return(full[i])
+  }
+  if (missing(i) && missing(j)) {
+    return(full[, , drop = drop])
+  }
+  if (missing(i)) {
+    return(full[, j, drop = drop])
+  }
+  if (missing(j)) {
+    return(full[i, , drop = drop])
+  }
+  full[i, j, drop = drop]
+})
+
+# ---------------------------------------------------------------------------
 # Transpose  t(A⊗B) = A^T ⊗ B^T
 # ---------------------------------------------------------------------------
 

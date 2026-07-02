@@ -69,3 +69,39 @@ test_that("kronecker preserves backend metadata of the first amatrix operand", {
   expect_identical(r@preferred_backend, aA@preferred_backend)
   expect_identical(r@precision, aA@precision)
 })
+
+# ---------------------------------------------------------------------------
+# amatrix-x6a: KronMatrix `[`
+# ---------------------------------------------------------------------------
+
+test_that("KronMatrix supports 2-D subsetting matching the dense product", {
+  A <- matrix(c(1, 2, 3, 4) * 1.0, 2, 2)
+  B <- matrix(c(5, 6, 7, 8, 9, 10) * 1.0, 2, 3)
+  K <- kron_matrix(A, B)
+  full <- base::kronecker(A, B)
+
+  expect_equal(K[2, 3], full[2, 3])
+  expect_equal(K[1, ], full[1, ])
+  expect_equal(K[, 4], full[, 4])
+  expect_equal(K[c(1, 3), c(2, 5)], full[c(1, 3), c(2, 5)])
+})
+
+test_that("KronMatrix subsetting honours drop and linear indexing", {
+  A <- matrix(c(1, 2, 3, 4) * 1.0, 2, 2)
+  B <- diag(2)
+  K <- kron_matrix(A, B)
+  full <- base::kronecker(A, B)
+
+  expect_equal(K[1, , drop = FALSE], full[1, , drop = FALSE])
+  expect_equal(dim(K[1, , drop = FALSE]), c(1L, 4L))
+  # linear (single-subscript) indexing
+  expect_equal(K[5], full[5])
+  expect_equal(K[c(1, 6, 11)], full[c(1, 6, 11)])
+  # whole-matrix K[]
+  expect_equal(K[], full)
+})
+
+test_that("KronMatrix subsetting no longer errors as unsubsettable", {
+  K <- kron_matrix(matrix(1:4 * 1.0, 2, 2), diag(2))
+  expect_error(K[1, 1], NA)
+})
