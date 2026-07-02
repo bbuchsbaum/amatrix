@@ -151,9 +151,9 @@ irlba_native <- function(A,
   v0 <- v0 / sqrt(sum(v0^2))
 
   # Upload A to GPU once; it stays resident across all restarts.
-  .Call("am_af_lbz_upload_A_bridge", A_mat, PACKAGE = "amatrix.arrayfire")
+  getExportedValue("amatrix.arrayfire", "amatrix_arrayfire_lanczos_upload_bridge")(A_mat)
   on.exit(
-    .Call("am_af_lbz_drop_A_bridge", PACKAGE = "amatrix.arrayfire"),
+    getExportedValue("amatrix.arrayfire", "amatrix_arrayfire_lanczos_drop_bridge")(),
     add = TRUE
   )
 
@@ -175,13 +175,11 @@ irlba_native <- function(A,
     k_new   <- work - nv_warm   # new Lanczos steps this restart
 
     # ── GPU Lanczos (warm or cold) ─────────────────────────────────
-    raw <- .Call(
-      "am_af_lanczos_warm_bridge",
+    raw <- getExportedValue("amatrix.arrayfire", "amatrix_arrayfire_lanczos_warm_bridge")(
       V_warm,               # n × nv_warm or NULL
       U_warm,               # m × nv_warm or NULL
       as.double(v_start),   # n-vector starting direction
-      as.integer(k_new),
-      PACKAGE = "amatrix.arrayfire"
+      as.integer(k_new)
     )
     mprod <- mprod + 2L * k_new
 

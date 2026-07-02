@@ -2764,11 +2764,11 @@ am_set_dimnames <- function(x, value) {
   }
 
   if (identical(spec$name, "arrayfire") && isTRUE(.am_af_ok())) {
-    return(.Call("amatrix_arrayfire_tcrossprod_correct_bridge", x_host, y_host, PACKAGE = "amatrix.arrayfire"))
+    return(getExportedValue("amatrix.arrayfire", "amatrix_arrayfire_tcrossprod_host_bridge")(x_host, y_host))
   }
 
   if (identical(spec$name, "mlx") && isTRUE(.am_mlx_ok())) {
-    return(.Call("amatrix_mlx_tcrossprod_bridge", x_host, y_host, PACKAGE = "amatrix.mlx"))
+    return(getExportedValue("amatrix.mlx", "amatrix_mlx_tcrossprod_host_bridge")(x_host, y_host))
   }
 
   if (identical(spec$name, "opencl")) {
@@ -2779,10 +2779,10 @@ am_set_dimnames <- function(x, value) {
 
   if (identical(spec$name, "auto")) {
     if (isTRUE(.am_af_ok())) {
-      return(.Call("amatrix_arrayfire_tcrossprod_correct_bridge", x_host, y_host, PACKAGE = "amatrix.arrayfire"))
+      return(getExportedValue("amatrix.arrayfire", "amatrix_arrayfire_tcrossprod_host_bridge")(x_host, y_host))
     }
     if (isTRUE(.am_mlx_ok())) {
-      return(.Call("amatrix_mlx_tcrossprod_bridge", x_host, y_host, PACKAGE = "amatrix.mlx"))
+      return(getExportedValue("amatrix.mlx", "amatrix_mlx_tcrossprod_host_bridge")(x_host, y_host))
     }
   }
 
@@ -2802,11 +2802,11 @@ am_set_dimnames <- function(x, value) {
   y_eff <- if (is.null(y_host)) x_host else y_host
 
   if (identical(spec$name, "arrayfire") && isTRUE(.am_af_ok())) {
-    return(.Call("am_af_dist_sq_bridge", x_host, y_host, PACKAGE = "amatrix.arrayfire"))
+    return(getExportedValue("amatrix.arrayfire", "amatrix_arrayfire_dist_sq_host_bridge")(x_host, y_host))
   }
 
   if (identical(spec$name, "auto") && isTRUE(.am_af_ok())) {
-    return(.Call("am_af_dist_sq_bridge", x_host, y_host, PACKAGE = "amatrix.arrayfire"))
+    return(getExportedValue("amatrix.arrayfire", "amatrix_arrayfire_dist_sq_host_bridge")(x_host, y_host))
   }
 
   G <- .am_metric_tcrossprod_backend(X, Y, spec = spec)
@@ -2822,14 +2822,15 @@ am_set_dimnames <- function(x, value) {
 
   # AF bridge computes entire kernel in C — no R allocation overhead.
   if ((identical(spec$name, "arrayfire") || identical(spec$name, "auto")) && isTRUE(.am_af_ok())) {
-    out <- .Call("am_af_kernel_bridge", x_host, y_host, kernel,
-                 as.double(sigma), as.integer(degree), as.double(coef),
-                 PACKAGE = "amatrix.arrayfire")
+    out <- getExportedValue("amatrix.arrayfire", "amatrix_arrayfire_kernel_host_bridge")(
+      x_host, y_host, kernel,
+      as.double(sigma), as.integer(degree), as.double(coef)
+    )
     return(.am_kernel_finalize(out, kernel, y_host, zero_diag))
   }
   # MLX: GPU GEMM + R-level transforms (cheap for linear/poly/cosine; heavier for rbf/lap)
   if (identical(spec$name, "mlx") && isTRUE(.am_mlx_ok())) {
-    G <- .Call("amatrix_mlx_tcrossprod_bridge", x_host, y_host, PACKAGE = "amatrix.mlx")
+    G <- getExportedValue("amatrix.mlx", "amatrix_mlx_tcrossprod_host_bridge")(x_host, y_host)
     return(.am_kernel_finalize(switch(kernel,
       linear     = G,
       polynomial = (coef + G)^degree,

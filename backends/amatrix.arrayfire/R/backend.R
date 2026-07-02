@@ -1212,3 +1212,40 @@ amatrix_arrayfire_register <- function(overwrite = TRUE) {
   .amatrix_arrayfire_configure_runtime_backend(quiet = FALSE)
   invisible("arrayfire")
 }
+
+# ---------------------------------------------------------------------------
+# Host-matrix bridge wrappers for the amatrix core package.
+#
+# These thin wrappers expose the ArrayFire native bridges that amatrix's
+# distance/kernel (am_dist, am_kernel) and native irlba routines call. They
+# are exported so core can reach them via getExportedValue() instead of
+# calling .Call(PACKAGE = "amatrix.arrayfire") across the package boundary.
+# They are pure pass-throughs: argument preparation stays at the call site.
+# ---------------------------------------------------------------------------
+
+amatrix_arrayfire_tcrossprod_host_bridge <- function(x, y) {
+  .Call("amatrix_arrayfire_tcrossprod_correct_bridge", x, y,
+        PACKAGE = "amatrix.arrayfire")
+}
+
+amatrix_arrayfire_dist_sq_host_bridge <- function(x, y) {
+  .Call("am_af_dist_sq_bridge", x, y, PACKAGE = "amatrix.arrayfire")
+}
+
+amatrix_arrayfire_kernel_host_bridge <- function(x, y, kernel, sigma, degree, coef) {
+  .Call("am_af_kernel_bridge", x, y, kernel, sigma, degree, coef,
+        PACKAGE = "amatrix.arrayfire")
+}
+
+amatrix_arrayfire_lanczos_upload_bridge <- function(A) {
+  .Call("am_af_lbz_upload_A_bridge", A, PACKAGE = "amatrix.arrayfire")
+}
+
+amatrix_arrayfire_lanczos_drop_bridge <- function() {
+  .Call("am_af_lbz_drop_A_bridge", PACKAGE = "amatrix.arrayfire")
+}
+
+amatrix_arrayfire_lanczos_warm_bridge <- function(V_warm, U_warm, p0, k) {
+  .Call("am_af_lanczos_warm_bridge", V_warm, U_warm, p0, k,
+        PACKAGE = "amatrix.arrayfire")
+}

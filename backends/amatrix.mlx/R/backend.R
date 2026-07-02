@@ -1402,3 +1402,17 @@ amatrix_mlx_register <- function(overwrite = TRUE) {
   register_backend("mlx", amatrix_mlx_backend(), overwrite = overwrite)
   invisible("mlx")
 }
+
+# ---------------------------------------------------------------------------
+# Host-matrix bridge wrapper for the amatrix core package.
+#
+# Thin wrapper exposing the MLX tcrossprod bridge that amatrix's
+# distance/kernel routines (am_dist, am_kernel) call. Exported so core can
+# reach it via getExportedValue() instead of calling
+# .Call(PACKAGE = "amatrix.mlx") across the package boundary. Pure
+# pass-through: argument preparation stays at the call site.
+# ---------------------------------------------------------------------------
+
+amatrix_mlx_tcrossprod_host_bridge <- function(x, y) {
+  .Call("amatrix_mlx_tcrossprod_bridge", x, y, PACKAGE = "amatrix.mlx")
+}
