@@ -1,0 +1,1 @@
+{"actor":"bbuchsbaum","entity":"amatrix-75h","kind":"create","op":"20260702T023038.709604Z-p34472-c0000-r572b-h30a7d8","set":{"body":"","priority":2,"status":"open","title":"kernel_matrix rbf: self-kernel diagonal not exactly 1 due to float32 drift"},"ts":"2026-07-02T02:30:38.709604Z","v":1}

@@ -5,6 +5,9 @@
 .beads-credential-key
 .omc/
 **/.omc/
+.mote/local/
+.mote/tmp/
+.mote/*.lock
 
 # Local agent/editor guidance and settings
 AGENTS.md

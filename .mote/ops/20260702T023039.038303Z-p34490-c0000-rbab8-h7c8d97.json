@@ -1,0 +1,1 @@
+{"actor":"bbuchsbaum","entity":"amatrix-4rt","kind":"create","op":"20260702T023039.038303Z-p34490-c0000-rbab8-h7c8d97","set":{"body":"","priority":2,"status":"open","title":"memory leak: irlba GPU upload not cleaned up if on.exit never registered"},"ts":"2026-07-02T02:30:39.038303Z","v":1}

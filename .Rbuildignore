@@ -4,6 +4,7 @@
 ^models$
 ^\.omc$
 ^\.beads$
+^\.mote$
 ^CLAUDE\.md$
 ^AGENTS\.md$
 ^tools$

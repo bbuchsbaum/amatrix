@@ -1,0 +1,1 @@
+{"actor":"bbuchsbaum","entity":"amatrix-lcn","kind":"create","op":"20260702T023038.945472Z-p34485-c0000-r7187-h90ef3b","set":{"body":"","priority":2,"status":"open","title":"Missing test coverage: addmm, am_colargmax, am_colargmin, am_ewise_inplace, am_rowargmax, am_rowargmin, am_scatter_mean, am_sweep_inplace"},"ts":"2026-07-02T02:30:38.945472Z","v":1}
