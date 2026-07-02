@@ -1,0 +1,1 @@
+{"actor":"bbuchsbaum","entity":"amatrix-x24","kind":"note","note_kind":"note","op":"20260702T120727.731500Z-p54516-c0000-r50f2-ha7bcab","text":"CLOSE RATIONALE: fixed in 6372bd4 — internal refs removed from README/performance.Rmd/roxygen/runtime warning; only deliberate full-GitHub-URL harness pointer remains.","ts":"2026-07-02T12:07:27.731500Z","v":1}
