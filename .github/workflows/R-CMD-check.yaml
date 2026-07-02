@@ -46,14 +46,27 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          # any::irlba is installed explicitly (it is a Suggests, excluded by
-          # dependencies: "hard") so the irlba_native / svdr fallback paths get
-          # real CI coverage instead of skipping. Keep hard deps otherwise to
-          # skip optional GPU backend packages, which have system deps that
-          # aren't available in default CI runners.
-          extra-packages: any::rcmdcheck, any::irlba
+          # dependencies: "hard" exists only to skip the optional GPU backend
+          # sister packages (amatrix.mlx/.metal/.opencl/.arrayfire), whose
+          # system deps aren't available on default CI runners. It also drops
+          # every CRAN Suggests, so re-add them all explicitly: the check
+          # toolchain (testthat, knitr, rmarkdown), the test-harness deps
+          # (callr, pkgload, rprojroot, withr), and irlba/ggplot2 so fallback
+          # paths get real CI coverage instead of skipping.
+          extra-packages: |
+            any::rcmdcheck
+            any::testthat
+            any::knitr
+            any::rmarkdown
+            any::callr
+            any::pkgload
+            any::rprojroot
+            any::withr
+            any::irlba
+            any::ggplot2
           needs: check
           dependencies: '"hard"'
+          cache-version: 2
 
       - uses: r-lib/actions/check-r-package@v2
         with:
