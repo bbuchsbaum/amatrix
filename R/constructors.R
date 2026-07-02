@@ -33,6 +33,14 @@
 
 .amatrix_dense_slot_matrix <- function(x) {
   stopifnot(inherits(x, "denseMatrix") || inherits(x, "adgeMatrix"))
+  # A deferred adgeMatrix keeps a non-authoritative rep(NaN, n) placeholder in
+  # @x; its real data lives on the device (or in the cached host_x). Reading @x
+  # directly would leak that sentinel, which is indistinguishable from genuine
+  # user NaN. Route through materialization (flag-gated, never value-sniffed) so
+  # the @x read below sees authoritative data.
+  if (inherits(x, "adgeMatrix") && isTRUE(x@finalizer_env$host_deferred)) {
+    x <- amatrix_materialize_dense(x)
+  }
   out <- x@x
   dim(out) <- as.integer(x@Dim)
   dimnames(out) <- x@Dimnames
@@ -663,7 +671,13 @@ setAs("lgCMatrix", "adlgCMatrix", function(from) {
   )
 })
 setAs("adgeMatrix", "dgeMatrix", function(from) {
-  out <- new("dgeMatrix", x = from@x, Dim = from@Dim, Dimnames = from@Dimnames, factors = from@factors)
+  # Materialize authoritative host data first. A deferred adgeMatrix stores a
+  # rep(NaN, n) sentinel in @x, so reading from@x directly would silently return
+  # that sentinel (indistinguishable from genuine user NaN) instead of the real
+  # data. For dead-deferred objects this raises the standard non-serializable
+  # error rather than leaking NaN.
+  host <- amatrix_materialize_dense(from)
+  out <- new("dgeMatrix", x = host@x, Dim = host@Dim, Dimnames = host@Dimnames, factors = host@factors)
   attr(out, "amatrix_metadata") <- .amatrix_extract_metadata(from)
   out
 })
