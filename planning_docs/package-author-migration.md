@@ -105,7 +105,7 @@ fits <- lapply(response_list, function(y) {
 After:
 
 ```r
-library(amatrix.models)
+library(amatrix)
 
 fit <- many_lm(X, Y_many, method = "qr", cache = TRUE)
 coef(fit)
@@ -130,7 +130,7 @@ R <- stats::cor(X)
 After:
 
 ```r
-library(amatrix.models)
+library(amatrix)
 
 S <- covariance(X)
 R <- correlation(X)
