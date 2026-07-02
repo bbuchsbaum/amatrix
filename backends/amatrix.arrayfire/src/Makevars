@@ -1,4 +1,0 @@
-PKG_CPPFLAGS = -DHAVE_ARRAYFIRE -I/opt/homebrew/opt/arrayfire/include
-PKG_LIBS = -L/opt/homebrew/opt/arrayfire/lib -Wl,-rpath,/opt/homebrew/opt/arrayfire/lib -laf
-# For CUDA/ROCm builds where af_svd is known stable, uncomment:
-#   PKG_CPPFLAGS += -DAMATRIX_AF_NATIVE_SVD_SAFE

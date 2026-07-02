@@ -1,2 +1,0 @@
-PKG_CPPFLAGS = -DHAVE_MLXC -I/opt/homebrew/opt/mlx-c/include
-PKG_LIBS = -L/opt/homebrew/opt/mlx-c/lib -Wl,-rpath,/opt/homebrew/opt/mlx-c/lib -L/opt/homebrew/opt/mlx/lib -Wl,-rpath,/opt/homebrew/opt/mlx/lib -lmlxc

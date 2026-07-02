@@ -1,8 +1,0 @@
-PKG_CPPFLAGS = -DHAVE_METAL -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks
-PKG_LIBS = -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -framework Foundation -framework Metal
-OBJECTS = init.o metal_sparse_bridge.o
-
-all: $(SHLIB)
-
-metal_sparse_bridge.o: metal_sparse_bridge.mm
-	$(CXX17) $(CXX17STD) $(ALL_CPPFLAGS) $(ALL_CXX17FLAGS) -x objective-c++ -c $< -o $@

@@ -1,2 +1,0 @@
-PKG_CPPFLAGS = -DHAVE_OPENCL -DHAVE_CLBLAST -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -I/opt/homebrew/Cellar/clblast/1.7.0/include
-PKG_LIBS = -F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks -framework OpenCL -L/opt/homebrew/Cellar/clblast/1.7.0/lib -lclblast
