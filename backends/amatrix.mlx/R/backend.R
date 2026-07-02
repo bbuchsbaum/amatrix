@@ -31,13 +31,35 @@ amatrix_mlx_precision_modes <- function() {
 }
 
 amatrix_mlx_native_available <- function() {
+  env <- Sys.getenv("AMATRIX_MLX_PROBE_GPU", unset = "")
+  if (identical(env, "0")) {
+    return(FALSE)
+  }
+  if (!nzchar(env)) {
+    # First probe of the session: run it in a disposable child process via
+    # the core registry helper so a Metal-init crash degrades to CPU
+    # instead of aborting this session. On success the helper exports
+    # AMATRIX_MLX_PROBE_GPU=1, so this branch runs at most once.
+    contained <- tryCatch({
+      core <- asNamespace("amatrix")
+      core$.amatrix_contained_gpu_probe(
+        "mlx",
+        core$.amatrix_optional_backend_specs()[["mlx"]]
+      )
+    }, error = function(e) TRUE)
+    if (!isTRUE(contained)) {
+      return(FALSE)
+    }
+  }
   .Call("amatrix_mlx_native_available_bridge")
 }
 
-# Activate the Metal GPU probe for the current session.  Safe to call from
-# Rscript -e / interactive / testthat contexts.  Do NOT call from the body
-# of a plain `Rscript file.R` script — Metal device init crashes in that
-# launch mode (upstream MLX bug: https://github.com/ml-explore/mlx/issues/2691).
+# Explicitly activate the Metal GPU probe for the current session,
+# overriding any AMATRIX_MLX_PROBE_GPU=0 opt-out. Probing is default-on
+# since mlx >= 0.31 (the historical `Rscript file.R` NSRangeException,
+# upstream https://github.com/ml-explore/mlx/issues/2691, no longer
+# reproduces; certified via tools/certify-mlx-file-entry.R in the core
+# repo). Kept exported for back-compatibility and for forcing a probe.
 amatrix_mlx_enable_gpu_probe <- function() {
   Sys.setenv(AMATRIX_MLX_PROBE_GPU = "1")
   invisible(amatrix_mlx_native_available())

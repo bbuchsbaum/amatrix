@@ -18,7 +18,10 @@
       register_fun = "amatrix_mlx_register",
       disable_option = "amatrix.disable_mlx",
       probe_env = "AMATRIX_MLX_PROBE_GPU",
-      unsafe_file_entry = TRUE
+      enable_probe_fun = "amatrix_mlx_enable_gpu_probe",
+      available_bridge = "amatrix_mlx_native_available_bridge",
+      auto_probe = TRUE,
+      contained_probe = TRUE
     ),
     metal = list(
       package = "amatrix.metal",
@@ -51,14 +54,26 @@
   probe_env <- spec$probe_env %||% NA_character_
   probe_enabled <- !is.na(probe_env) &&
     identical(Sys.getenv(probe_env, unset = ""), "1")
+  probe_opted_out <- !is.na(probe_env) &&
+    identical(Sys.getenv(probe_env, unset = ""), "0")
 
-  if (identical(name, "mlx") &&
-      isTRUE(spec$unsafe_file_entry) &&
-      isTRUE(context$direct_file_entry) &&
-      !isTRUE(getOption("amatrix.mlx.available", FALSE))) {
+  if (probe_opted_out) {
     return(list(
       allowed = FALSE,
-      reason = "probe skipped in unsafe file-entry Rscript context; use top-level Rscript -e and source(...)",
+      reason = sprintf("probe disabled via %s=0", probe_env),
+      context = context
+    ))
+  }
+
+  if (isTRUE(spec$auto_probe) &&
+      !probe_enabled &&
+      !isTRUE(getOption("amatrix.auto_probe", TRUE))) {
+    return(list(
+      allowed = FALSE,
+      reason = sprintf(
+        "auto probe disabled via options(amatrix.auto_probe = FALSE); set %s=1 or call amatrix_use_gpu() to probe explicitly",
+        probe_env
+      ),
       context = context
     ))
   }
@@ -84,12 +99,90 @@
   !isTRUE(tryCatch(getOption(disable_option, FALSE), error = function(e) FALSE))
 }
 
+.amatrix_contained_probe_cache <- new.env(parent = emptyenv())
+
+# Run a backend's first GPU probe of the session in a disposable child
+# process. A Metal/driver crash then kills the child, not the user's
+# session; the backend is marked unavailable with an actionable reason
+# and everything proceeds on CPU. The verdict is cached per session and
+# exported to the probe env var so subsequent in-process availability
+# checks are deterministic (and safe: a failed verdict hard-blocks
+# in-process device init via <probe_env>=0).
+.amatrix_contained_gpu_probe <- function(name, spec) {
+  cached <- get0(name, envir = .amatrix_contained_probe_cache, inherits = FALSE)
+  if (!is.null(cached)) {
+    return(cached)
+  }
+
+  probe_env <- spec$probe_env %||% NA_character_
+  bridge <- spec$available_bridge %||% NA_character_
+  if (is.na(probe_env) || is.na(bridge)) {
+    return(TRUE)
+  }
+
+  # An explicit user opt-in skips containment: trust the user.
+  if (identical(Sys.getenv(probe_env, unset = ""), "1")) {
+    assign(name, TRUE, envir = .amatrix_contained_probe_cache)
+    return(TRUE)
+  }
+
+  # probe_expr is a test hook: a spec can supply the child-process
+  # expression directly (e.g. one that crashes) to exercise the
+  # containment paths without real GPU state.
+  expr <- spec$probe_expr %||% sprintf(
+    'Sys.setenv(%s = "1"); ok <- tryCatch({ loadNamespace("%s"); isTRUE(.Call("%s", PACKAGE = "%s")) }, error = function(e) FALSE); cat(if (ok) "AMATRIX-PROBE-OK" else "AMATRIX-PROBE-NO")',
+    probe_env, spec$package, bridge, spec$package
+  )
+  rscript <- file.path(R.home("bin"), "Rscript")
+  out <- tryCatch(
+    suppressWarnings(system2(
+      rscript,
+      c("--no-save", "--no-restore", "-e", shQuote(expr)),
+      stdout = TRUE, stderr = TRUE, timeout = 60,
+      env = paste0("R_LIBS=", paste(.libPaths(), collapse = .Platform$path.sep))
+    )),
+    error = function(e) structure(character(), status = -1L)
+  )
+  status <- attr(out, "status") %||% 0L
+
+  set_probe_env <- function(value) {
+    env_args <- list(value)
+    names(env_args) <- probe_env
+    do.call(Sys.setenv, env_args)
+  }
+
+  verdict <- FALSE
+  if (identical(status, 0L) && any(grepl("AMATRIX-PROBE-OK", out, fixed = TRUE))) {
+    verdict <- TRUE
+    set_probe_env("1")
+  } else {
+    set_probe_env("0")
+    reason <- if (identical(status, 0L)) {
+      sprintf("no usable GPU device (isolated %s probe)", name)
+    } else {
+      sprintf(
+        "GPU probe crashed in isolated child process (exit status %s); %s disabled this session — set %s=1 to force an in-process probe",
+        status, name, probe_env
+      )
+    }
+    .amatrix_backend_health_mark(name, "unprobed", reason)
+  }
+
+  assign(name, verdict, envir = .amatrix_contained_probe_cache)
+  verdict
+}
+
 .amatrix_activate_optional_backend_probe <- function(name, ns, spec) {
-  if (!identical(name, "mlx")) {
+  if (isTRUE(spec$contained_probe) && !isTRUE(.amatrix_contained_gpu_probe(name, spec))) {
     return(invisible(FALSE))
   }
 
-  enable_probe <- get0("amatrix_mlx_enable_gpu_probe", envir = ns, inherits = FALSE)
+  fun_name <- spec$enable_probe_fun
+  if (is.null(fun_name) || !nzchar(fun_name)) {
+    return(invisible(FALSE))
+  }
+
+  enable_probe <- get0(fun_name, envir = ns, inherits = FALSE)
   if (!is.function(enable_probe)) {
     return(invisible(FALSE))
   }

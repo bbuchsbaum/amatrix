@@ -2260,15 +2260,18 @@ static SEXP amatrix_mlx_ewise_resident_real(SEXP lhs_key, SEXP rhs, SEXP op, SEX
 
 SEXP amatrix_mlx_native_available_bridge(void) {
 #ifdef HAVE_MLXC
-  /* mlx_default_gpu_stream_new() initialises Metal, which throws
-     NSRangeException in some process-launch contexts (e.g. direct
-     `Rscript file.R`).  Default to "unavailable" so library load and
-     availability checks never crash.  Set AMATRIX_MLX_PROBE_GPU=1 to
-     opt into the Metal probe (safe in -e / interactive / testthat
-     contexts, or after the user has confirmed the launch mode is OK).
-     See: https://github.com/ml-explore/mlx/issues/2691 */
+  /* Probing is default-ON: set AMATRIX_MLX_PROBE_GPU=0 to opt out.
+     Historical note: on MLX <= 0.29.x mlx_default_gpu_stream_new()
+     threw NSRangeException under direct `Rscript file.R` launch
+     (https://github.com/ml-explore/mlx/issues/2691), so this gate
+     used to require an explicit opt-in.  The crash no longer
+     reproduces on mlx >= 0.31 (26/26 certified file-entry runs,
+     2026-07-01; see tools/certify-mlx-file-entry.R in the core repo),
+     and the core registry now runs the first probe of a session in a
+     disposable child process, so a regression degrades to CPU instead
+     of aborting the session. */
   const char *probe = getenv("AMATRIX_MLX_PROBE_GPU");
-  if (probe == NULL || strcmp(probe, "1") != 0) {
+  if (probe != NULL && strcmp(probe, "0") == 0) {
     return ScalarLogical(0);
   }
   mlx_stream stream;
