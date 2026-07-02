@@ -59,3 +59,34 @@
   .amatrix_cache_init()
   .amatrix_register_cpu_backend_on_load()
 }
+
+.onAttach <- function(libname, pkgname) {
+  # One-line GPU visibility note. Cheap checks only: installed-package
+  # lookups (no namespace loads) and pure policy evaluation — no
+  # probing, registration, or subprocess work at attach time. Silent
+  # for pure-CPU users (no backend packages installed).
+  notes <- tryCatch({
+    specs <- .amatrix_optional_backend_specs()
+    parts <- character()
+    for (name in intersect(.amatrix_auto_fast_backend_order(), names(specs))) {
+      spec <- specs[[name]]
+      if (!nzchar(system.file(package = spec$package))) next
+      policy <- .amatrix_optional_backend_probe_policy(name, spec)
+      parts[name] <- if (isTRUE(policy$allowed) && isTRUE(spec$auto_probe)) {
+        sprintf("%s ready (activates on first use)", name)
+      } else if (isTRUE(policy$allowed)) {
+        sprintf("%s installed (enable with amatrix_use_gpu())", name)
+      } else {
+        sprintf("%s installed but disabled (%s)", name, policy$reason)
+      }
+    }
+    parts
+  }, error = function(e) character())
+
+  if (length(notes) > 0L) {
+    packageStartupMessage(
+      "amatrix GPU backends: ", paste(notes, collapse = "; "),
+      ". See amatrix_gpu_status()."
+    )
+  }
+}

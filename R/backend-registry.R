@@ -83,7 +83,7 @@
       !isTRUE(getOption("amatrix.opencl.available", FALSE))) {
     return(list(
       allowed = FALSE,
-      reason = "probe disabled; set AMATRIX_OPENCL_PROBE_GPU=1 for explicit probe runs",
+      reason = "probe disabled; call amatrix_use_gpu() or set AMATRIX_OPENCL_PROBE_GPU=1 for explicit probe runs",
       context = context
     ))
   }

@@ -76,10 +76,6 @@ amatrix_mlx_bridge_info <- function() {
   info
 }
 
-.amatrix_mlx_direct_file_entry <- function() {
-  any(startsWith(commandArgs(trailingOnly = FALSE), "--file="))
-}
-
 .amatrix_mlx_spectral_safe_mode <- function() {
   option <- getOption("amatrix.mlx.safe_spectral", NULL)
   if (!is.null(option)) {
@@ -91,7 +87,14 @@ amatrix_mlx_bridge_info <- function() {
     return(tolower(env) %in% c("1", "true", "yes"))
   }
 
-  isTRUE(.amatrix_mlx_direct_file_entry())
+  # Default off. Historically this defaulted to TRUE under direct
+  # `Rscript file.R` launch because combined multi-step native spectral
+  # sessions could abort with NSException on older MLX; 20/20 combined
+  # svd+matmul+eigen file-entry runs pass on mlx >= 0.31 (2026-07-01),
+  # so native spectral is the default in every launch mode. Set
+  # options(amatrix.mlx.safe_spectral = TRUE) or
+  # AMATRIX_MLX_SAFE_SPECTRAL=1 to force the CPU spectral fallback.
+  FALSE
 }
 
 .amatrix_mlx_spectral_fallback <- function(x, method = c("svd", "rsvd"), nu = NULL, nv = NULL, k = NULL, n_oversamples = 10L, n_iter = 2L) {
