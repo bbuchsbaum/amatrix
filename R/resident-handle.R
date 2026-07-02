@@ -168,6 +168,11 @@ resident_handle <- function(x, backend = NULL) {
       .rh_drop_key(backend, stats_key)
     }
     if (ok) {
+      # In-place kernel mutated the shared key; invalidate any aliased
+      # adgeMatrix host cache so its next materialization re-downloads.
+      h$owns_key <- identical(
+        .amatrix_update_resident_aliases(h$backend_name, h$resident_key), 0L
+      )
       return(invisible(h))
     }
     stop("backend failed to apply resident vector sweep", call. = FALSE)
@@ -202,11 +207,15 @@ resident_handle <- function(x, backend = NULL) {
     stop("backend failed to apply resident vector sweep", call. = FALSE)
   }
 
+  # Repoint any aliased adgeMatrix entries to the new key and invalidate their
+  # host cache BEFORE dropping the old key, mirroring am_sweep_inplace.
+  alias_count <- .amatrix_update_resident_aliases(h$backend_name, old_key, new_key)
   .rh_drop_key(backend, old_key)
   if (isTRUE(drop_stats)) {
     .rh_drop_key(backend, stats_key)
   }
   h$resident_key <- new_key
+  h$owns_key <- identical(alias_count, 0L)
   invisible(h)
 }
 

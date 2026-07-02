@@ -245,3 +245,180 @@ test_that("amatrix-g5r: host_cache_valid stale after in-place mutation through r
       label = "amatrix-g5r: as.matrix(x) must reflect in-place GPU mutation")
   })
 })
+
+# ── amatrix-oe8 ───────────────────────────────────────────────────────────────
+# host_cache_valid must be invalidated at EVERY in-place mutation site, not just
+# the am_sweep_inplace in-place path already covered by amatrix-g5r. These tests
+# pin the remaining resident-handle in-place families so a regression in any of
+# them re-surfaces the "stale host data after in-place op" bug:
+#   * am_sweep_inplace   — key-swap path (broadcast_ewise_resident, new key)
+#   * am_ewise_inplace   — key-swap path (ewise_resident, new key)
+#   * .rh_sweep_inplace_key — in-place path  (broadcast_ewise_resident_inplace_key)
+#   * .rh_sweep_inplace_key — key-swap path  (broadcast_ewise_resident_key)
+# The .rh_sweep_inplace_key helper drives the resident Sinkhorn loop, which reuses
+# a live adgeMatrix's resident key, so a missed invalidation there silently
+# corrupts the caller's matrix.
+
+.oe8_make_backend <- function(counter) {
+  make_recording_backend(
+    counter,
+    supported_ops          = c("matmul", "ewise"),
+    cold_supported_ops     = c("matmul", "ewise"),
+    resident_supported_ops = c("matmul", "ewise")
+  )
+}
+
+# The recording backend stores resident buffers in the `resident` env captured
+# by its closures; reach it through resident_has() to inspect/mutate buffers.
+.oe8_resident_env <- function(backend) environment(backend$resident_has)$resident
+
+test_that("amatrix-oe8: am_sweep_inplace key-swap path invalidates aliased host cache", {
+  counter <- new.env(parent = emptyenv())
+  backend <- .oe8_make_backend(counter)
+
+  # Out-of-place sweep kernel (writes a NEW key). No broadcast_ewise_resident_inplace
+  # is provided, so am_sweep_inplace takes the key-swap branch.
+  backend$broadcast_ewise_resident <- function(old_key, stats, margin, fun, new_key, defer = FALSE) {
+    bk_env <- .oe8_resident_env(backend)
+    mat <- get(old_key, envir = bk_env, inherits = FALSE)
+    mat <- sweep(mat, as.integer(margin), as.double(stats), fun)
+    assign(new_key, mat, envir = bk_env)
+    invisible(new_key)
+  }
+
+  with_registered_backend("oe8-sweep-swap", backend, {
+    set.seed(7L)
+    m <- matrix(runif(6), nrow = 2L, ncol = 3L)
+    x <- adgeMatrix(m, preferred_backend = "oe8-sweep-swap")
+    x <- amatrix_bind_resident(x, "oe8-sweep-swap")
+    expect_true(isTRUE(x@finalizer_env$cache_state$host_cache_valid))
+
+    h <- resident_handle(x, backend = "oe8-sweep-swap")
+    old_key <- amatrix:::.amatrix_resident_key(x)
+    expect_identical(h$resident_key, old_key)
+
+    scale_vec <- c(10.0, 100.0)
+    am_sweep_inplace(h, 1L, scale_vec, "/")
+    expected <- sweep(m, 1L, scale_vec, "/")
+
+    # Registry entry for x must now point at the handle's new key (old key dropped).
+    expect_identical(amatrix:::.amatrix_resident_key(x), h$resident_key)
+    expect_false(identical(amatrix:::.amatrix_resident_key(x), old_key))
+    expect_false(isTRUE(x@finalizer_env$cache_state$host_cache_valid))
+    expect_false(isTRUE(backend$resident_has(old_key)))
+
+    expect_equal(as.matrix(x), expected, tolerance = 1e-10,
+      label = "amatrix-oe8: as.matrix(x) must reflect key-swap sweep mutation")
+  })
+})
+
+test_that("amatrix-oe8: am_ewise_inplace invalidates aliased host cache", {
+  counter <- new.env(parent = emptyenv())
+  backend <- .oe8_make_backend(counter)  # ewise_resident supplied by the helper
+
+  with_registered_backend("oe8-ewise", backend, {
+    set.seed(11L)
+    m <- matrix(runif(6), nrow = 2L, ncol = 3L)
+    x <- adgeMatrix(m, preferred_backend = "oe8-ewise")
+    x <- amatrix_bind_resident(x, "oe8-ewise")
+    expect_true(isTRUE(x@finalizer_env$cache_state$host_cache_valid))
+
+    h <- resident_handle(x, backend = "oe8-ewise")
+    old_key <- amatrix:::.amatrix_resident_key(x)
+    expect_identical(h$resident_key, old_key)
+
+    am_ewise_inplace(h, 3.0, "*")
+    expected <- m * 3.0
+
+    expect_identical(amatrix:::.amatrix_resident_key(x), h$resident_key)
+    expect_false(isTRUE(x@finalizer_env$cache_state$host_cache_valid))
+    expect_false(isTRUE(backend$resident_has(old_key)))
+
+    expect_equal(as.matrix(x), expected, tolerance = 1e-10,
+      label = "amatrix-oe8: as.matrix(x) must reflect ewise mutation")
+  })
+})
+
+test_that("amatrix-oe8: .rh_sweep_inplace_key in-place path invalidates aliased host cache", {
+  counter <- new.env(parent = emptyenv())
+  backend <- .oe8_make_backend(counter)
+
+  # True in-place vector sweep (mutates the SAME key).
+  backend$broadcast_ewise_resident_inplace_key <- function(key, stats_key, margin, fun) {
+    bk_env <- .oe8_resident_env(backend)
+    mat <- get(key, envir = bk_env, inherits = FALSE)
+    v <- as.double(get(stats_key, envir = bk_env, inherits = FALSE))
+    mat <- sweep(mat, as.integer(margin), v, fun)
+    assign(key, mat, envir = bk_env)
+    invisible(key)
+  }
+
+  with_registered_backend("oe8-key-inplace", backend, {
+    set.seed(13L)
+    m <- matrix(runif(6), nrow = 2L, ncol = 3L)
+    x <- adgeMatrix(m, preferred_backend = "oe8-key-inplace")
+    x <- amatrix_bind_resident(x, "oe8-key-inplace")
+    expect_true(isTRUE(x@finalizer_env$cache_state$host_cache_valid))
+
+    h <- resident_handle(x, backend = "oe8-key-inplace")
+    key0 <- h$resident_key
+    expect_identical(key0, amatrix:::.amatrix_resident_key(x))
+
+    scale_vec <- c(2.0, 5.0)
+    stats_key <- amatrix:::.amatrix_next_resident_key("oe8-key-inplace")
+    backend$resident_store(stats_key, matrix(scale_vec, ncol = 1L))
+
+    amatrix:::.rh_sweep_inplace_key(h, 1L, stats_key, "*")
+    expected <- sweep(m, 1L, scale_vec, "*")
+
+    expect_identical(h$resident_key, key0)  # in-place: key must not change
+    expect_false(isTRUE(x@finalizer_env$cache_state$host_cache_valid))
+
+    expect_equal(as.matrix(x), expected, tolerance = 1e-10,
+      label = "amatrix-oe8: as.matrix(x) must reflect in-place-key sweep mutation")
+  })
+})
+
+test_that("amatrix-oe8: .rh_sweep_inplace_key key-swap path invalidates aliased host cache", {
+  counter <- new.env(parent = emptyenv())
+  backend <- .oe8_make_backend(counter)
+
+  # Out-of-place vector sweep (writes a NEW key). No inplace_key kernel provided,
+  # so .rh_sweep_inplace_key takes the key-swap branch and drops the old key.
+  backend$broadcast_ewise_resident_key <- function(old_key, stats_key, margin, fun, new_key, defer = FALSE) {
+    bk_env <- .oe8_resident_env(backend)
+    mat <- get(old_key, envir = bk_env, inherits = FALSE)
+    v <- as.double(get(stats_key, envir = bk_env, inherits = FALSE))
+    mat <- sweep(mat, as.integer(margin), v, fun)
+    assign(new_key, mat, envir = bk_env)
+    invisible(new_key)
+  }
+
+  with_registered_backend("oe8-key-swap", backend, {
+    set.seed(17L)
+    m <- matrix(runif(6), nrow = 2L, ncol = 3L)
+    x <- adgeMatrix(m, preferred_backend = "oe8-key-swap")
+    x <- amatrix_bind_resident(x, "oe8-key-swap")
+    expect_true(isTRUE(x@finalizer_env$cache_state$host_cache_valid))
+
+    h <- resident_handle(x, backend = "oe8-key-swap")
+    old_key <- h$resident_key
+    expect_identical(old_key, amatrix:::.amatrix_resident_key(x))
+
+    scale_vec <- c(3.0, 4.0)
+    stats_key <- amatrix:::.amatrix_next_resident_key("oe8-key-swap")
+    backend$resident_store(stats_key, matrix(scale_vec, ncol = 1L))
+
+    amatrix:::.rh_sweep_inplace_key(h, 1L, stats_key, "*")
+    expected <- sweep(m, 1L, scale_vec, "*")
+
+    # Entry must repoint to the new key; the old key must be dropped, not dangling.
+    expect_identical(amatrix:::.amatrix_resident_key(x), h$resident_key)
+    expect_false(identical(amatrix:::.amatrix_resident_key(x), old_key))
+    expect_false(isTRUE(backend$resident_has(old_key)))
+    expect_false(isTRUE(x@finalizer_env$cache_state$host_cache_valid))
+
+    expect_equal(as.matrix(x), expected, tolerance = 1e-10,
+      label = "amatrix-oe8: as.matrix(x) must reflect key-swap-key sweep mutation")
+  })
+})
