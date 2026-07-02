@@ -18,7 +18,7 @@
 )
 
 .amatrix_gpu_install_hint <- function() {
-  repos_hint <- 'install.packages("amatrix.<backend>", repos = c("https://bbuchsbaum.r-universe.dev", getOption("repos")))'
+  repos_hint <- 'install.packages("amatrix.<backend>", repos = c("https://bbuchsbaum.r-universe.dev", "https://cloud.r-project.org"))'
   backend_hint <- if (identical(Sys.info()[["sysname"]], "Darwin") &&
                       identical(Sys.info()[["machine"]], "arm64")) {
     "amatrix.mlx (Apple Silicon GPU via MLX)"

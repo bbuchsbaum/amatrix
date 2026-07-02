@@ -46,10 +46,13 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck
+          # any::irlba is installed explicitly (it is a Suggests, excluded by
+          # dependencies: "hard") so the irlba_native / svdr fallback paths get
+          # real CI coverage instead of skipping. Keep hard deps otherwise to
+          # skip optional GPU backend packages, which have system deps that
+          # aren't available in default CI runners.
+          extra-packages: any::rcmdcheck, any::irlba
           needs: check
-          # Skip optional GPU backend packages — they have system deps
-          # that aren't available in default CI runners.
           dependencies: '"hard"'
 
       - uses: r-lib/actions/check-r-package@v2

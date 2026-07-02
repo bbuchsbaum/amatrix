@@ -10,15 +10,15 @@
 \alias{amatrix-s3-methods}
 \title{Internal S3 methods for amatrix helper classes}
 \usage{
-as.matrix.KronMatrix(x, ...)
+\method{as.matrix}{KronMatrix}(x, ...)
 
-as.matrix.resident_handle(x, ...)
+\method{as.matrix}{resident_handle}(x, ...)
 
 \method{dim}{resident_handle}(x)
 
-nrow.resident_handle(x)
+\method{nrow}{resident_handle}(x)
 
-ncol.resident_handle(x)
+\method{ncol}{resident_handle}(x)
 }
 \arguments{
 \item{x}{A \code{KronMatrix} or \code{resident_handle} object.}

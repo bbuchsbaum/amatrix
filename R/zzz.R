@@ -60,17 +60,41 @@
   .amatrix_register_cpu_backend_on_load()
 }
 
+# TRUE when the user has asked for a silent attach, via either
+# options(amatrix.quiet_startup = TRUE) or AMATRIX_QUIET ("1"/"true").
+.amatrix_quiet_startup <- function() {
+  if (isTRUE(getOption("amatrix.quiet_startup", FALSE))) {
+    return(TRUE)
+  }
+  tolower(Sys.getenv("AMATRIX_QUIET", unset = "")) %in% c("1", "true")
+}
+
 .onAttach <- function(libname, pkgname) {
   # One-line GPU visibility note. Cheap checks only: installed-package
   # lookups (no namespace loads) and pure policy evaluation — no
   # probing, registration, or subprocess work at attach time. Silent
-  # for pure-CPU users (no backend packages installed).
+  # for pure-CPU users (no backend packages installed), and fully
+  # suppressible via options(amatrix.quiet_startup = TRUE) or the
+  # AMATRIX_QUIET environment variable.
+  if (.amatrix_quiet_startup()) {
+    return(invisible())
+  }
+  # optional_backends disabled globally: no optional backend will be
+  # used this session, so there is nothing worth announcing.
+  if (!.amatrix_optional_backends_enabled()) {
+    return(invisible())
+  }
   notes <- tryCatch({
     specs <- .amatrix_optional_backend_specs()
     parts <- character()
     for (name in intersect(.amatrix_auto_fast_backend_order(), names(specs))) {
       spec <- specs[[name]]
       if (!nzchar(system.file(package = spec$package))) next
+      # Per-backend opt-out (e.g. options(amatrix.disable_mlx = TRUE)):
+      # omit a disabled backend from the note entirely. If every
+      # installed backend is disabled, `parts` stays empty and nothing
+      # is printed.
+      if (!.amatrix_optional_backend_enabled(spec)) next
       policy <- .amatrix_optional_backend_probe_policy(name, spec)
       parts[name] <- if (isTRUE(policy$allowed) && isTRUE(spec$auto_probe)) {
         sprintf("%s ready (activates on first use)", name)

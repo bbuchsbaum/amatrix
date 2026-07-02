@@ -2,8 +2,11 @@
 % Please edit documentation in R/methods-coercion.R
 \name{as.matrix,adgeMatrix-method}
 \alias{as.matrix,adgeMatrix-method}
+\alias{as.matrix.adgeMatrix}
 \alias{as.matrix,adgCMatrix-method}
+\alias{as.matrix.adgCMatrix}
 \alias{as.matrix,aTransposeView-method}
+\alias{as.matrix.aTransposeView}
 \alias{as.matrix,amChol-method}
 \alias{as.matrix,KronMatrix-method}
 \alias{as.numeric,adgeMatrix-method}
@@ -14,9 +17,15 @@
 \usage{
 \S4method{as.matrix}{adgeMatrix}(x, ...)
 
+\method{as.matrix}{adgeMatrix}(x, ...)
+
 \S4method{as.matrix}{adgCMatrix}(x, ...)
 
+\method{as.matrix}{adgCMatrix}(x, ...)
+
 \S4method{as.matrix}{aTransposeView}(x, ...)
+
+\method{as.matrix}{aTransposeView}(x, ...)
 
 \S4method{as.matrix}{amChol}(x, ...)
 

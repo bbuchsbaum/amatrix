@@ -2,6 +2,8 @@
 % Please edit documentation in R/method-aliases.R
 \name{amatrix-methods-internal}
 \alias{amatrix-methods-internal}
+\alias{!,adlgCMatrix-method}
+\alias{!,adlgeMatrix-method}
 \alias{\%*\%,dgCMatrix,adgeMatrix-method}
 \alias{\%*\%,dgeMatrix,adgeMatrix-method}
 \alias{[,adgCMatrix,ANY,ANY,ANY-method}
@@ -18,6 +20,13 @@
 \alias{[,adgeMatrix,index,missing,missing-method}
 \alias{[,adgeMatrix,missing,index,logical-method}
 \alias{[,adgeMatrix,missing,index,missing-method}
+\alias{[,aTransposeView,ANY,ANY,ANY-method}
+\alias{[,aTransposeView,index,index,logical-method}
+\alias{[,aTransposeView,index,index,missing-method}
+\alias{[,aTransposeView,index,missing,logical-method}
+\alias{[,aTransposeView,index,missing,missing-method}
+\alias{[,aTransposeView,missing,index,logical-method}
+\alias{[,aTransposeView,missing,index,missing-method}
 \alias{[<-,adgCMatrix,ANY,ANY,ANY-method}
 \alias{[<-,adgCMatrix,index,index,Matrix-method}
 \alias{[<-,adgCMatrix,index,index,integer-method}
@@ -43,7 +52,11 @@
 \alias{[<-,adgeMatrix,index,index,matrix-method}
 \alias{[<-,adgeMatrix,index,index,numeric-method}
 \alias{[<-,adgeMatrix,index,missing,ANY-method}
+\alias{[<-,adgeMatrix,matrix,missing,ANY-method}
+\alias{[<-,adgeMatrix,Matrix,missing,ANY-method}
 \alias{[<-,adgeMatrix,missing,index,ANY-method}
+\alias{[<-,adgeMatrix,ndenseMatrix,missing,numeric-method}
+\alias{[<-,adgeMatrix,ngeMatrix,missing,numeric-method}
 \alias{crossprod,KronMatrix,matrix-method}
 \alias{crossprod,KronMatrix,missing-method}
 \alias{crossprod,KronMatrix,numeric-method}

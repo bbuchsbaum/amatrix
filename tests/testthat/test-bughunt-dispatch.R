@@ -57,6 +57,11 @@ test_that("amatrix-or5: backend with empty precision_modes is never dispatched",
 test_that("amatrix-y85: opencl backend can be used as default policy", {
   opencl_be <- .make_minimal_backend()
   amatrix_register_backend("opencl", opencl_be, overwrite = TRUE)
+  # Restore the session default policy on every path: the expect_no_error()
+  # branch below mutates it via amatrix_set_default_policy(fb) and, without
+  # this, would leak "opencl" into every downstream test in the session.
+  old_policy <- amatrix_default_policy()
+  on.exit(amatrix_set_default_policy(old_policy), add = TRUE)
   on.exit(
     if (exists("opencl", envir = .amatrix_state$backends, inherits = FALSE))
       rm("opencl", envir = .amatrix_state$backends),

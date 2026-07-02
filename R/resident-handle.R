@@ -405,6 +405,7 @@ rh_colSums <- function(h) {
 # ── Materialization ──────────────────────────────────────────────────────────
 
 #' @rdname amatrix-s3-methods
+#' @usage \method{as.matrix}{resident_handle}(x, ...)
 #' @export
 as.matrix.resident_handle <- function(x, ...) {
   .rh_check(x)
@@ -421,10 +422,12 @@ as.matrix.resident_handle <- function(x, ...) {
 dim.resident_handle <- function(x) x$dim
 
 #' @rdname amatrix-s3-methods
+#' @usage \method{nrow}{resident_handle}(x)
 #' @export
 nrow.resident_handle <- function(x) x$dim[1L]
 
 #' @rdname amatrix-s3-methods
+#' @usage \method{ncol}{resident_handle}(x)
 #' @export
 ncol.resident_handle <- function(x) x$dim[2L]
 

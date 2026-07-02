@@ -212,20 +212,21 @@ amatrix_calibration_info <- function() {
 
 #' Report amatrix benchmark status across ops and backends
 #'
-#' Reads the machine-local baseline in \code{tools/baseline.csv} (if
-#' present) and the cached calibration in the user cache directory,
-#' and returns a structured data.frame surfacing per-op cold vs warm
-#' timings and the currently-calibrated dispatch thresholds.
+#' Reads a machine-local benchmark baseline CSV (a table of recorded
+#' per-op cold and warm timings), if one is present, together with the
+#' cached calibration in the user cache directory, and returns a
+#' structured data.frame surfacing per-op cold vs warm timings and the
+#' currently-calibrated dispatch thresholds.
 #'
 #' This is the user-facing honesty surface for Track 4's speed contract:
 #' users can see (a) which backends are calibrated on their machine,
 #' (b) cold-start vs warm-run ratios per op, and (c) where the
 #' dispatcher will currently route.
 #'
-#' @param baseline_path Path to the baseline CSV. Defaults to
-#'   \code{file.path(getwd(), "tools", "baseline.csv")} so it works when
-#'   called from the package source tree. Pass \code{NULL} to skip
-#'   baseline reading entirely and return only calibration data.
+#' @param baseline_path Path to a benchmark baseline CSV of recorded
+#'   per-op timings. Defaults to a \code{baseline.csv} looked up relative
+#'   to the current working directory. Pass \code{NULL} to skip baseline
+#'   reading entirely and return only calibration data.
 #'
 #' @return A list with two elements:
 #'   \describe{

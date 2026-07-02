@@ -60,6 +60,23 @@
     return(NULL)
   }
 
+  # ArrayFire's OpenCL backend aborts inside clGetDeviceIDs (SIGABRT) on Apple
+  # Silicon. Never select it here even when explicitly requested; fall back to
+  # the CPU backend and say so, so a misconfigured env var/option cannot crash
+  # a worker process.
+  if (identical(backend, "opencl") &&
+      .amatrix_arrayfire_running_on_apple_silicon()) {
+    warning(
+      "Refusing ArrayFire's OpenCL backend on Apple Silicon: it aborts inside ",
+      "clGetDeviceIDs on this platform. Falling back to ArrayFire's CPU ",
+      "backend. Set AMATRIX_ARRAYFIRE_BACKEND / amatrix.arrayfire.backend to ",
+      "'cpu', 'cuda', or 'oneapi' to silence this warning.",
+      call. = FALSE,
+      immediate. = TRUE
+    )
+    return("cpu")
+  }
+
   backend
 }
 
@@ -155,6 +172,21 @@ amatrix_arrayfire_active_backend <- function() {
 
 amatrix_arrayfire_set_backend <- function(backend = c("cpu", "opencl", "cuda", "oneapi")) {
   backend <- match.arg(backend)
+
+  # Hard chokepoint: refuse ArrayFire's OpenCL backend on Apple Silicon, where
+  # activating it aborts inside clGetDeviceIDs (SIGABRT). The C++ firewall would
+  # catch the abort as an R error, but never attempting it is safer and gives a
+  # clearer message. CPU/CUDA/oneAPI remain allowed.
+  if (identical(backend, "opencl") &&
+      .amatrix_arrayfire_running_on_apple_silicon()) {
+    stop(
+      "ArrayFire's OpenCL backend is refused on Apple Silicon: activating it ",
+      "aborts inside clGetDeviceIDs (SIGABRT) on this platform. Use 'cpu' ",
+      "(the default here), or run on a CUDA/oneAPI host for GPU ArrayFire.",
+      call. = FALSE
+    )
+  }
+
   backend_id <- switch(
     backend,
     cpu = 1L,

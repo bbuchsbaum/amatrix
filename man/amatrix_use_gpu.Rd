@@ -31,6 +31,13 @@ backend, or to get an explicit confirmation line.
 GPU backends compute in float32 (\code{"fast"} precision, conformance
 tolerance ~1e-4); \code{"strict"} float64 work always stays on the
 CPU reference backend regardless of this setting.
+
+Side effect: on success this sets the session default precision to
+\code{"fast"} (and, when \code{backend} is given explicitly, the
+session default policy to that backend) so subsequent matrices route
+to the GPU without per-object arguments. Undo with
+\code{amatrix_set_default_precision("strict")} /
+\code{amatrix_set_default_policy("auto")}.
 }
 \examples{
 status <- amatrix_gpu_status()

@@ -161,7 +161,7 @@
       sprintf("no usable GPU device (isolated %s probe)", name)
     } else {
       sprintf(
-        "GPU probe crashed in isolated child process (exit status %s); %s disabled this session — set %s=1 to force an in-process probe",
+        "GPU probe crashed in isolated child process (exit status %s); %s disabled this session \u2014 set %s=1 to force an in-process probe",
         status, name, probe_env
       )
     }
@@ -743,9 +743,9 @@ amatrix_backend_health_probe <- function(name, tol = NULL) {
 #'
 #' The fallback log records every runtime fall-through from a preferred
 #' backend to the CPU reference path. A non-empty log after a clean
-#' conformance run is a stop-ship condition (planning_docs/quality-tracking.md
-#' §7 rule 7): it means a backend claimed support for an op it cannot
-#' actually execute.
+#' conformance run is a stop-ship condition: it means a backend claimed
+#' support for an op it cannot actually execute, so the result silently
+#' came from a different backend than the one that was requested.
 #'
 #' @return A data.frame with columns \code{timestamp}, \code{op},
 #'   \code{from_backend}, \code{to_backend}, \code{reason}. Zero rows

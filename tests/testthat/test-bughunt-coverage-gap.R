@@ -162,6 +162,7 @@ test_that("colsums returns column sums matching base R [amatrix-doj]", {
 })
 
 test_that("irlba_native returns nv singular values [amatrix-doj]", {
+  skip_if_not_installed("irlba")
   set.seed(42)
   m <- matrix(rnorm(50), 10, 5)
   result <- irlba_native(m, nv = 3L)

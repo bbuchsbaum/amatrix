@@ -133,6 +133,19 @@ chol_factor <- function(X) {
     .amatrix_abort_bad_arg("X must be an adgeMatrix (symmetric positive definite)")
   }
 
+  # Reject NA/NaN inputs before dispatch. LAPACK dpotrf is platform-fragile
+  # on non-finite input: some builds (e.g. Linux reference LAPACK) return
+  # info == 0 with a silent NaN factor instead of failing, while others
+  # (e.g. macOS Accelerate) error. anyNA() is cheap and is TRUE for both NA
+  # and NaN but FALSE for +/-Inf, so genuine Inf factorizations still flow
+  # through and return a non-finite factor as before. Skip the check for
+  # deferred objects, whose @x is a placeholder until first host access.
+  if (!isTRUE(X@finalizer_env$host_deferred) && anyNA(X@x)) {
+    .amatrix_abort_bad_arg(
+      "X contains NA/NaN values; chol_factor() requires a finite symmetric positive-definite matrix"
+    )
+  }
+
   cache_key <- paste0("chol:", X@object_id)
   cached <- .amatrix_cache_get(cache_key)
   if (!is.null(cached)) {

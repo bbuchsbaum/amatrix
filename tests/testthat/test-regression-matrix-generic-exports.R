@@ -5,19 +5,12 @@
 # R version / platform: captured by child sessionInfo() on failure
 # Issue: amatrix-1ha
 
+# Must resolve to a genuine source checkout (DESCRIPTION + R/*.R + src/) so the
+# callr subprocess load_all() has something to build; returns NULL in an
+# installed-package context so the skip_if() guard below fires. Shared
+# implementation lives in helper-repo-source-tree.R.
 .matrix_generic_repo_dir <- function() {
-  candidates <- unique(c(
-    tryCatch(getNamespaceInfo(asNamespace("amatrix"), "path"), error = function(e) NULL),
-    getwd(),
-    file.path(getwd(), ".."),
-    file.path(getwd(), "..", "..")
-  ))
-  candidates <- Filter(Negate(is.null), candidates)
-  matches <- candidates[file.exists(file.path(candidates, "DESCRIPTION"))]
-  if (length(matches) == 0L) {
-    return(NULL)
-  }
-  normalizePath(matches[[1L]], winslash = "/", mustWork = TRUE)
+  .amatrix_source_tree_dir()
 }
 
 test_that("Matrix-style generics work after plain amatrix attach without Matrix attached [amatrix-1ha]", {

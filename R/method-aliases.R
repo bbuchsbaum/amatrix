@@ -6,6 +6,8 @@
 #' page exists only to satisfy R CMD check.
 #'
 #' @aliases
+#'   !,adlgCMatrix-method
+#'   !,adlgeMatrix-method
 #'   %*%,dgCMatrix,adgeMatrix-method
 #'   %*%,dgeMatrix,adgeMatrix-method
 #'   [,adgCMatrix,ANY,ANY,ANY-method
@@ -22,6 +24,13 @@
 #'   [,adgeMatrix,index,missing,missing-method
 #'   [,adgeMatrix,missing,index,logical-method
 #'   [,adgeMatrix,missing,index,missing-method
+#'   [,aTransposeView,ANY,ANY,ANY-method
+#'   [,aTransposeView,index,index,logical-method
+#'   [,aTransposeView,index,index,missing-method
+#'   [,aTransposeView,index,missing,logical-method
+#'   [,aTransposeView,index,missing,missing-method
+#'   [,aTransposeView,missing,index,logical-method
+#'   [,aTransposeView,missing,index,missing-method
 #'   [<-,adgCMatrix,ANY,ANY,ANY-method
 #'   [<-,adgCMatrix,index,index,Matrix-method
 #'   [<-,adgCMatrix,index,index,integer-method
@@ -47,7 +56,11 @@
 #'   [<-,adgeMatrix,index,index,matrix-method
 #'   [<-,adgeMatrix,index,index,numeric-method
 #'   [<-,adgeMatrix,index,missing,ANY-method
+#'   [<-,adgeMatrix,matrix,missing,ANY-method
+#'   [<-,adgeMatrix,Matrix,missing,ANY-method
 #'   [<-,adgeMatrix,missing,index,ANY-method
+#'   [<-,adgeMatrix,ndenseMatrix,missing,numeric-method
+#'   [<-,adgeMatrix,ngeMatrix,missing,numeric-method
 #'   crossprod,KronMatrix,matrix-method
 #'   crossprod,KronMatrix,missing-method
 #'   crossprod,KronMatrix,numeric-method

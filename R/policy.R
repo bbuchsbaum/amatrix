@@ -75,8 +75,7 @@
     "release. It currently behaves identically to mode = \"exact\" ",
     "(CPU-pinned, strict float64); the float64 GPU routing it implied ",
     "was never implemented. Use mode = \"exact\" for strict float64 ",
-    "CPU semantics or mode = \"fast\" for GPU throughput. See ",
-    "planning_docs/quality-tracking.md \u00a78.",
+    "CPU semantics or mode = \"fast\" for GPU throughput.",
     call. = FALSE
   )
 }

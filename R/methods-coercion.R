@@ -24,6 +24,8 @@ setMethod("as.matrix", "adgeMatrix", function(x, ...) {
   host <- amatrix_materialize_host(x)
   base::as.matrix(host, ...)
 })
+#' @rdname coerce-methods
+#' @usage \method{as.matrix}{adgeMatrix}(x, ...)
 #' @export
 as.matrix.adgeMatrix <- function(x, ...) {
   host <- amatrix_materialize_host(x)
@@ -35,6 +37,8 @@ setMethod("as.matrix", "adgCMatrix", function(x, ...) {
   host <- amatrix_materialize_host(x)
   base::as.matrix(host, ...)
 })
+#' @rdname coerce-methods
+#' @usage \method{as.matrix}{adgCMatrix}(x, ...)
 #' @export
 as.matrix.adgCMatrix <- function(x, ...) {
   host <- amatrix_materialize_host(x)
@@ -43,6 +47,8 @@ as.matrix.adgCMatrix <- function(x, ...) {
 #' @rdname coerce-methods
 #' @aliases as.matrix,aTransposeView-method
 setMethod("as.matrix", "aTransposeView",  function(x, ...) t(as.matrix(amatrix_materialize_dense(x@source), ...)))
+#' @rdname coerce-methods
+#' @usage \method{as.matrix}{aTransposeView}(x, ...)
 #' @export
 as.matrix.aTransposeView <- function(x, ...) {
   t(as.matrix(amatrix_materialize_dense(x@source), ...))
