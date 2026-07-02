@@ -113,6 +113,23 @@ jobs:
             exit $status
           }
 
+      - name: MLX file-entry certification (crash-guard regression watch)
+        id: mlx-file-entry
+        # Certifies that Metal init + GPU ops survive direct `Rscript file.R`
+        # launch (the retired NSException guard; see
+        # planning_docs/mlx-spectral-benchmark-instability.md). CERTIFY-SKIPs
+        # cleanly when amatrix.mlx is not installed (hard-deps CI); it is a
+        # real gate on MLX-equipped machines / self-hosted runners.
+        continue-on-error: true
+        shell: bash
+        run: |
+          for i in $(seq 1 5); do
+            Rscript tools/certify-mlx-file-entry.R || {
+              echo "::warning::MLX file-entry certification failed on run $i"
+              exit 1
+            }
+          done
+
       - name: Fallback log + backend status snapshot
         id: fallback-log
         # Non-fatal: the snapshot is for the artifact bundle, not a gate.
@@ -177,6 +194,7 @@ jobs:
             echo "| full devtools::test() | ${{ steps.full-test.outcome }} |"
             echo "| strict coverage       | ${{ steps.strict-coverage.outcome }} |"
             echo "| benchmark regression  | ${{ steps.benchmark-regression.outcome }} |"
+            echo "| mlx file-entry certify | ${{ steps.mlx-file-entry.outcome }} |"
             echo "| fallback log snapshot | ${{ steps.fallback-log.outcome }} |"
             echo ""
             echo "All gates are informational (continue-on-error). The release gate"

@@ -2,6 +2,35 @@
 
 Date: 2026-04-09
 
+## RESOLVED 2026-07-01 (empirically, on current MLX)
+
+The direct `Rscript file.R` NSException crash no longer reproduces on this
+machine with Homebrew mlx 0.31.1 / mlx-c 0.6.0 (originally observed on an
+older MLX; upstream ml-explore/mlx#2691 was closed as not-reproducible, so
+there is no explicit fix commit to cite).
+
+Evidence: 26 consecutive direct `Rscript file.R` runs — each performing
+Metal device init via `amatrix_mlx_native_available_bridge` (the
+historically crashing call) followed by GPU matmul/crossprod/svd loops —
+completed with exit 0 and correct results. The repeatable certification
+harness lives at [tools/certify-mlx-file-entry.R](/Users/bbuchsbaum/code/amatrix/tools/certify-mlx-file-entry.R)
+(20/20 pass on 2026-07-01) and is wired into the nightly stress workflow.
+
+Consequences:
+- The file-entry probe guard (`.amatrix_mlx_direct_file_entry`) and the
+  env-var probe gate are retired; MLX probing is default-on with
+  `AMATRIX_MLX_PROBE_GPU=0` / `options(amatrix.auto_probe = FALSE)` as
+  opt-outs.
+- The first Metal probe of a session runs in a disposable child process
+  (crash containment), so machines where the old crash still exists fall
+  back to CPU with an informative reason instead of aborting the session.
+- The `Rscript -e` benchmark-worker policy below is retained only as
+  historical context for the *multi-step spectral worker* aborts, which
+  were a separate (also unreproduced since) failure shape; the nightly
+  certification run guards against regression.
+
+The remainder of this document is retained as historical context.
+
 ## Summary
 
 MLX spectral benchmarks are not stable under every scripted launch pattern on this
