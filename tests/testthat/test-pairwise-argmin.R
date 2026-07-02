@@ -108,6 +108,21 @@ test_that("precomputed x_norms / c_norms path agrees with reference [amatrix-p24
   )
 })
 
+test_that("dimension guard rejects non-square misuse with instructive message [amatrix-p24]", {
+  # Common footgun: centroids stored k×p (rows are centroids) passed untransposed.
+  set.seed(4)
+  n <- 5L; p <- 3L; k <- 4L
+  X     <- matrix(rnorm(n * p), n, p)
+  cents <- matrix(rnorm(k * p), k, p)   # k×p; nrow(cents)=4 != ncol(X)=3
+
+  expect_error(
+    pairwise_sqdist_argmin(X, cents),          # forgot t(cents)
+    regexp = "centroids in COLUMNS.*t\\(centroids\\)"
+  )
+  # Transposed (correct) shape must NOT error.
+  expect_no_error(pairwise_sqdist_argmin(X, t(cents)))
+})
+
 test_that("mlx backend nearest-centroid matches CPU reference [amatrix-p24]", {
   skip_if_not_installed("amatrix.mlx")
   skip_if_not(

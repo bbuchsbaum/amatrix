@@ -2394,13 +2394,23 @@ addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
 #' GPU path avoids host round-trips by chaining resident operations.
 #'
 #' @param X       n×p \code{adgeMatrix} or plain matrix (query points).
-#' @param Ct      p×K numeric matrix (centroids, transposed — columns are centroids).
+#' @param Ct      p×K numeric matrix holding the centroids \strong{transposed}:
+#'   \code{nrow(Ct)} is the feature dimension \eqn{p} and each \emph{column} is a
+#'   centroid. Pass \code{t(centroids)} when your centroids are stored k×p with
+#'   one centroid per row. A dimension mismatch (\code{ncol(X) != nrow(Ct)})
+#'   errors, but a square \code{k == p} matrix passed untransposed cannot be
+#'   detected and will silently assign to the wrong (column) centroids.
 #' @param x_norms Optional n-vector of precomputed \eqn{\|x_i\|^2}. Computed if \code{NULL}.
 #' @param c_norms Optional K-vector of precomputed \eqn{\|c_k\|^2}. Computed if \code{NULL}.
 #' @return Integer vector of length n, 1-indexed nearest centroid per row.
 #' @export
 pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
   Ct_mat  <- as.matrix(Ct);  storage.mode(Ct_mat) <- "double"
+  if (ncol(X) != nrow(Ct_mat))
+    stop(sprintf(
+      paste0("ncol(X) (%d) must equal nrow(Ct) (%d): Ct must be p x K with ",
+             "centroids in COLUMNS (did you forget t(centroids)?)"),
+      ncol(X), nrow(Ct_mat)), call. = FALSE)
   if (is.null(x_norms)) {
     X_mat   <- if (inherits(X, "adgeMatrix")) as.matrix(amatrix_materialize_host(X))
                else as.matrix(X)
