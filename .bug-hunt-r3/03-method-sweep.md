@@ -1,7 +1,7 @@
 # Round 3 Bug Hunt — Method Sweep Report
 
-**Generated:** 2026-04-14 08:25:41
-**Total failures recorded:** 28
+**Generated:** 2026-04-21 07:36:55
+**Total failures recorded:** 26
 
 ## Methods Tested
 
@@ -15,7 +15,7 @@ Arith (+,-,*,/) mat×mat and mat×scalar; Compare (==,!=,<,>) vs scalar; Math gr
 
 ## Failures by Symptom
 
-### CLASS_DEMOTION (28)
+### CLASS_DEMOTION (24)
 
 | Method | Expected | Actual | Note |
 |--------|----------|--------|------|
@@ -25,13 +25,11 @@ Arith (+,-,*,/) mat×mat and mat×scalar; Compare (==,!=,<,>) vs scalar; Math gr
 | `Compare_>[dense/cpu]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
 | `Compare_<=[dense/cpu]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
 | `Compare_>=[dense/cpu]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `[submat_nodrop][dense/cpu]` | `adgeMatrix` | `dgeMatrix` | [i,j] without drop=FALSE falls through to dgeMatrix |
 | `kronecker[dense/cpu]` | `adgeMatrix` | `dgeMatrix` | confirmed amatrix-jnd: kronecker returns dgeMatrix not adgeMatrix |
 | `Compare_==[sparse/cpu]` | `aMatrix-derived` | `lgCMatrix` |  |
 | `Compare_!=[sparse/cpu]` | `aMatrix-derived` | `lgeMatrix` |  |
 | `Compare_<[sparse/cpu]` | `aMatrix-derived` | `lgeMatrix` |  |
 | `Compare_>[sparse/cpu]` | `aMatrix-derived` | `lgCMatrix` |  |
-| `[submat_nodrop][sparse/cpu]` | `adgCMatrix` | `dgCMatrix` | [i,j] without drop=FALSE falls through to dgCMatrix |
 | `kronecker[sparse/cpu]` | `aMatrix-derived` | `dgCMatrix` | confirmed amatrix-jnd: kronecker returns dgCMatrix not adgCMatrix |
 | `Compare_==[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
 | `Compare_!=[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
@@ -39,14 +37,19 @@ Arith (+,-,*,/) mat×mat and mat×scalar; Compare (==,!=,<,>) vs scalar; Math gr
 | `Compare_>[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
 | `Compare_<=[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
 | `Compare_>=[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `[submat_nodrop][dense/mlx]` | `adgeMatrix` | `dgeMatrix` | [i,j] without drop=FALSE falls through to dgeMatrix |
 | `kronecker[dense/mlx]` | `adgeMatrix` | `dgeMatrix` | confirmed amatrix-jnd: kronecker returns dgeMatrix not adgeMatrix |
 | `Compare_==[sparse/mlx]` | `aMatrix-derived` | `lgCMatrix` |  |
 | `Compare_!=[sparse/mlx]` | `aMatrix-derived` | `lgeMatrix` |  |
 | `Compare_<[sparse/mlx]` | `aMatrix-derived` | `lgeMatrix` |  |
 | `Compare_>[sparse/mlx]` | `aMatrix-derived` | `lgCMatrix` |  |
-| `[submat_nodrop][sparse/mlx]` | `adgCMatrix` | `dgCMatrix` | [i,j] without drop=FALSE falls through to dgCMatrix |
 | `kronecker[sparse/mlx]` | `aMatrix-derived` | `dgCMatrix` | confirmed amatrix-jnd: kronecker returns dgCMatrix not adgCMatrix |
+
+### ERROR (2)
+
+| Method | Expected | Actual | Note |
+|--------|----------|--------|------|
+| `det[dense/cpu]` | `no error` | `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"` |  |
+| `det[dense/mlx]` | `no error` | `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"` |  |
 
 ---
 
@@ -61,7 +64,7 @@ Confirmed 4 failure(s) that match round-2 issue patterns.
 
 ---
 
-## NEW Bugs (Not in Round-2 Issue List) — 24 found
+## NEW Bugs (Not in Round-2 Issue List) — 22 found
 
 - **NEW** `Compare_==[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `Compare_!=[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
@@ -69,24 +72,22 @@ Confirmed 4 failure(s) that match round-2 issue patterns.
 - **NEW** `Compare_>[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `Compare_<=[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `Compare_>=[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `[submat_nodrop][dense/cpu]` → CLASS_DEMOTION (expected `adgeMatrix`, got `dgeMatrix`) — [i,j] without drop=FALSE falls through to dgeMatrix
+- **NEW** `det[dense/cpu]` → ERROR (expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`)
 - **NEW** `Compare_==[sparse/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgCMatrix`)
 - **NEW** `Compare_!=[sparse/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`)
 - **NEW** `Compare_<[sparse/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`)
 - **NEW** `Compare_>[sparse/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgCMatrix`)
-- **NEW** `[submat_nodrop][sparse/cpu]` → CLASS_DEMOTION (expected `adgCMatrix`, got `dgCMatrix`) — [i,j] without drop=FALSE falls through to dgCMatrix
 - **NEW** `Compare_==[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `Compare_!=[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `Compare_<[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `Compare_>[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `Compare_<=[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `Compare_>=[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `[submat_nodrop][dense/mlx]` → CLASS_DEMOTION (expected `adgeMatrix`, got `dgeMatrix`) — [i,j] without drop=FALSE falls through to dgeMatrix
+- **NEW** `det[dense/mlx]` → ERROR (expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`)
 - **NEW** `Compare_==[sparse/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgCMatrix`)
 - **NEW** `Compare_!=[sparse/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`)
 - **NEW** `Compare_<[sparse/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`)
 - **NEW** `Compare_>[sparse/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgCMatrix`)
-- **NEW** `[submat_nodrop][sparse/mlx]` → CLASS_DEMOTION (expected `adgCMatrix`, got `dgCMatrix`) — [i,j] without drop=FALSE falls through to dgCMatrix
 
 ---
 

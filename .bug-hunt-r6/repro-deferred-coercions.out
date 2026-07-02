@@ -1,0 +1,50 @@
+During startup - Warning messages:
+1: Setting LC_CTYPE failed, using "C" 
+2: Setting LC_COLLATE failed, using "C" 
+3: Setting LC_TIME failed, using "C" 
+4: Setting LC_MESSAGES failed, using "C" 
+5: Setting LC_MONETARY failed, using "C" 
+
+== as.matrix ==
+     [,1] [,2] [,3]
+[1,]  NaN  NaN  NaN
+[2,]  NaN  NaN  NaN
+class: matrix,array
+anyNaN: TRUE
+
+== as.array ==
+     [,1] [,2] [,3]
+[1,]  NaN  NaN  NaN
+[2,]  NaN  NaN  NaN
+class: matrix,array
+anyNaN: TRUE
+
+== as.numeric ==
+ERROR: error in evaluating the argument 'x' in selecting a method for function 'as.matrix': deferred adgeMatrix lost its GPU resident data
+
+== as.vector ==
+ERROR: error in evaluating the argument 'x' in selecting a method for function 'as.matrix': deferred adgeMatrix lost its GPU resident data
+
+== sessionInfo ==
+R version 4.5.1 (2025-06-13)
+Platform: aarch64-apple-darwin20
+Running under: macOS Sonoma 14.3
+
+Matrix products: default
+BLAS:   /Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/lib/libRblas.0.dylib 
+LAPACK: /Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
+
+locale:
+[1] C
+
+time zone: America/Toronto
+tzcode source: internal
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] amatrix_0.1.0
+
+loaded via a namespace (and not attached):
+[1] compiler_4.5.1 Matrix_1.7-3   grid_4.5.1     lattice_0.22-7
