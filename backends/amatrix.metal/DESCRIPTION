@@ -17,6 +17,8 @@ Imports:
     Matrix
 Suggests:
     testthat (>= 3.0.0)
-SystemRequirements: Apple Metal and Foundation frameworks (optional; macOS only)
+OS_type: unix
+SystemRequirements: Apple Metal and Foundation frameworks (macOS only); Xcode
+    Command Line Tools
 NeedsCompilation: yes
 Config/testthat/edition: 3

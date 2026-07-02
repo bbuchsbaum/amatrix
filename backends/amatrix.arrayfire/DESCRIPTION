@@ -16,6 +16,6 @@ Imports:
     jsonlite
 Suggests:
     testthat (>= 3.0.0)
-SystemRequirements: ArrayFire (>= 3.8, optional; see ARRAYFIRE_PREFIX)
+SystemRequirements: ArrayFire (>= 3.8; optional, see ARRAYFIRE_PREFIX)
 NeedsCompilation: yes
 Config/testthat/edition: 3

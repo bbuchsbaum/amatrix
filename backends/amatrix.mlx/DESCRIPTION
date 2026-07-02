@@ -17,5 +17,9 @@ Imports:
     Matrix
 Suggests:
     testthat (>= 3.0.0)
+OS_type: unix
+SystemRequirements: mlx-c (>= 0.6, via Homebrew or MLX_C_PREFIX); Apple
+    Silicon macOS for GPU acceleration (a mock bridge is built when mlx-c is
+    unavailable)
 NeedsCompilation: yes
 Config/testthat/edition: 3
