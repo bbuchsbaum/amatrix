@@ -16,10 +16,30 @@ elif command -v brew >/dev/null 2>&1; then
 fi
 
 if [ -n "${prefix}" ] && [ -f "${prefix}/include/mlx/c/mlx.h" ] && [ -f "${prefix}/lib/libmlxc.dylib" ]; then
+  # libmlxc links against the MLX C++ core (libmlx). Derive its prefix from
+  # MLX_PREFIX or Homebrew, and only append the extra -L/-rpath when it
+  # resolves so a missing brew doesn't emit a bogus "-L/lib" flag.
+  mlx_core_prefix=""
+  if [ -n "${MLX_PREFIX:-}" ] && [ -d "${MLX_PREFIX}" ]; then
+    mlx_core_prefix="${MLX_PREFIX}"
+  elif command -v brew >/dev/null 2>&1; then
+    maybe_core="$(brew --prefix mlx 2>/dev/null || true)"
+    if [ -n "${maybe_core}" ] && [ -d "${maybe_core}" ]; then
+      mlx_core_prefix="${maybe_core}"
+    fi
+  fi
+
   mlx_prefix_escaped="$(printf '%s' "${prefix}" | sed 's/[\/&]/\\&/g')"
+  mlx_libs="-L${mlx_prefix_escaped}/lib -Wl,-rpath,${mlx_prefix_escaped}/lib"
+  if [ -n "${mlx_core_prefix}" ]; then
+    core_escaped="$(printf '%s' "${mlx_core_prefix}" | sed 's/[\/&]/\\&/g')"
+    mlx_libs="${mlx_libs} -L${core_escaped}/lib -Wl,-rpath,${core_escaped}/lib"
+  fi
+  mlx_libs="${mlx_libs} -lmlxc"
+
   sed \
     -e "s|@MLX_CPPFLAGS@|-DHAVE_MLXC -I${mlx_prefix_escaped}/include|g" \
-    -e "s|@MLX_LIBS@|-L${mlx_prefix_escaped}/lib -Wl,-rpath,${mlx_prefix_escaped}/lib -L$(brew --prefix mlx)/lib -Wl,-rpath,$(brew --prefix mlx)/lib -lmlxc|g" \
+    -e "s|@MLX_LIBS@|${mlx_libs}|g" \
     "${src_dir}/Makevars.in" > "${makevars}"
   echo "configure: using mlx-c from ${prefix}"
 else

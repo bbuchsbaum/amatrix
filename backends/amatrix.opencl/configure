@@ -30,6 +30,27 @@ if command -v pkg-config >/dev/null 2>&1; then
   fi
 fi
 
+# CLBlast fallbacks when pkg-config is absent or ships no clblast.pc:
+#   1. CLBLAST_HOME override   2. Homebrew keg (brew --prefix clblast)
+if [ "${clblast_found}" -eq 0 ]; then
+  clblast_prefix=""
+  if [ -n "${CLBLAST_HOME:-}" ] && [ -d "${CLBLAST_HOME}" ]; then
+    clblast_prefix="${CLBLAST_HOME}"
+  elif command -v brew >/dev/null 2>&1; then
+    maybe_clblast="$(brew --prefix clblast 2>/dev/null || true)"
+    if [ -n "${maybe_clblast}" ] && [ -d "${maybe_clblast}" ]; then
+      clblast_prefix="${maybe_clblast}"
+    fi
+  fi
+
+  if [ -n "${clblast_prefix}" ] && [ -f "${clblast_prefix}/include/clblast.h" ]; then
+    clblast_cppflags="-I${clblast_prefix}/include"
+    clblast_libs="-L${clblast_prefix}/lib -lclblast"
+    clblast_found=1
+    echo "configure: found CLBlast at ${clblast_prefix}"
+  fi
+fi
+
 if [ "${opencl_found}" -eq 0 ] && [ "$(uname -s)" = "Darwin" ]; then
   sdk_path="$(xcrun --show-sdk-path 2>/dev/null || true)"
   framework_dir=""
