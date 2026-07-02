@@ -11,7 +11,11 @@
 ^README\.md$
 ^examples$
 ^paprs$
+^papers$
+^paper$
 ^\.claude$
+^\.agents$
+^\.codex$
 ^doc$
 ^Meta$
 ^_pkgdown\.yml$
@@ -25,5 +29,10 @@
 ^\.nightly-artifacts$
 ^amatrix-manual\.tex$
 ^\.\.Rcheck$
+^\.DS_Store$
+^\.Rhistory$
+^\.RData$
+^\.Rproj\.user$
+^\.Ruserdata$
 ^cran-comments\.md$
 ^\.github$

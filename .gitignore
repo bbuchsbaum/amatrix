@@ -6,10 +6,26 @@
 .omc/
 **/.omc/
 
+# Local agent/editor guidance and settings
+AGENTS.md
+CLAUDE.md
+.claude/
+.agents/
+.codex/
+
+# Local paper/reference material
+paprs/
+papers/
+paper/
+
 # Machine-local benchmark baseline (regenerate with: Rscript tools/benchmark-regression.R --update)
 tools/baseline.csv
 
 # Compiled build artifacts
+*.o
+*.so
+*.dylib
+*.dll
 src/*.o
 src/*.so
 backends/*/src/*.o
@@ -23,6 +39,11 @@ backends/*/src/Makevars
 
 # Local editor/tool backups
 .albersdown.bak/
+.DS_Store
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
 vendor/
 /tmp/
 repro-*.sessionInfo.txt
@@ -31,4 +52,5 @@ amatrix_*.tar.gz
 tools/benchmark-results/
 amatrix.models_*.tar.gz
 *.Rcheck/
+Rplots.pdf
 /docs/
