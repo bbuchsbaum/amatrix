@@ -126,3 +126,27 @@ test_that("adgeMatrix [[ no longer errors as unsubsettable", {
   A <- adgeMatrix(matrix(1:4 * 1.0, 2, 2))
   expect_error(A[[1]], NA)
 })
+
+# ---------------------------------------------------------------------------
+# amatrix-vbh: amatrix_release_resident()
+# ---------------------------------------------------------------------------
+
+test_that("amatrix_release_resident is exported", {
+  expect_true("amatrix_release_resident" %in% getNamespaceExports("amatrix"))
+})
+
+test_that("amatrix_release_resident is a safe no-op on a CPU-only object", {
+  A <- adgeMatrix(matrix(1:6 * 1.0, 2, 3))
+
+  released <- withVisible(amatrix_release_resident(A))
+  expect_false(released$visible)     # returns invisibly
+  expect_false(released$value)       # nothing resident to release on CPU
+
+  # the object is unchanged and still usable
+  expect_equal(as.matrix(A), matrix(1:6 * 1.0, 2, 3))
+})
+
+test_that("amatrix_release_resident ignores non-amatrix input", {
+  expect_error(amatrix_release_resident(matrix(1:4, 2)), NA)
+  expect_false(amatrix_release_resident(matrix(1:4, 2)))
+})
