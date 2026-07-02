@@ -134,12 +134,20 @@
     probe_env, spec$package, bridge, spec$package
   )
   rscript <- file.path(R.home("bin"), "Rscript")
+  # Set R_LIBS in the parent rather than via system2(env = ...): on Windows,
+  # system2 pastes env strings into the command line as literal arguments
+  # (there is no shell to interpret VAR=value prefixes), so the child would
+  # receive "R_LIBS=..." as its script filename and fail to launch.
+  old_rlibs <- Sys.getenv("R_LIBS", unset = NA)
+  Sys.setenv(R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep))
+  on.exit({
+    if (is.na(old_rlibs)) Sys.unsetenv("R_LIBS") else Sys.setenv(R_LIBS = old_rlibs)
+  }, add = TRUE)
   out <- tryCatch(
     suppressWarnings(system2(
       rscript,
       c("--no-save", "--no-restore", "-e", shQuote(expr)),
-      stdout = TRUE, stderr = TRUE, timeout = 60,
-      env = paste0("R_LIBS=", paste(.libPaths(), collapse = .Platform$path.sep))
+      stdout = TRUE, stderr = TRUE, timeout = 60
     )),
     error = function(e) structure(character(), status = -1L)
   )
