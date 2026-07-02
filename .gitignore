@@ -19,3 +19,9 @@ backends/*/src/*.so
 
 # Local editor/tool backups
 .albersdown.bak/
+vendor/
+/tmp/
+repro-*.sessionInfo.txt
+sessionInfo-probe*.txt
+amatrix_*.tar.gz
+tools/benchmark-results/

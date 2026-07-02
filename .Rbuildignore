@@ -6,7 +6,7 @@
 ^\.beads$
 ^CLAUDE\.md$
 ^AGENTS\.md$
-^tools/baseline\.csv$
+^tools$
 ^baseline\.csv$
 ^README\.md$
 ^examples$
@@ -17,11 +17,11 @@
 ^_pkgdown\.yml$
 ^pkgdown$
 ^planning_docs$
-^tools/benchmark-results$
-^\.bug-hunt-r2$
-^\.bug-hunt-r3$
-^\.bug-hunt-r4$
+^\.bug-hunt-r[0-9]+$
 ^tests/testthat/\.bug-hunt-r3$
+^tmp$
+^repro-.*\.sessionInfo\.txt$
+^sessionInfo-probe2\.txt$
 ^\.nightly-artifacts$
 ^amatrix-manual\.tex$
 ^\.\.Rcheck$
