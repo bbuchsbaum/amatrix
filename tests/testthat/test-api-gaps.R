@@ -105,3 +105,24 @@ test_that("KronMatrix subsetting no longer errors as unsubsettable", {
   K <- kron_matrix(matrix(1:4 * 1.0, 2, 2), diag(2))
   expect_error(K[1, 1], NA)
 })
+
+# ---------------------------------------------------------------------------
+# amatrix-sxs: adgeMatrix `[[`
+# ---------------------------------------------------------------------------
+
+test_that("adgeMatrix [[ extracts scalars like a base matrix", {
+  M <- matrix(1:6 * 1.0, 2, 3)
+  A <- adgeMatrix(M)
+
+  # single-index linear (column-major) form
+  expect_equal(A[[1]], M[[1]])
+  expect_equal(A[[4]], M[[4]])
+  # two-index [i, j] form
+  expect_equal(A[[2, 3]], M[[2, 3]])
+  expect_equal(A[[1, 2]], M[[1, 2]])
+})
+
+test_that("adgeMatrix [[ no longer errors as unsubsettable", {
+  A <- adgeMatrix(matrix(1:4 * 1.0, 2, 2))
+  expect_error(A[[1]], NA)
+})

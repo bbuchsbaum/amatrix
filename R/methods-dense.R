@@ -451,6 +451,38 @@ setMethod("[", signature(x = "adgeMatrix", i = "index", j = "missing", drop = "m
   am_subset(x, i, j, ..., drop = TRUE)
 })
 
+#' Scalar extraction from an adgeMatrix
+#'
+#' \code{[[} extracts a single element of an \code{\linkS4class{adgeMatrix}},
+#' matching base matrix semantics: \code{A[[i]]} selects the \code{i}-th element
+#' in column-major order, and \code{A[[i, j]]} selects the element in row
+#' \code{i}, column \code{j}. Without this method \code{A[[1]]} fails with
+#' \dQuote{this S4 class is not subsettable} (as it does for a bare
+#' \code{dgeMatrix}).
+#'
+#' The host copy is materialized before extraction (transparently downloading
+#' from the device for GPU-resident objects), so the returned value always
+#' reflects the current contents.
+#'
+#' @param x An \code{\linkS4class{adgeMatrix}}.
+#' @param i,j Element subscripts, following base matrix \code{[[} semantics.
+#' @param ... Unused.
+#'
+#' @return A length-one numeric value.
+#'
+#' @examples
+#' A <- adgeMatrix(matrix(1:6, 2, 3))
+#' A[[1]]
+#' A[[2, 3]]
+#'
+#' @name adgeMatrix-extract2
+#' @aliases [[,adgeMatrix-method
+#' @keywords internal
+setMethod("[[", signature(x = "adgeMatrix"), function(x, i, j, ...) {
+  m <- as.matrix(amatrix_materialize_host(x))
+  if (missing(j)) m[[i, ...]] else m[[i, j, ...]]
+})
+
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", value = "ANY"), function(x, i, j, ..., value) {
   am_subassign(x, i, j, ..., value = value)
 })
