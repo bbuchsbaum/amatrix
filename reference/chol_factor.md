@@ -30,5 +30,5 @@ m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
 A <- adgeMatrix(m)
 fac <- chol_factor(A)
 fac
-#> amChol [4x4 | strict | source: 20260702021951.575716-3e038803:am:30]
+#> amChol [4x4 | strict | source: 20260702024001.916111-78762ef:am:30]
 ```
