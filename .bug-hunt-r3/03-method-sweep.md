@@ -1,7 +1,7 @@
 # Round 3 Bug Hunt — Method Sweep Report
 
-**Generated:** 2026-04-21 07:36:55
-**Total failures recorded:** 26
+**Generated:** 2026-07-01 21:33:17
+**Total failures recorded:** 2
 
 ## Methods Tested
 
@@ -15,35 +15,6 @@ Arith (+,-,*,/) mat×mat and mat×scalar; Compare (==,!=,<,>) vs scalar; Math gr
 
 ## Failures by Symptom
 
-### CLASS_DEMOTION (24)
-
-| Method | Expected | Actual | Note |
-|--------|----------|--------|------|
-| `Compare_==[dense/cpu]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_!=[dense/cpu]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_<[dense/cpu]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_>[dense/cpu]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_<=[dense/cpu]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_>=[dense/cpu]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `kronecker[dense/cpu]` | `adgeMatrix` | `dgeMatrix` | confirmed amatrix-jnd: kronecker returns dgeMatrix not adgeMatrix |
-| `Compare_==[sparse/cpu]` | `aMatrix-derived` | `lgCMatrix` |  |
-| `Compare_!=[sparse/cpu]` | `aMatrix-derived` | `lgeMatrix` |  |
-| `Compare_<[sparse/cpu]` | `aMatrix-derived` | `lgeMatrix` |  |
-| `Compare_>[sparse/cpu]` | `aMatrix-derived` | `lgCMatrix` |  |
-| `kronecker[sparse/cpu]` | `aMatrix-derived` | `dgCMatrix` | confirmed amatrix-jnd: kronecker returns dgCMatrix not adgCMatrix |
-| `Compare_==[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_!=[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_<[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_>[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_<=[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `Compare_>=[dense/mlx]` | `aMatrix-derived` | `lgeMatrix` | Compare returns lgeMatrix — aMatrix wrapping lost |
-| `kronecker[dense/mlx]` | `adgeMatrix` | `dgeMatrix` | confirmed amatrix-jnd: kronecker returns dgeMatrix not adgeMatrix |
-| `Compare_==[sparse/mlx]` | `aMatrix-derived` | `lgCMatrix` |  |
-| `Compare_!=[sparse/mlx]` | `aMatrix-derived` | `lgeMatrix` |  |
-| `Compare_<[sparse/mlx]` | `aMatrix-derived` | `lgeMatrix` |  |
-| `Compare_>[sparse/mlx]` | `aMatrix-derived` | `lgCMatrix` |  |
-| `kronecker[sparse/mlx]` | `aMatrix-derived` | `dgCMatrix` | confirmed amatrix-jnd: kronecker returns dgCMatrix not adgCMatrix |
-
 ### ERROR (2)
 
 | Method | Expected | Actual | Note |
@@ -55,39 +26,15 @@ Arith (+,-,*,/) mat×mat and mat×scalar; Compare (==,!=,<,>) vs scalar; Math gr
 
 ## Confirmed Bugs (Round-2 Issues Executed)
 
-Confirmed 4 failure(s) that match round-2 issue patterns.
+Confirmed 0 failure(s) that match round-2 issue patterns.
 
-- **CONFIRMED** `kronecker[dense/cpu]` → CLASS_DEMOTION (expected `adgeMatrix`, got `dgeMatrix`) — confirmed amatrix-jnd: kronecker returns dgeMatrix not adgeMatrix
-- **CONFIRMED** `kronecker[sparse/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `dgCMatrix`) — confirmed amatrix-jnd: kronecker returns dgCMatrix not adgCMatrix
-- **CONFIRMED** `kronecker[dense/mlx]` → CLASS_DEMOTION (expected `adgeMatrix`, got `dgeMatrix`) — confirmed amatrix-jnd: kronecker returns dgeMatrix not adgeMatrix
-- **CONFIRMED** `kronecker[sparse/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `dgCMatrix`) — confirmed amatrix-jnd: kronecker returns dgCMatrix not adgCMatrix
 
 ---
 
-## NEW Bugs (Not in Round-2 Issue List) — 22 found
+## NEW Bugs (Not in Round-2 Issue List) — 2 found
 
-- **NEW** `Compare_==[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_!=[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_<[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_>[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_<=[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_>=[dense/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `det[dense/cpu]` → ERROR (expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`)
-- **NEW** `Compare_==[sparse/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgCMatrix`)
-- **NEW** `Compare_!=[sparse/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`)
-- **NEW** `Compare_<[sparse/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`)
-- **NEW** `Compare_>[sparse/cpu]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgCMatrix`)
-- **NEW** `Compare_==[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_!=[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_<[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_>[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_<=[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
-- **NEW** `Compare_>=[dense/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`) — Compare returns lgeMatrix — aMatrix wrapping lost
 - **NEW** `det[dense/mlx]` → ERROR (expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`)
-- **NEW** `Compare_==[sparse/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgCMatrix`)
-- **NEW** `Compare_!=[sparse/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`)
-- **NEW** `Compare_<[sparse/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgeMatrix`)
-- **NEW** `Compare_>[sparse/mlx]` → CLASS_DEMOTION (expected `aMatrix-derived`, got `lgCMatrix`)
 
 ---
 
@@ -104,9 +51,8 @@ The following round-2 hypotheses were WRONG — these methods work correctly:
 
 ## Top 3 Failures by Impact
 
-1. **`Compare_==[dense/cpu]`** — CLASS_DEMOTION: expected `aMatrix-derived`, got `lgeMatrix`. Compare returns lgeMatrix — aMatrix wrapping lost
-2. **`Compare_!=[dense/cpu]`** — CLASS_DEMOTION: expected `aMatrix-derived`, got `lgeMatrix`. Compare returns lgeMatrix — aMatrix wrapping lost
-3. **`Compare_<[dense/cpu]`** — CLASS_DEMOTION: expected `aMatrix-derived`, got `lgeMatrix`. Compare returns lgeMatrix — aMatrix wrapping lost
+1. **`det[dense/cpu]`** — ERROR: expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`
+2. **`det[dense/mlx]`** — ERROR: expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`
 
 ---
 
