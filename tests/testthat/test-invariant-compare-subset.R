@@ -1,14 +1,17 @@
 # Invariant checks for compare and subset semantics.
 #
 # Focus:
-# - comparisons stay logical and numerically match host references
+# - comparisons stay logical, match host references, and preserve the
+#   amatrix logical wrapper classes (adlgeMatrix/adlgCMatrix) with their
+#   backend metadata — the amatrix-47w contract (compare must NOT demote
+#   to plain lgeMatrix/lgCMatrix, which loses residency)
 # - subset extraction matches host semantics for drop=TRUE/FALSE
 # - matrix-like subset results preserve amatrix metadata when still matrix-like
 
 suppressPackageStartupMessages(library(Matrix))
 suppressPackageStartupMessages(library(amatrix))
 
-test_that("compare invariants match host semantics and stay non-amatrix", {
+test_that("compare invariants match host semantics and keep amatrix logical classes", {
   dense <- .invariant_dense_fixture(backend = "cpu", policy = "opencl", precision = "strict")
   sparse <- .invariant_sparse_fixture(backend = "cpu", policy = "opencl", precision = "strict")
   ops <- c("==", "!=", "<", ">", "<=", ">=")
@@ -26,8 +29,10 @@ test_that("compare invariants match host semantics and stay non-amatrix", {
       result <- do.call(op, list(case$lhs, case$rhs))
       reference <- do.call(op, list(amatrix_materialize_host(case$lhs), case$rhs))
 
-      expect_false(inherits(result, "aMatrix"), info = info)
-      expect_true(is.matrix(result) || inherits(result, "Matrix"), info = info)
+      expect_true(inherits(result, "aMatrix"), info = info)
+      expect_true(inherits(result, "adlgeMatrix") || inherits(result, "adlgCMatrix"),
+                  info = info)
+      expect_identical(result@preferred_backend, case$lhs@preferred_backend, info = info)
       expect_identical(as.matrix(result), as.matrix(reference), info = info)
     }
   }

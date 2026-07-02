@@ -43,6 +43,13 @@
 #' tolerance ~1e-4); \code{"strict"} float64 work always stays on the
 #' CPU reference backend regardless of this setting.
 #'
+#' Side effect: on success this sets the session default precision to
+#' \code{"fast"} (and, when \code{backend} is given explicitly, the
+#' session default policy to that backend) so subsequent matrices route
+#' to the GPU without per-object arguments. Undo with
+#' \code{amatrix_set_default_precision("strict")} /
+#' \code{amatrix_set_default_policy("auto")}.
+#'
 #' @param backend Optional backend name (\code{"mlx"}, \code{"metal"},
 #'   \code{"arrayfire"}, \code{"opencl"}). Default \code{NULL} tries
 #'   the automatic preference order and adopts the first healthy one.
@@ -181,6 +188,13 @@ amatrix_gpu_status <- function() {
         "not yet registered (activates on first use)"
       } else {
         "opt-in backend; enable with amatrix_use_gpu()"
+      }
+    }
+    if (is.na(reason) && registered && !identical(health$status, "healthy")) {
+      reason <- if (available) {
+        "registered; health canary not yet run (runs on first dispatch or amatrix_use_gpu())"
+      } else {
+        "registered but device unavailable; see amatrix_backend_status()"
       }
     }
     if (!installed) {

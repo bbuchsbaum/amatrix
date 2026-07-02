@@ -25,6 +25,19 @@ test_that("amatrix_use_gpu validates the backend argument", {
 })
 
 test_that("amatrix_use_gpu is quiet when asked and returns name or FALSE", {
+  # amatrix_use_gpu mutates session state by design (default precision,
+  # probe env vars); snapshot and restore so later test files keep the
+  # strict-CPU defaults they assume.
+  old_precision <- amatrix_default_precision()
+  old_policy <- amatrix_default_policy()
+  old_env <- Sys.getenv("AMATRIX_MLX_PROBE_GPU", unset = NA)
+  on.exit({
+    amatrix_set_default_precision(old_precision)
+    amatrix_set_default_policy(old_policy)
+    if (is.na(old_env)) Sys.unsetenv("AMATRIX_MLX_PROBE_GPU")
+    else Sys.setenv(AMATRIX_MLX_PROBE_GPU = old_env)
+  }, add = TRUE)
+
   expect_silent(res <- amatrix_use_gpu(quiet = TRUE))
   expect_true(identical(res, FALSE) || (is.character(res) && nzchar(res)))
   if (is.character(res)) {
