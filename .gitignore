@@ -31,3 +31,4 @@ amatrix_*.tar.gz
 tools/benchmark-results/
 amatrix.models_*.tar.gz
 *.Rcheck/
+/docs/
