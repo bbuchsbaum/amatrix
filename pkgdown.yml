@@ -1,0 +1,11 @@
+pandoc: 3.8.3
+pkgdown: 2.2.0
+pkgdown_sha: ~
+articles:
+  amatrix: amatrix.html
+  gpu: gpu.html
+  performance: performance.html
+last_built: 2026-07-02T01:13Z
+urls:
+  reference: https://bbuchsbaum.github.io/amatrix/reference
+  article: https://bbuchsbaum.github.io/amatrix/articles
