@@ -9,7 +9,7 @@ amatrix_default_policy()
 \value{
 Character string, one of \code{"auto"}, \code{"cpu"},
   \code{"mlx"}, \code{"metal"}, \code{"arrayfire"}, or
-  \code{"torch"}.
+  \code{"opencl"}.
 }
 \description{
 Returns the dispatch policy used when an \code{aMatrix} object does

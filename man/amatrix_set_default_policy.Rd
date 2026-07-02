@@ -9,7 +9,7 @@ amatrix_set_default_policy(policy)
 \arguments{
 \item{policy}{Character string. Must be one of \code{"auto"},
 \code{"cpu"}, \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
-or \code{"torch"}.}
+or \code{"opencl"}.}
 }
 \value{
 Invisibly, \code{policy}.

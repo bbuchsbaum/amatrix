@@ -35,7 +35,8 @@ An \code{adgeMatrix} with \code{finalizer_env$host_deferred}
 Creates an \code{adgeMatrix} whose host \code{@x} slot holds a
 \code{NaN} sentinel vector. The true data lives only on the device
 until the first host access, which triggers a transparent download.
-
+}
+\details{
 Deferred objects are intentionally not process-serializable: after a
 serialization boundary such as \code{saveRDS()}/\code{readRDS()} or
 \code{serialize()}/\code{unserialize()}, the device resident key is no

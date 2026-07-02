@@ -28,14 +28,13 @@ as_adgeMatrix(
 \item{precision}{Single string; \code{"strict"} or \code{"fast"}.}
 }
 \value{
-An \code{adgeMatrix}. When \code{x} is a
-  \code{resident_handle} the host copy is deferred.
+An \code{adgeMatrix}.
 }
 \description{
 Converts a matrix-like object or a \code{resident_handle} to an
 \code{adgeMatrix}. When \code{x} is a \code{resident_handle},
 ownership of the GPU-resident buffer is transferred to the new
-\code{adgeMatrix} with no host-side copy.
+\code{adgeMatrix}.
 }
 \examples{
 m <- matrix(1:6, nrow = 2)

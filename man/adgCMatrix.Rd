@@ -30,7 +30,7 @@ backend.}
 
 \item{policy}{Single string; one of \code{"auto"}, \code{"cpu"},
 \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
-\code{"torch"}.}
+\code{"opencl"}.}
 
 \item{precision}{Single string; \code{"strict"} or \code{"fast"}.}
 }

@@ -8,6 +8,15 @@
 \description{
 Package-level roxygen directives for namespace generation.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://bbuchsbaum.github.io/amatrix/}
+  \item \url{https://github.com/bbuchsbaum/amatrix}
+  \item Report bugs at \url{https://github.com/bbuchsbaum/amatrix/issues}
+}
+
+}
 \author{
 \strong{Maintainer}: Brad Buchsbaum \email{brad.buchsbaum@gmail.com}
 

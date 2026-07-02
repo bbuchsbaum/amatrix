@@ -33,7 +33,7 @@ backend, e.g. \code{"cpu"}, \code{"mlx"}, or \code{"metal"}.}
 
 \item{policy}{Single string; one of \code{"auto"}, \code{"cpu"},
 \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
-\code{"torch"}.}
+\code{"opencl"}.}
 
 \item{precision}{Single string; \code{"strict"} for full
 double-precision accuracy or \code{"fast"} to allow reduced

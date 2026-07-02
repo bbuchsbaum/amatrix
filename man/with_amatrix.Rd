@@ -9,7 +9,7 @@ with_amatrix(policy = NULL, precision = NULL, code)
 \arguments{
 \item{policy}{Optional temporary policy. Must be one of
 \code{"auto"}, \code{"cpu"}, \code{"mlx"}, \code{"metal"},
-\code{"arrayfire"}, or \code{"torch"}.}
+or \code{"arrayfire"}.}
 
 \item{precision}{Optional temporary precision. Must be either
 \code{"strict"} or \code{"fast"}.}

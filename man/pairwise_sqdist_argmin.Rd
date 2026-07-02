@@ -9,7 +9,12 @@ pairwise_sqdist_argmin(X, Ct, x_norms = NULL, c_norms = NULL)
 \arguments{
 \item{X}{n×p \code{adgeMatrix} or plain matrix (query points).}
 
-\item{Ct}{p×K numeric matrix (centroids, transposed — columns are centroids).}
+\item{Ct}{p×K numeric matrix holding the centroids \strong{transposed}:
+\code{nrow(Ct)} is the feature dimension \eqn{p} and each \emph{column} is a
+centroid. Pass \code{t(centroids)} when your centroids are stored k×p with
+one centroid per row. A dimension mismatch (\code{ncol(X) != nrow(Ct)})
+errors, but a square \code{k == p} matrix passed untransposed cannot be
+detected and will silently assign to the wrong (column) centroids.}
 
 \item{x_norms}{Optional n-vector of precomputed \eqn{\|x_i\|^2}. Computed if \code{NULL}.}
 
