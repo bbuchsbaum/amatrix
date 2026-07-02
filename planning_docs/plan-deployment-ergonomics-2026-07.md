@@ -14,7 +14,7 @@ amatrix's goal is GPU access in R with as little fuss as possible — "it just w
 
 **Success criterion:** new user on Apple Silicon: `install.packages(c("amatrix","amatrix.mlx"), repos=c("https://bbuchsbaum.r-universe.dev", ...))` → `library(amatrix)` → GPU active with zero env vars and a visible one-line confirmation; on any other machine: correct, silent CPU with a one-call answer to "why am I not on GPU?"
 
-Track all work as `amatrix-*` motes (no TodoWrite). Use the repo-local `.mote/` store as the active tracker. Copy this plan to `docs/plans/` (or `.planning/`) in the repo as step 0.0. Skip known-stuck historical items amatrix-8w6 / amatrix-pms.
+Track all work in the repo-local `.mote/` store (no TodoWrite). Migrated historical issues may have `amatrix-*` ids, while native `mote new` issues may have `bd-*` ids; both are mote issues and must be handled with `mote` commands. Copy this plan to `docs/plans/` (or `.planning/`) in the repo as step 0.0. Skip known-stuck historical items amatrix-8w6 / amatrix-pms.
 
 ---
 

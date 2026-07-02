@@ -56,6 +56,9 @@
   ns <- asNamespace(pkgname)
   registerS3method("as.matrix", "KronMatrix", get("as.matrix.KronMatrix", envir = ns), envir = ns)
   registerS3method("as.matrix", "resident_handle", get("as.matrix.resident_handle", envir = ns), envir = ns)
+  registerS3method("determinant", "adgeMatrix",
+    get("determinant.adgeMatrix", envir = ns),
+    envir = asNamespace("base"))
   .amatrix_cache_init()
   .amatrix_register_cpu_backend_on_load()
 }

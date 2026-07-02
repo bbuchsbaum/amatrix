@@ -555,6 +555,39 @@ setMethod("solve", signature(a = "adgeMatrix", b = "missing"), function(a, b, ..
 #' @aliases solve,adgeMatrix,ANY-method
 setMethod("solve", signature(a = "adgeMatrix", b = "ANY"), function(a, b, ...) am_solve(a, b = b, ...))
 
+#' Determinant for adgeMatrix
+#'
+#' Computes the determinant of an \code{adgeMatrix} with base matrix semantics.
+#' The method materializes the current host value before delegating to
+#' \code{\link[base]{determinant}} so \code{base::det()} works even when
+#' Matrix is not attached on the search path.
+#'
+#' @param x An \code{adgeMatrix}.
+#' @param logarithm Logical; if \code{TRUE}, return the logarithm of the
+#'   modulus.
+#' @param ... Further arguments passed to \code{\link[base]{determinant}}.
+#'
+#' @return A \code{"det"} object with \code{modulus} and \code{sign}.
+#'
+#' @examples
+#' A <- adgeMatrix(crossprod(matrix(rnorm(9), 3, 3)) + 3 * diag(3))
+#' det(A)
+#'
+#' @keywords internal
+#' @export
+determinant.adgeMatrix <- function(x, logarithm = TRUE, ...) {
+  base::determinant(as.matrix(amatrix_materialize_host(x)),
+    logarithm = logarithm, ...)
+}
+
+#' @noRd
+setMethod("determinant", signature(x = "adgeMatrix", logarithm = "logical"),
+  determinant.adgeMatrix)
+
+#' @noRd
+setMethod("determinant", signature(x = "adgeMatrix", logarithm = "missing"),
+  function(x, logarithm, ...) determinant.adgeMatrix(x, logarithm = TRUE, ...))
+
 #' Cholesky factorization for adgeMatrix
 #'
 #' Compute the Cholesky factor of a symmetric positive-definite

@@ -3,7 +3,7 @@
 # Dimensions: 3x3 dense positive-definite-like input
 # Backend / precision / dispatch: cpu, strict, fresh-process attach path
 # R version / platform: captured by child sessionInfo() on failure
-# Issue: amatrix-1ha
+# Issue: amatrix-1ha; bd-01KWHDRQV6BX162NSXQP5DWAAC for base::det()
 
 # Must resolve to a genuine source checkout (DESCRIPTION + R/*.R + src/) so the
 # callr subprocess load_all() has something to build; returns NULL in an
@@ -24,7 +24,8 @@ test_that("Matrix-style generics work after plain amatrix attach without Matrix 
     function(repo_dir) {
       pkgload::load_all(repo_dir, quiet = TRUE)
       set.seed(20260423L)
-      x <- adgeMatrix(matrix(runif(9L) + 1, 3L, 3L) + diag(3L) * 5, backend = "cpu")
+      host <- matrix(runif(9L) + 1, 3L, 3L) + diag(3L) * 5
+      x <- adgeMatrix(host, backend = "cpu")
 
       list(
         matrix_attached = "package:Matrix" %in% search(),
@@ -36,6 +37,8 @@ test_that("Matrix-style generics work after plain amatrix attach without Matrix 
         colSums_value = colSums(x),
         diag_value = diag(x),
         solve_class = class(solve(x)),
+        det_value = det(x),
+        det_expected = det(host),
         session = capture.output(sessionInfo())
       )
     },
@@ -54,4 +57,5 @@ test_that("Matrix-style generics work after plain amatrix attach without Matrix 
   expect_type(result$diag_value, "double")
   expect_length(result$diag_value, 3L)
   expect_identical(result$solve_class[[1L]], "adgeMatrix")
+  expect_equal(result$det_value, result$det_expected, tolerance = 1e-10)
 })

@@ -72,6 +72,8 @@
 #'   crossprod,matrix,adgeMatrix-method
 #'   crossprod,numeric,adgCMatrix-method
 #'   crossprod,numeric,adgeMatrix-method
+#'   determinant,adgeMatrix,logical-method
+#'   determinant,adgeMatrix,missing-method
 #'   diag,adgCMatrix-method
 #'   diag,adgeMatrix-method
 #'   dim,KronMatrix-method

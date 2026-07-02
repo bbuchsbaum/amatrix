@@ -68,6 +68,8 @@
 \alias{crossprod,matrix,adgeMatrix-method}
 \alias{crossprod,numeric,adgCMatrix-method}
 \alias{crossprod,numeric,adgeMatrix-method}
+\alias{determinant,adgeMatrix,logical-method}
+\alias{determinant,adgeMatrix,missing-method}
 \alias{diag,adgCMatrix-method}
 \alias{diag,adgeMatrix-method}
 \alias{dim,KronMatrix-method}
