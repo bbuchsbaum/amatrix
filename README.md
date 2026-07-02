@@ -3,6 +3,7 @@
 <!-- badges: start -->
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![R-CMD-check](https://github.com/bbuchsbaum/amatrix/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/bbuchsbaum/amatrix/actions/workflows/R-CMD-check.yaml)
+[![amatrix status badge](https://bbuchsbaum.r-universe.dev/badges/amatrix)](https://bbuchsbaum.r-universe.dev/amatrix)
 <!-- badges: end -->
 
 `amatrix` keeps matrix-heavy R code in the `Matrix` idiom while adding backend-aware dispatch and optional accelerator execution. The main target is repeated linear algebra on the same design matrix, especially many-response regression where factorization reuse matters.
@@ -29,10 +30,11 @@ Y <- matrix(rnorm(120 * 8), nrow = 120, ncol = 8)
 
 # Safe default: strict CPU semantics
 X_am <- adgeMatrix(X)
-fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+fit <- many_lm(X_am, Y, method = "qr", cache = TRUE,
+               include_residuals = TRUE)
 
 dim(coef(fit))
-fit$sigma2[1:3]
+fit$sigma2[1:3]  # residual variances (needs include_residuals = TRUE)
 ```
 
 On a machine with an available accelerator backend, the workflow stays the same and only the constructor metadata changes.
@@ -98,7 +100,7 @@ quality gates have actually proven on the current release, not aspiration.
 |------------------|--------------------------------|--------------------------------------------------------------------------------------------------------|
 | **Authoritative**| `cpu`                          | Reference of record for correctness. Always available. CPU failures are stop-ship.                    |
 | **Supported**    | `mlx` (Apple Silicon)          | Default Apple Silicon fast path when installed and healthy. Conformance-green on dense/model workloads. |
-| **Explicit probe** | `arrayfire`, `opencl`, `metal` | Installed and loadable, but enabled only by explicit runtime probes. Supported surface is backend-specific and evidence-backed. |
+| **Explicit probe** | `arrayfire`, `opencl`, `metal` | Installed and loadable, but enabled only on explicit request — one call: `amatrix_use_gpu()`. Supported surface is backend-specific and evidence-backed. |
 | **Experimental** | other registered backends      | Limited or local-only coverage. Health probe may route away silently. Not a general beta fast-path claim. |
 
 The authoritative definitions, supported-op subsets, and gate evidence live in
@@ -143,7 +145,7 @@ install.packages(
 | `amatrix.mlx`       | macOS arm64 (Apple Silicon)  | Homebrew `mlx-c`, or `MLX_C_PREFIX`; builds a mock bridge without it      |
 | `amatrix.metal`     | macOS                        | Xcode Command Line Tools                                                  |
 | `amatrix.arrayfire` | any OS with ArrayFire >= 3.8 | ArrayFire runtime (on arm64 macOS it pins to the CPU runtime by default)  |
-| `amatrix.opencl`    | unix with OpenCL + CLBlast   | OpenCL driver and CLBlast; GPU probe is env-gated                         |
+| `amatrix.opencl`    | unix with OpenCL + CLBlast   | OpenCL driver and CLBlast; enable with `amatrix_use_gpu()`                |
 
 Install only the backends you need; the core package works on pure CPU without
 any of them.
