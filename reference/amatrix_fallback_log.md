@@ -2,9 +2,9 @@
 
 The fallback log records every runtime fall-through from a preferred
 backend to the CPU reference path. A non-empty log after a clean
-conformance run is a stop-ship condition
-(planning_docs/quality-tracking.md §7 rule 7): it means a backend
-claimed support for an op it cannot actually execute.
+conformance run is a stop-ship condition: it means a backend claimed
+support for an op it cannot actually execute, so the result silently
+came from a different backend than the one that was requested.
 
 ## Usage
 

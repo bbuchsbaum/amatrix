@@ -92,10 +92,10 @@ Install core <code>amatrix</code> on its own for pure-CPU work, and add
 exactly one accelerator package for your platform.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Core package (CPU-only, no accelerator dependencies)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"amatrix"</span>, repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://bbuchsbaum.r-universe.dev"</span>, <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"repos"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"amatrix"</span>, repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://bbuchsbaum.r-universe.dev"</span>, <span class="st">"https://cloud.r-project.org"</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Apple Silicon GPU via MLX</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"amatrix.mlx"</span>, repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://bbuchsbaum.r-universe.dev"</span>, <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"repos"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"amatrix.mlx"</span>, repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://bbuchsbaum.r-universe.dev"</span>, <span class="st">"https://cloud.r-project.org"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p>Pick the backend package that matches your machine:</p>
 <table class="table">
 <colgroup>
@@ -154,7 +154,14 @@ what is available:</p>
 <code>suppressPackageStartupMessages(library(amatrix))</code>, and the
 automatic probe can be turned off with
 <code>options(amatrix.auto_probe = FALSE)</code> or the environment
-variable <code>AMATRIX_MLX_PROBE_GPU=0</code>.</p>
+variable <code>AMATRIX_MLX_PROBE_GPU=0</code>. For a permanently quiet
+attach, set <code>options(amatrix.quiet_startup = TRUE)</code> in your
+<code>.Rprofile</code> (or export <code>AMATRIX_QUIET=1</code>);
+<code>options(amatrix.optional_backends = FALSE)</code> goes further and
+turns the optional GPU backends off entirely, and per-backend
+<code>options(amatrix.disable_mlx = TRUE)</code> drops just one. None of
+this affects correctness — the note is purely informational and
+attaching the package does no GPU probing.</p>
 <p>Everywhere else – OpenCL, ArrayFire, Metal – the backends are opt-in,
 so you turn them on with one call. <code><a href="../reference/amatrix_use_gpu.html">amatrix_use_gpu()</a></code> walks
 the preferred order, enables and health-probes the first installed

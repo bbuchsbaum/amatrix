@@ -45,6 +45,22 @@
 
 
     <div class="section level2">
+    <h2 id="startup-message">Startup message<a class="anchor" aria-label="anchor" href="#startup-message"></a></h2>
+
+
+<p>On attach, amatrix prints a one-line note listing any installed GPU
+backend packages (see <code><a href="amatrix_use_gpu.html">amatrix_use_gpu</a></code>). Pure-CPU sessions
+with no backend packages installed are silent. To suppress the note
+explicitly, set <code>options(amatrix.quiet_startup = TRUE)</code> or the
+environment variable <code>AMATRIX_QUIET=1</code> (either <code>"1"</code> or
+<code>"true"</code>) before loading the package. The note is also skipped
+when <code>options(amatrix.optional_backends = FALSE)</code> disables all
+optional backends, and any backend disabled via
+<code>options(amatrix.disable_mlx = TRUE)</code> (or the analogous
+<code>amatrix.disable_metal</code>, <code>amatrix.disable_opencl</code>,
+<code>amatrix.disable_arrayfire</code>) is omitted from it.</p>
+    </div>
+    <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p>Useful links:</p><ul><li><p><a href="https://bbuchsbaum.github.io/amatrix/">https://bbuchsbaum.github.io/amatrix/</a></p></li>
 <li><p><a href="https://github.com/bbuchsbaum/amatrix" class="external-link">https://github.com/bbuchsbaum/amatrix</a></p></li>

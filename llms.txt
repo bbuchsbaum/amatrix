@@ -133,11 +133,12 @@ aspiration.
 | **Explicit probe** | `arrayfire`, `opencl`, `metal` | Installed and loadable, but enabled only on explicit request — one call: [`amatrix_use_gpu()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_use_gpu.md). Supported surface is backend-specific and evidence-backed. |
 | **Experimental** | other registered backends | Limited or local-only coverage. Health probe may route away silently. Not a general beta fast-path claim. |
 
-The authoritative definitions, supported-op subsets, and gate evidence
-live in `planning_docs/quality-tracking.md §8` and
-`planning_docs/backend-certification.md`. At runtime, the same
-information (plus current health state from the first-use canary probe)
-is available via:
+Each tier is backed by the cross-backend conformance suite
+(`devtools::test()`) and the benchmark regression gate: a backend earns
+“Supported” only once it is conformance-green on the dense and model
+workloads and holds the speed contract against the CPU baseline. At
+runtime, the tier claim plus the current health state from the first-use
+canary probe is available via:
 
 ``` r
 
@@ -158,7 +159,7 @@ it from the `bbuchsbaum` R-universe:
 
 install.packages(
   "amatrix",
-  repos = c("https://bbuchsbaum.r-universe.dev", getOption("repos"))
+  repos = c("https://bbuchsbaum.r-universe.dev", "https://cloud.r-project.org")
 )
 ```
 
@@ -170,7 +171,7 @@ matches your platform from the same repository:
 # Apple Silicon GPU via MLX
 install.packages(
   "amatrix.mlx",
-  repos = c("https://bbuchsbaum.r-universe.dev", getOption("repos"))
+  repos = c("https://bbuchsbaum.r-universe.dev", "https://cloud.r-project.org")
 )
 ```
 
@@ -214,18 +215,54 @@ amatrix_use_gpu()
 To see why you are (or are not) on the GPU, call
 [`amatrix_gpu_status()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_gpu_status.md).
 GPU work runs in float32 (`mode = "fast"`, conformance tolerance
-~`1e-4`); strict float64 always stays on the CPU. See
-[`vignette("gpu")`](https://bbuchsbaum.github.io/amatrix/articles/gpu.md)
-for the full story.
+~`1e-4`); strict float64 always stays on the CPU. See the [GPU
+article](https://bbuchsbaum.github.io/amatrix/articles/gpu.html) for the
+full story.
+
+## CPU-only / quiet startup
+
+The default policy is already CPU-first, and attaching the package does
+no GPU probing — the one-line note is purely informational, printed only
+when an optional backend package is installed. If you want it quiet (for
+example on a shared CPU-only machine, or in scripts and reports), pick
+the level that suits you:
+
+- **Suppress the note for one call:**
+  `suppressPackageStartupMessages(library(amatrix))` — always works, no
+  config.
+- **Suppress the note session-wide:** set
+  `options(amatrix.quiet_startup = TRUE)` in your `.Rprofile`, or export
+  the environment variable `AMATRIX_QUIET=1`.
+- **Turn off optional GPU backends entirely** (and silence the note as a
+  side effect): `options(amatrix.optional_backends = FALSE)`. The
+  package then behaves as pure-CPU, ignoring any installed accelerator
+  packages.
+- **Drop a single backend:** `options(amatrix.disable_mlx = TRUE)` (and
+  likewise `amatrix.disable_opencl`, `amatrix.disable_arrayfire`,
+  `amatrix.disable_metal`) removes just that backend from consideration
+  and from the note.
+
+None of these change correctness — the CPU reference path is always
+available.
 
 ## Start here
 
-- [`vignette("amatrix")`](https://bbuchsbaum.github.io/amatrix/articles/amatrix.md)
-  for the getting-started workflow
-- [`vignette("gpu")`](https://bbuchsbaum.github.io/amatrix/articles/gpu.md)
-  for going from install to a matmul on the GPU
-- [`vignette("performance")`](https://bbuchsbaum.github.io/amatrix/articles/performance.md)
-  for when amatrix is fast (and when it isn’t)
+The full articles live on the [pkgdown
+site](https://bbuchsbaum.github.io/amatrix/articles/): [Getting
+started](https://bbuchsbaum.github.io/amatrix/articles/amatrix.html) for
+the core workflow, [GPU
+acceleration](https://bbuchsbaum.github.io/amatrix/articles/gpu.html)
+for going from install to a matmul on the GPU, and [When is amatrix
+fast?](https://bbuchsbaum.github.io/amatrix/articles/performance.html)
+for where amatrix wins (and where it doesn’t). The same articles ship as
+vignettes when you install from R-universe (binary) or build them
+locally with `devtools::install(build_vignettes = TRUE)`; then
+`browseVignettes("amatrix")` lists them offline. (Plain
+`devtools::install()` / `install_github()` / `R CMD INSTALL` skip
+vignette builds, so use the links above until you have them installed.)
+
+Key help pages:
+
 - [`?adgeMatrix`](https://bbuchsbaum.github.io/amatrix/reference/adgeMatrix.md)
   for matrix constructors
 - [`?many_lm`](https://bbuchsbaum.github.io/amatrix/reference/many_lm.md)

@@ -28,10 +28,10 @@ package for your platform.
 ``` r
 
 # Core package (CPU-only, no accelerator dependencies)
-install.packages("amatrix", repos = c("https://bbuchsbaum.r-universe.dev", getOption("repos")))
+install.packages("amatrix", repos = c("https://bbuchsbaum.r-universe.dev", "https://cloud.r-project.org"))
 
 # Apple Silicon GPU via MLX
-install.packages("amatrix.mlx", repos = c("https://bbuchsbaum.r-universe.dev", getOption("repos")))
+install.packages("amatrix.mlx", repos = c("https://bbuchsbaum.r-universe.dev", "https://cloud.r-project.org"))
 ```
 
 Pick the backend package that matches your machine:
@@ -64,7 +64,14 @@ library(amatrix)
 That line is suppressible the usual way with
 `suppressPackageStartupMessages(library(amatrix))`, and the automatic
 probe can be turned off with `options(amatrix.auto_probe = FALSE)` or
-the environment variable `AMATRIX_MLX_PROBE_GPU=0`.
+the environment variable `AMATRIX_MLX_PROBE_GPU=0`. For a permanently
+quiet attach, set `options(amatrix.quiet_startup = TRUE)` in your
+`.Rprofile` (or export `AMATRIX_QUIET=1`);
+`options(amatrix.optional_backends = FALSE)` goes further and turns the
+optional GPU backends off entirely, and per-backend
+`options(amatrix.disable_mlx = TRUE)` drops just one. None of this
+affects correctness — the note is purely informational and attaching the
+package does no GPU probing.
 
 Everywhere else – OpenCL, ArrayFire, Metal – the backends are opt-in, so
 you turn them on with one call.

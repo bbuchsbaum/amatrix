@@ -26,9 +26,9 @@ amatrix makes two promises about performance:
     need to guess — you can check.
 
 2.  **Regressions are stop-ship.** The nightly benchmark gate fails when
-    any op slows down by more than 20% against the baseline on the
-    reference machine. See
-    `planning_docs/quality-tracking.md §7 rule 3`.
+    any op slows down by more than 20% against the recorded baseline on
+    the reference machine, so a performance regression blocks a release
+    the same way a correctness failure does.
 
 Neither promise is magic — both require a baseline and a calibration on
 your hardware. Running them is a one-time step per machine.
@@ -130,8 +130,9 @@ op on an `adgeMatrix`:
 
 ## When the CPU wins (and you should let it)
 
-- **1×1, 1×n, n×1 matrices.** Always CPU. The adversarial input tests in
-  `tests/testthat/test-track3-failure-modes.R` pin this.
+- **1×1, 1×n, n×1 matrices.** Always CPU. Degenerate shapes never route
+  to a GPU backend; the package’s adversarial-input test suite pins this
+  behavior.
 - **Element-wise ops on tiny matrices.** The dispatch overhead exceeds
   the compute cost.
 - **Ops that allocate more than they compute.** If the GPU spends more
@@ -186,15 +187,20 @@ amatrix_fallback_log()
 
 ## Regenerating the baseline
 
-The machine-local baseline lives at `tools/baseline.csv`. To measure a
-fresh one:
+The baseline you compare against is machine-local. For day-to-day
+inspection you rarely touch the raw data —
+[`amatrix_benchmark_report()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_benchmark_report.md)
+reads and summarizes it for you. To *measure* a fresh baseline (a first
+run, or after a hardware change), use the benchmark harness that ships
+in the package repository,
+[`tools/benchmark-regression.R`](https://github.com/bbuchsbaum/amatrix/blob/main/tools/benchmark-regression.R):
 
 ``` r
 
-# First run or after a hardware change:
+# First run or after a hardware change (writes a new baseline):
 # Rscript tools/benchmark-regression.R --update
 
-# Subsequent runs — compare to saved baseline:
+# Subsequent runs — compare to the saved baseline:
 # Rscript tools/benchmark-regression.R
 ```
 

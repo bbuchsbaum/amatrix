@@ -182,7 +182,7 @@
 </tr>
 </tbody>
 </table>
-<p>The authoritative definitions, supported-op subsets, and gate evidence live in <code>planning_docs/quality-tracking.md §8</code> and <code>planning_docs/backend-certification.md</code>. At runtime, the same information (plus current health state from the first-use canary probe) is available via:</p>
+<p>Each tier is backed by the cross-backend conformance suite (<code>devtools::test()</code>) and the benchmark regression gate: a backend earns “Supported” only once it is conformance-green on the dense and model workloads and holds the speed contract against the CPU baseline. At runtime, the tier claim plus the current health state from the first-use canary probe is available via:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/amatrix_backend_status.html">amatrix_backend_status</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 <p>Optional backends ship as separate packages: <code>amatrix.mlx</code>, <code>amatrix.arrayfire</code>, <code>amatrix.opencl</code>, <code>amatrix.metal</code>. Install only the ones you need — the core package works on pure CPU with no accelerator dependencies.</p>
@@ -194,14 +194,14 @@
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span></span>
 <span>  <span class="st">"amatrix"</span>,</span>
-<span>  repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://bbuchsbaum.r-universe.dev"</span>, <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"repos"</span><span class="op">)</span><span class="op">)</span></span>
+<span>  repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://bbuchsbaum.r-universe.dev"</span>, <span class="st">"https://cloud.r-project.org"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>GPU execution comes from optional sister packages — install the one that matches your platform from the same repository:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Apple Silicon GPU via MLX</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span></span>
 <span>  <span class="st">"amatrix.mlx"</span>,</span>
-<span>  repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://bbuchsbaum.r-universe.dev"</span>, <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"repos"</span><span class="op">)</span><span class="op">)</span></span>
+<span>  repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"https://bbuchsbaum.r-universe.dev"</span>, <span class="st">"https://cloud.r-project.org"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <table class="table">
 <colgroup>
@@ -255,18 +255,30 @@
 <code class="sourceCode R"><span><span class="fu"><a href="reference/amatrix_use_gpu.html">amatrix_use_gpu</a></span><span class="op">(</span><span class="op">)</span></span>
 <span><span class="co">#&gt; amatrix: GPU enabled - opencl backend (float32 'fast' precision, ~1e-4 vs</span></span>
 <span><span class="co">#&gt; float64; 'strict' float64 stays on CPU). amatrix_gpu_status() for details.</span></span></code></pre></div>
-<p>To see why you are (or are not) on the GPU, call <code><a href="reference/amatrix_gpu_status.html">amatrix_gpu_status()</a></code>. GPU work runs in float32 (<code>mode = "fast"</code>, conformance tolerance ~<code>1e-4</code>); strict float64 always stays on the CPU. See <code><a href="articles/gpu.html">vignette("gpu")</a></code> for the full story.</p>
+<p>To see why you are (or are not) on the GPU, call <code><a href="reference/amatrix_gpu_status.html">amatrix_gpu_status()</a></code>. GPU work runs in float32 (<code>mode = "fast"</code>, conformance tolerance ~<code>1e-4</code>); strict float64 always stays on the CPU. See the <a href="https://bbuchsbaum.github.io/amatrix/articles/gpu.html">GPU article</a> for the full story.</p>
+</div>
+<div class="section level2">
+<h2 id="cpu-only--quiet-startup">CPU-only / quiet startup<a class="anchor" aria-label="anchor" href="#cpu-only--quiet-startup"></a>
+</h2>
+<p>The default policy is already CPU-first, and attaching the package does no GPU probing — the one-line note is purely informational, printed only when an optional backend package is installed. If you want it quiet (for example on a shared CPU-only machine, or in scripts and reports), pick the level that suits you:</p>
+<ul>
+<li>
+<strong>Suppress the note for one call:</strong> <code>suppressPackageStartupMessages(library(amatrix))</code> — always works, no config.</li>
+<li>
+<strong>Suppress the note session-wide:</strong> set <code>options(amatrix.quiet_startup = TRUE)</code> in your <code>.Rprofile</code>, or export the environment variable <code>AMATRIX_QUIET=1</code>.</li>
+<li>
+<strong>Turn off optional GPU backends entirely</strong> (and silence the note as a side effect): <code>options(amatrix.optional_backends = FALSE)</code>. The package then behaves as pure-CPU, ignoring any installed accelerator packages.</li>
+<li>
+<strong>Drop a single backend:</strong> <code>options(amatrix.disable_mlx = TRUE)</code> (and likewise <code>amatrix.disable_opencl</code>, <code>amatrix.disable_arrayfire</code>, <code>amatrix.disable_metal</code>) removes just that backend from consideration and from the note.</li>
+</ul>
+<p>None of these change correctness — the CPU reference path is always available.</p>
 </div>
 <div class="section level2">
 <h2 id="start-here">Start here<a class="anchor" aria-label="anchor" href="#start-here"></a>
 </h2>
+<p>The full articles live on the <a href="https://bbuchsbaum.github.io/amatrix/articles/">pkgdown site</a>: <a href="https://bbuchsbaum.github.io/amatrix/articles/amatrix.html">Getting started</a> for the core workflow, <a href="https://bbuchsbaum.github.io/amatrix/articles/gpu.html">GPU acceleration</a> for going from install to a matmul on the GPU, and <a href="https://bbuchsbaum.github.io/amatrix/articles/performance.html">When is amatrix fast?</a> for where amatrix wins (and where it doesn’t). The same articles ship as vignettes when you install from R-universe (binary) or build them locally with <code>devtools::install(build_vignettes = TRUE)</code>; then <code>browseVignettes("amatrix")</code> lists them offline. (Plain <code>devtools::install()</code> / <code>install_github()</code> / <code>R CMD INSTALL</code> skip vignette builds, so use the links above until you have them installed.)</p>
+<p>Key help pages:</p>
 <ul>
-<li>
-<code><a href="articles/amatrix.html">vignette("amatrix")</a></code> for the getting-started workflow</li>
-<li>
-<code><a href="articles/gpu.html">vignette("gpu")</a></code> for going from install to a matmul on the GPU</li>
-<li>
-<code><a href="articles/performance.html">vignette("performance")</a></code> for when amatrix is fast (and when it isn’t)</li>
 <li>
 <code><a href="reference/adgeMatrix.html">?adgeMatrix</a></code> for matrix constructors</li>
 <li>

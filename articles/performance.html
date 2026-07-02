@@ -91,9 +91,9 @@ op.</strong> When calibration data says a backend is slower than the CPU
 for a given (op, size) cell, the dispatcher routes to the CPU instead.
 You don’t need to guess — you can check.</p></li>
 <li><p><strong>Regressions are stop-ship.</strong> The nightly benchmark
-gate fails when any op slows down by more than 20% against the baseline
-on the reference machine. See
-<code>planning_docs/quality-tracking.md §7 rule 3</code>.</p></li>
+gate fails when any op slows down by more than 20% against the recorded
+baseline on the reference machine, so a performance regression blocks a
+release the same way a correctness failure does.</p></li>
 </ol>
 <p>Neither promise is magic — both require a baseline and a calibration
 on your hardware. Running them is a one-time step per machine.</p>
@@ -196,9 +196,9 @@ paying for upload over and over.</p></li>
 </h2>
 <ul>
 <li>
-<strong>1×1, 1×n, n×1 matrices.</strong> Always CPU. The adversarial
-input tests in <code>tests/testthat/test-track3-failure-modes.R</code>
-pin this.</li>
+<strong>1×1, 1×n, n×1 matrices.</strong> Always CPU. Degenerate
+shapes never route to a GPU backend; the package’s adversarial-input
+test suite pins this behavior.</li>
 <li>
 <strong>Element-wise ops on tiny matrices.</strong> The dispatch
 overhead exceeds the compute cost.</li>
@@ -250,13 +250,17 @@ support for an op it couldn’t actually execute.</p></li>
 <div class="section level2">
 <h2 id="regenerating-the-baseline">Regenerating the baseline<a class="anchor" aria-label="anchor" href="#regenerating-the-baseline"></a>
 </h2>
-<p>The machine-local baseline lives at <code>tools/baseline.csv</code>.
-To measure a fresh one:</p>
+<p>The baseline you compare against is machine-local. For day-to-day
+inspection you rarely touch the raw data —
+<code><a href="../reference/amatrix_benchmark_report.html">amatrix_benchmark_report()</a></code> reads and summarizes it for you.
+To <em>measure</em> a fresh baseline (a first run, or after a hardware
+change), use the benchmark harness that ships in the package repository,
+<a href="https://github.com/bbuchsbaum/amatrix/blob/main/tools/benchmark-regression.R" class="external-link"><code>tools/benchmark-regression.R</code></a>:</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># First run or after a hardware change:</span></span>
+<code class="sourceCode R"><span><span class="co"># First run or after a hardware change (writes a new baseline):</span></span>
 <span><span class="co"># Rscript tools/benchmark-regression.R --update</span></span>
 <span></span>
-<span><span class="co"># Subsequent runs — compare to saved baseline:</span></span>
+<span><span class="co"># Subsequent runs — compare to the saved baseline:</span></span>
 <span><span class="co"># Rscript tools/benchmark-regression.R</span></span></code></pre></div>
 <p>Regression against the baseline is informational on your laptop; the
 authoritative gate runs in the nightly workflow on a reference

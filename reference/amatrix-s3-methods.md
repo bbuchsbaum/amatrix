@@ -9,16 +9,20 @@ check.
 ## Usage
 
 ``` r
-as.matrix.KronMatrix(x, ...)
+# S3 method for class 'KronMatrix'
+as.matrix(x, ...)
 
-as.matrix.resident_handle(x, ...)
+# S3 method for class 'resident_handle'
+as.matrix(x, ...)
 
 # S3 method for class 'resident_handle'
 dim(x)
 
-nrow.resident_handle(x)
+# S3 method for class 'resident_handle'
+nrow(x)
 
-ncol.resident_handle(x)
+# S3 method for class 'resident_handle'
+ncol(x)
 ```
 
 ## Arguments

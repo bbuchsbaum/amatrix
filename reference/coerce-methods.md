@@ -9,10 +9,19 @@ R `matrix`, numeric vector, or array by materializing the host copy.
 # S4 method for class 'adgeMatrix'
 as.matrix(x, ...)
 
+# S3 method for class 'adgeMatrix'
+as.matrix(x, ...)
+
 # S4 method for class 'adgCMatrix'
 as.matrix(x, ...)
 
+# S3 method for class 'adgCMatrix'
+as.matrix(x, ...)
+
 # S4 method for class 'aTransposeView'
+as.matrix(x, ...)
+
+# S3 method for class 'aTransposeView'
 as.matrix(x, ...)
 
 # S4 method for class 'amChol'

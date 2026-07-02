@@ -36,6 +36,13 @@ GPU backends compute in float32 (`"fast"` precision, conformance
 tolerance ~1e-4); `"strict"` float64 work always stays on the CPU
 reference backend regardless of this setting.
 
+Side effect: on success this sets the session default precision to
+`"fast"` (and, when `backend` is given explicitly, the session default
+policy to that backend) so subsequent matrices route to the GPU without
+per-object arguments. Undo with
+`amatrix_set_default_precision("strict")` /
+`amatrix_set_default_policy("auto")`.
+
 ## See also
 
 [`amatrix_gpu_status`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_gpu_status.md),

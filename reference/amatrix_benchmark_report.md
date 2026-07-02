@@ -1,8 +1,9 @@
 # Report amatrix benchmark status across ops and backends
 
-Reads the machine-local baseline in `tools/baseline.csv` (if present)
-and the cached calibration in the user cache directory, and returns a
-structured data.frame surfacing per-op cold vs warm timings and the
+Reads a machine-local benchmark baseline CSV (a table of recorded per-op
+cold and warm timings), if one is present, together with the cached
+calibration in the user cache directory, and returns a structured
+data.frame surfacing per-op cold vs warm timings and the
 currently-calibrated dispatch thresholds.
 
 ## Usage
@@ -15,10 +16,10 @@ amatrix_benchmark_report(baseline_path = file.path("tools", "baseline.csv"))
 
 - baseline_path:
 
-  Path to the baseline CSV. Defaults to
-  `file.path(getwd(), "tools", "baseline.csv")` so it works when called
-  from the package source tree. Pass `NULL` to skip baseline reading
-  entirely and return only calibration data.
+  Path to a benchmark baseline CSV of recorded per-op timings. Defaults
+  to a `baseline.csv` looked up relative to the current working
+  directory. Pass `NULL` to skip baseline reading entirely and return
+  only calibration data.
 
 ## Value
 

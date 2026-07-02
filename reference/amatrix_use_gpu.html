@@ -91,6 +91,12 @@ the automatic preference order and adopts the first healthy one.</p></dd>
     <p>GPU backends compute in float32 (<code>"fast"</code> precision, conformance
 tolerance ~1e-4); <code>"strict"</code> float64 work always stays on the
 CPU reference backend regardless of this setting.</p>
+<p>Side effect: on success this sets the session default precision to
+<code>"fast"</code> (and, when <code>backend</code> is given explicitly, the
+session default policy to that backend) so subsequent matrices route
+to the GPU without per-object arguments. Undo with
+<code>amatrix_set_default_precision("strict")</code> /
+<code>amatrix_set_default_policy("auto")</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
