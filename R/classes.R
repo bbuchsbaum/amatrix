@@ -35,10 +35,10 @@
 #'
 #' @slot preferred_backend Single string naming the preferred compute
 #'   backend; one of \code{"cpu"}, \code{"mlx"}, \code{"metal"},
-#'   \code{"arrayfire"}, or \code{"torch"}.
+#'   or \code{"arrayfire"}.
 #' @slot policy Single string controlling dispatch policy; one of
 #'   \code{"auto"}, \code{"cpu"}, \code{"mlx"}, \code{"metal"},
-#'   \code{"arrayfire"}, or \code{"torch"}.
+#'   or \code{"arrayfire"}.
 #' @slot precision Single string; either \code{"strict"} (double
 #'   precision, exact results) or \code{"fast"} (backend may use
 #'   lower precision).

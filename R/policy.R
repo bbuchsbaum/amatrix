@@ -1,4 +1,4 @@
-.amatrix_valid_policies   <- c("auto", "cpu", "mlx", "metal", "arrayfire", "opencl", "torch")
+.amatrix_valid_policies   <- c("auto", "cpu", "mlx", "metal", "arrayfire", "opencl")
 .amatrix_valid_precisions <- c("strict", "fast")
 .amatrix_valid_modes      <- c("exact", "balanced", "fast")
 
@@ -18,7 +18,7 @@
 }
 
 .amatrix_auto_fast_backend_order <- function() {
-  c("mlx", "metal", "arrayfire", "opencl", "torch")
+  c("mlx", "metal", "arrayfire", "opencl")
 }
 
 .amatrix_default_fast_backend <- function() {
@@ -119,7 +119,7 @@
 #'
 #' @return Character string, one of \code{"auto"}, \code{"cpu"},
 #'   \code{"mlx"}, \code{"metal"}, \code{"arrayfire"}, or
-#'   \code{"torch"}.
+#'   \code{"opencl"}.
 #'
 #' @examples
 #' amatrix_default_policy()
@@ -139,7 +139,7 @@ amatrix_default_policy <- function() {
 #'
 #' @param policy Character string. Must be one of \code{"auto"},
 #'   \code{"cpu"}, \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
-#'   or \code{"torch"}.
+#'   or \code{"opencl"}.
 #'
 #' @return Invisibly, \code{policy}.
 #'
@@ -270,7 +270,7 @@ amatrix_set_default_precision <- function(precision) {
 #'
 #' @param policy Optional temporary policy. Must be one of
 #'   \code{"auto"}, \code{"cpu"}, \code{"mlx"}, \code{"metal"},
-#'   \code{"arrayfire"}, or \code{"torch"}.
+#'   or \code{"arrayfire"}.
 #' @param precision Optional temporary precision. Must be either
 #'   \code{"strict"} or \code{"fast"}.
 #' @param code Expression to evaluate under the temporary defaults.

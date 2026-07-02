@@ -65,7 +65,7 @@ test_that("amatrix-y85: opencl backend can be used as default policy", {
 
   fb <- .amatrix_default_fast_backend()
   if (identical(fb, "opencl")) {
-    # This currently throws "policy must be one of: auto, cpu, mlx, metal, arrayfire, torch"
+    # Regression amatrix-y85: opencl must be accepted as a policy value.
     expect_no_error(amatrix_set_default_policy(fb))
   } else {
     skip("opencl was not selected as fastest backend in this session")

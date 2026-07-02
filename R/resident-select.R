@@ -1,8 +1,8 @@
 .amatrix_auto_resident_backend_order <- function(op = NULL, x = NULL) {
   if (inherits(x, "adgCMatrix") && op %in% c("matmul", "crossprod", "tcrossprod")) {
-    c("metal", "arrayfire", "mlx", "opencl", "torch")
+    c("metal", "arrayfire", "mlx", "opencl")
   } else {
-    c("mlx", "metal", "arrayfire", "opencl", "torch")
+    c("mlx", "metal", "arrayfire", "opencl")
   }
 }
 

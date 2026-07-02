@@ -443,7 +443,7 @@ new_adlgCMatrix <- function(
 #'   backend, e.g. \code{"cpu"}, \code{"mlx"}, or \code{"metal"}.
 #' @param policy Single string; one of \code{"auto"}, \code{"cpu"},
 #'   \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
-#'   \code{"torch"}.
+#'   \code{"opencl"}.
 #' @param precision Single string; \code{"strict"} for full
 #'   double-precision accuracy or \code{"fast"} to allow reduced
 #'   precision on GPU backends.
@@ -488,7 +488,7 @@ adgeMatrix <- function(
 #'   backend.
 #' @param policy Single string; one of \code{"auto"}, \code{"cpu"},
 #'   \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
-#'   \code{"torch"}.
+#'   \code{"opencl"}.
 #' @param precision Single string; \code{"strict"} or \code{"fast"}.
 #'
 #' @return An \code{adgCMatrix} with the data from \code{x} and the
