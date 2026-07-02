@@ -117,19 +117,70 @@ dependencies.
 
 ## Installation
 
-```r
-# Core package
-pak::pkg_install("amatrix")
+Core `amatrix` is CPU-only and has no accelerator dependencies. Install it from
+the `bbuchsbaum` R-universe:
 
-# Optional MLX backend for Apple Silicon
-pak::pkg_install(c("amatrix", "amatrix.mlx"))
+```r
+install.packages(
+  "amatrix",
+  repos = c("https://bbuchsbaum.r-universe.dev", getOption("repos"))
+)
 ```
 
-Other accelerator backends can be installed separately when needed.
+GPU execution comes from optional sister packages — install the one that matches
+your platform from the same repository:
+
+```r
+# Apple Silicon GPU via MLX
+install.packages(
+  "amatrix.mlx",
+  repos = c("https://bbuchsbaum.r-universe.dev", getOption("repos"))
+)
+```
+
+| Backend package     | Platform                     | System prerequisite                                                       |
+|:--------------------|:-----------------------------|:-------------------------------------------------------------------------|
+| `amatrix.mlx`       | macOS arm64 (Apple Silicon)  | Homebrew `mlx-c`, or `MLX_C_PREFIX`; builds a mock bridge without it      |
+| `amatrix.metal`     | macOS                        | Xcode Command Line Tools                                                  |
+| `amatrix.arrayfire` | any OS with ArrayFire >= 3.8 | ArrayFire runtime (on arm64 macOS it pins to the CPU runtime by default)  |
+| `amatrix.opencl`    | unix with OpenCL + CLBlast   | OpenCL driver and CLBlast; GPU probe is env-gated                         |
+
+Install only the backends you need; the core package works on pure CPU without
+any of them.
+
+## GPU in one line
+
+On **Apple Silicon** the GPU is zero-config: install `amatrix.mlx` and MLX
+probing is on by default in every launch mode. The first operation that needs
+the GPU probes it in a disposable child process and routes eligible work to MLX
+automatically — there is nothing to call.
+
+```r
+library(amatrix)
+#> amatrix GPU backends: mlx ready (activates on first use). See amatrix_gpu_status().
+
+X <- adgeMatrix(matrix(rnorm(4096 * 4096), 4096), mode = "fast")
+Z <- X %*% X   # runs on the GPU
+```
+
+**Everywhere else** (OpenCL, ArrayFire, Metal) the backends are opt-in, so turn
+one on with a single call that enables, health-checks, and adopts the best
+installed backend:
+
+```r
+amatrix_use_gpu()
+#> amatrix: GPU enabled - opencl backend (float32 'fast' precision, ~1e-4 vs
+#> float64; 'strict' float64 stays on CPU). amatrix_gpu_status() for details.
+```
+
+To see why you are (or are not) on the GPU, call `amatrix_gpu_status()`. GPU work
+runs in float32 (`mode = "fast"`, conformance tolerance ~`1e-4`); strict float64
+always stays on the CPU. See `vignette("gpu")` for the full story.
 
 ## Start here
 
 - `vignette("amatrix")` for the getting-started workflow
+- `vignette("gpu")` for going from install to a matmul on the GPU
 - `vignette("performance")` for when amatrix is fast (and when it isn't)
 - `?adgeMatrix` for matrix constructors
 - `?many_lm` for the flagship shared-design regression path
