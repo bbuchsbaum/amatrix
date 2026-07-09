@@ -2,7 +2,7 @@ Package: amatrix.mlx
 Type: Package
 Title: MLX Backend Scaffold for amatrix
 Version: 0.0.0.9000
-Authors@R: person("Ben", "Buchsbaum", email = "bbuchsbaum@example.com", role = c("aut", "cre"))
+Authors@R: person("Bradley", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
 Description: Apple MLX backend package for amatrix. Registers a backend
     contract implementation and uses the MLX C API for dense product
     operations when mlx-c is available at build time.

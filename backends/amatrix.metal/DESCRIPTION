@@ -2,7 +2,7 @@ Package: amatrix.metal
 Type: Package
 Title: Metal Backend Scaffold for amatrix
 Version: 0.0.0.9000
-Authors@R: person("Ben", "Buchsbaum", email = "bbuchsbaum@example.com", role = c("aut", "cre"))
+Authors@R: person("Bradley", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
 Description: Apple Metal backend package for amatrix. Registers an optional
     sparse-first backend contract implementation and provides a direct
     Objective-C++ bridge for sparse matrix times dense matrix products on

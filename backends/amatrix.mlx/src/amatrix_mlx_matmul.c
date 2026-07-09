@@ -4291,6 +4291,7 @@ SEXP amatrix_mlx_eigh_bridge(SEXP A_r) {
  *   denom_r  - numeric scalar: divisor (n-1 for sample cov, n for population)
  * Returns a p x p real matrix (column-major R layout).
  */
+#ifdef HAVE_MLXC
 static SEXP amatrix_mlx_covariance_real(SEXP x_r, SEXP center_r, SEXP denom_r) {
   mlx_stream stream;
   mlx_array ax      = mlx_array_new();
@@ -4373,6 +4374,7 @@ static SEXP amatrix_mlx_covariance_real(SEXP x_r, SEXP center_r, SEXP denom_r) {
   amatrix_mlx_free_array_if_needed(cov);
   return result;
 }
+#endif /* HAVE_MLXC (covariance) */
 
 SEXP amatrix_mlx_covariance_bridge(SEXP x_r, SEXP center_r, SEXP denom_r) {
   if (!isReal(x_r) || !isMatrix(x_r)) {

@@ -4,5 +4,9 @@ OBJECTS = init.o metal_sparse_bridge.o
 
 all: $(SHLIB)
 
+# R does not know the .mm extension, so we spell out the compile rule. There is
+# no portable $(ALL_CXX17FLAGS); compose the real flags the way R's built-in C++
+# rule does (PIC + shlib + standard flags), otherwise the object links fine on
+# macOS (PIC by default) but fails on Linux ELF ("recompile with -fPIC").
 metal_sparse_bridge.o: metal_sparse_bridge.mm
-	$(CXX17) $(CXX17STD) $(ALL_CPPFLAGS) $(ALL_CXX17FLAGS) -x objective-c++ -c $< -o $@
+	$(CXX17) $(CXX17STD) $(CXX17PICFLAGS) $(SHLIB_CXX17FLAGS) $(CXX17FLAGS) $(ALL_CPPFLAGS) @METAL_OBJCXX@ -c $< -o $@

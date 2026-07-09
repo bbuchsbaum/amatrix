@@ -7,6 +7,12 @@ makevars="${src_dir}/Makevars"
 
 metal_cppflags=""
 metal_libs=""
+# metal_sparse_bridge.mm only needs the Objective-C++ frontend when the real
+# Metal path is compiled in. On any platform without the Metal frameworks
+# (Linux R-universe builders, or a Mac lacking the SDK) the file is pure C++,
+# so build it as plain C++ -- an Objective-C++ compiler (cc1objplus) is not
+# available on Linux and would abort the mock build.
+metal_objcxx="-x c++"
 
 if [ "$(uname -s)" = "Darwin" ]; then
   sdk_path="$(xcrun --show-sdk-path 2>/dev/null || true)"
@@ -21,6 +27,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
   if [ -n "${framework_dir}" ]; then
     metal_cppflags="-DHAVE_METAL -F${framework_dir}"
     metal_libs="-F${framework_dir} -framework Foundation -framework Metal"
+    metal_objcxx="-x objective-c++"
     echo "configure: building with Metal framework from ${framework_dir}"
   else
     echo "configure: Metal framework not detected, building mock bridge"
@@ -31,10 +38,12 @@ fi
 
 cppflags_esc="$(printf '%s' "${metal_cppflags}" | sed 's/[\/&]/\\&/g')"
 libs_esc="$(printf '%s' "${metal_libs}" | sed 's/[\/&]/\\&/g')"
+objcxx_esc="$(printf '%s' "${metal_objcxx}" | sed 's/[\/&]/\\&/g')"
 
 sed \
   -e "s|@METAL_CPPFLAGS@|${cppflags_esc}|g" \
   -e "s|@METAL_LIBS@|${libs_esc}|g" \
+  -e "s|@METAL_OBJCXX@|${objcxx_esc}|g" \
   "${src_dir}/Makevars.in" > "${makevars}"
 
 exit 0
