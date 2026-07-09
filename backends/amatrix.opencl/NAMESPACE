@@ -1,4 +1,5 @@
 useDynLib(amatrix.opencl, .registration = TRUE)
+export(amatrix_install_clblast)
 export(amatrix_opencl_backend)
 export(amatrix_opencl_bridge_info)
 export(amatrix_opencl_capabilities)

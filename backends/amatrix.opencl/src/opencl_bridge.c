@@ -6,17 +6,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef HAVE_OPENCL
-#if defined(__APPLE__) || defined(__MACOSX)
-#include <OpenCL/opencl.h>
-#else
-#include <CL/opencl.h>
-#endif
-#endif
-
-#ifdef HAVE_CLBLAST
-#include <clblast_c.h>
-#endif
+/*
+ * OpenCL and CLBlast are resolved entirely at runtime (see amatrix_cl_loader.h):
+ * the vendored Khronos and CLBlast headers supply the types and enums, and
+ * every OpenCL and CLBlast call is dispatched through a function-pointer table
+ * populated by dlopen()/LoadLibrary(). Nothing here is linked against OpenCL or
+ * CLBlast, and no device is touched until the gated probe
+ * amatrix_opencl_try_init() runs.
+ *
+ * The HAVE_OPENCL / HAVE_CLBLAST device code below is always compiled (Makevars
+ * defines both, since the vendored headers are always present). Whether a GPU
+ * or CLBlast is usable is a purely runtime question answered by
+ * amatrix_opencl_try_init() and amatrix_cl_clblast_loaded().
+ */
+#include "amatrix_cl_loader.h"
 
 #define AMATRIX_OPENCL_MAX_RESIDENT 256
 #define AMATRIX_OPENCL_MAX_SPARSE_RESIDENT 256
@@ -545,6 +548,14 @@ static int amatrix_opencl_try_init(void) {
   g_init_fail_stage = 0;
   g_init_fail_err = 0;
 
+  /* Resolve the OpenCL ICD loader and its symbols at runtime. Until this
+   * succeeds every cl* pointer is NULL, so this must precede the first call. */
+  if (!amatrix_cl_load_opencl()) {
+    g_init_fail_stage = 5; /* OpenCL runtime library or symbols unavailable */
+    g_init_fail_err = 0;
+    return 0;
+  }
+
   err = clGetPlatformIDs((cl_uint)(sizeof(platforms) / sizeof(platforms[0])), platforms, &num_platforms);
   if (err != CL_SUCCESS || num_platforms == 0) {
     g_init_fail_stage = 1; /* clGetPlatformIDs */
@@ -606,6 +617,12 @@ static int amatrix_opencl_try_init(void) {
       g_device_name[sizeof(g_device_name) - 1] = '\0';
     }
   }
+
+  /* Best-effort: CLBlast provides device GEMM/SYRK/TRSM and the dense
+   * factorizations. When it is absent the backend still initialises; those
+   * paths fall back to the host implementations via amatrix_cl_clblast_loaded()
+   * guards. */
+  amatrix_cl_load_clblast();
 
   g_runtime_available = 1;
   return 1;
@@ -1136,6 +1153,10 @@ static int amatrix_opencl_run_trsm_left_event(
     *ready_event = NULL;
   }
 
+  if (!amatrix_cl_clblast_loaded()) {
+    return 0;
+  }
+
   CLBlastStatusCode status = CLBlastStrsm(
     CLBlastLayoutColMajor,
     CLBlastSideLeft,
@@ -1207,6 +1228,10 @@ static int amatrix_opencl_run_syrk_update_upper_event(
 ) {
   if (ready_event != NULL) {
     *ready_event = NULL;
+  }
+
+  if (!amatrix_cl_clblast_loaded()) {
+    return 0;
   }
 
   CLBlastStatusCode status = CLBlastSsyrk(
@@ -1814,9 +1839,14 @@ static int amatrix_opencl_run_chol_panel_upper_inplace_event(cl_mem buffer, cl_m
 }
 
 static int amatrix_opencl_run_hadamard(cl_mem lhs, cl_mem rhs, size_t n, cl_mem *out_buffer) {
-  cl_mem out = amatrix_opencl_alloc_buffer(n);
+  cl_mem out;
   CLBlastStatusCode status;
 
+  if (!amatrix_cl_clblast_loaded()) {
+    return 0;
+  }
+
+  out = amatrix_opencl_alloc_buffer(n);
   if (out == NULL) {
     return 0;
   }
@@ -2116,6 +2146,10 @@ static int amatrix_opencl_run_gemm(
   cl_mem c_buffer = NULL;
   CLBlastStatusCode status;
 
+  if (!amatrix_cl_clblast_loaded()) {
+    return 0;
+  }
+
   if (!amatrix_opencl_make_product_dims(ar, ac, br, bc, trans_a, trans_b, &m, &n, &k)) {
     return -1;
   }
@@ -2169,6 +2203,10 @@ static int amatrix_opencl_run_syrk(
   CLBlastTranspose transpose = use_crossprod ? CLBlastTransposeYes : CLBlastTransposeNo;
   int upper_to_lower = use_crossprod ? 1 : 0;
   CLBlastStatusCode status;
+
+  if (!amatrix_cl_clblast_loaded()) {
+    return 0;
+  }
 
   c_buffer = amatrix_opencl_alloc_buffer((size_t)n * (size_t)n);
   if (c_buffer == NULL) {
@@ -2929,24 +2967,21 @@ SEXP amatrix_opencl_init_status_bridge(void) {
 SEXP amatrix_opencl_bridge_info_bridge(void) {
   static const char *names[] = {"compiled", "clblast", "native", "engine"};
   SEXP out = PROTECT(amatrix_opencl_named_list(4, names));
+  int native = 0;
 
 #ifdef HAVE_OPENCL
   SET_VECTOR_ELT(out, 0, ScalarLogical(1));
+  /* try_init runs the gated probe and, on success, also attempts to load
+   * CLBlast, so amatrix_cl_clblast_loaded() below is accurate afterwards. */
+  native = amatrix_opencl_try_init();
 #else
   SET_VECTOR_ELT(out, 0, ScalarLogical(0));
 #endif
 
-#ifdef HAVE_CLBLAST
-  SET_VECTOR_ELT(out, 1, ScalarLogical(1));
-#else
-  SET_VECTOR_ELT(out, 1, ScalarLogical(0));
-#endif
-
-#ifdef HAVE_OPENCL
-  SET_VECTOR_ELT(out, 2, ScalarLogical(amatrix_opencl_try_init()));
-#else
-  SET_VECTOR_ELT(out, 2, ScalarLogical(0));
-#endif
+  /* clblast reflects the RUNTIME CLBlast load state, not merely whether the
+   * package was compiled with CLBlast headers (it always is). */
+  SET_VECTOR_ELT(out, 1, ScalarLogical(amatrix_cl_clblast_loaded()));
+  SET_VECTOR_ELT(out, 2, ScalarLogical(native));
   SET_VECTOR_ELT(out, 3, Rf_mkString(amatrix_opencl_engine_name()));
   UNPROTECT(1);
   return out;
@@ -2973,15 +3008,39 @@ SEXP amatrix_opencl_diagnostics_bridge(void) {
   SET_VECTOR_ELT(out, 8, Rf_mkString(""));
 #endif
 
-#ifdef HAVE_CLBLAST
-  SET_VECTOR_ELT(out, 1, ScalarLogical(1));
-#else
-  SET_VECTOR_ELT(out, 1, ScalarLogical(0));
-#endif
+  SET_VECTOR_ELT(out, 1, ScalarLogical(amatrix_cl_clblast_loaded()));
 
   SET_VECTOR_ELT(out, 3, Rf_mkString(amatrix_opencl_engine_name()));
   SET_VECTOR_ELT(out, 5, ScalarInteger(amatrix_opencl_resident_count()));
   SET_VECTOR_ELT(out, 7, ScalarInteger(amatrix_opencl_host_resident_count()));
+  UNPROTECT(1);
+  return out;
+}
+
+/* Register an extra directory to search for the CLBlast shared library (e.g.
+ * tools::R_user_dir("amatrix.opencl", "data") where amatrix_install_clblast()
+ * downloads it). Safe to call before any probe. */
+SEXP amatrix_opencl_set_clblast_path_bridge(SEXP path) {
+  if (TYPEOF(path) == STRSXP && XLENGTH(path) == 1 && STRING_ELT(path, 0) != NA_STRING) {
+    amatrix_cl_set_clblast_dir(CHAR(STRING_ELT(path, 0)));
+  } else {
+    amatrix_cl_set_clblast_dir(NULL);
+  }
+  return R_NilValue;
+}
+
+/* Human-readable runtime availability reasons, used by amatrix_gpu_status()
+ * to explain why the backend is (un)available and to hint at
+ * amatrix_install_clblast() when OpenCL is present but CLBlast is not. */
+SEXP amatrix_opencl_availability_reason_bridge(void) {
+  static const char *names[] = {
+    "opencl_loaded", "clblast_loaded", "opencl_reason", "clblast_reason"
+  };
+  SEXP out = PROTECT(amatrix_opencl_named_list(4, names));
+  SET_VECTOR_ELT(out, 0, ScalarLogical(amatrix_cl_opencl_loaded()));
+  SET_VECTOR_ELT(out, 1, ScalarLogical(amatrix_cl_clblast_loaded()));
+  SET_VECTOR_ELT(out, 2, Rf_mkString(amatrix_cl_opencl_reason()));
+  SET_VECTOR_ELT(out, 3, Rf_mkString(amatrix_cl_clblast_reason()));
   UNPROTECT(1);
   return out;
 }

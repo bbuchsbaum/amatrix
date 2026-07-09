@@ -380,6 +380,11 @@ amatrix_opencl_diagnostics <- function() {
   diag$init_attempted <- init$attempted
   diag$init_fail_stage <- init$fail_stage
   diag$init_fail_err <- init$fail_err
+  reason <- amatrix_opencl_availability_reason()
+  diag$opencl_loaded <- reason$opencl_loaded
+  diag$clblast_loaded <- reason$clblast_loaded
+  diag$opencl_reason <- reason$opencl_reason
+  diag$clblast_reason <- reason$clblast_reason
   diag
 }
 

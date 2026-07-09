@@ -7,6 +7,8 @@ extern SEXP amatrix_opencl_reset_init_bridge(void);
 extern SEXP amatrix_opencl_init_status_bridge(void);
 extern SEXP amatrix_opencl_bridge_info_bridge(void);
 extern SEXP amatrix_opencl_diagnostics_bridge(void);
+extern SEXP amatrix_opencl_set_clblast_path_bridge(SEXP path);
+extern SEXP amatrix_opencl_availability_reason_bridge(void);
 extern SEXP amatrix_opencl_bdc_bidiag_bridge(SEXP x);
 extern SEXP amatrix_opencl_bdc_orgbr_bridge(SEXP vect, SEXP x, SEXP tau, SEXP m, SEXP n, SEXP k);
 extern SEXP amatrix_opencl_bdc_dbdsdc_bridge(SEXP d, SEXP e, SEXP uplo);
@@ -50,6 +52,8 @@ static const R_CallMethodDef call_methods[] = {
     {"amatrix_opencl_init_status_bridge", (DL_FUNC) &amatrix_opencl_init_status_bridge, 0},
     {"amatrix_opencl_bridge_info_bridge", (DL_FUNC) &amatrix_opencl_bridge_info_bridge, 0},
     {"amatrix_opencl_diagnostics_bridge", (DL_FUNC) &amatrix_opencl_diagnostics_bridge, 0},
+    {"amatrix_opencl_set_clblast_path_bridge", (DL_FUNC) &amatrix_opencl_set_clblast_path_bridge, 1},
+    {"amatrix_opencl_availability_reason_bridge", (DL_FUNC) &amatrix_opencl_availability_reason_bridge, 0},
     {"amatrix_opencl_bdc_bidiag_bridge", (DL_FUNC) &amatrix_opencl_bdc_bidiag_bridge, 1},
     {"amatrix_opencl_bdc_orgbr_bridge", (DL_FUNC) &amatrix_opencl_bdc_orgbr_bridge, 6},
     {"amatrix_opencl_bdc_dbdsdc_bridge", (DL_FUNC) &amatrix_opencl_bdc_dbdsdc_bridge, 3},

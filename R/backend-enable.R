@@ -17,6 +17,31 @@
   opencl = "amatrix_opencl_enable_probe"
 )
 
+# When the OpenCL backend has probed a device but CLBlast could not be loaded,
+# GPU BLAS and linear algebra silently fall back to the CPU reference path.
+# Surface that so amatrix_gpu_status()/amatrix_use_gpu() can point the user at
+# amatrix_install_clblast(). Returns NA_character_ when not applicable. Fully
+# defensive: never errors, and stays silent unless the opencl namespace is
+# loaded and has actually probed OpenCL without CLBlast.
+.amatrix_opencl_clblast_hint <- function() {
+  if (!isNamespaceLoaded("amatrix.opencl")) {
+    return(NA_character_)
+  }
+  info <- tryCatch(
+    get("amatrix_opencl_availability_reason",
+        envir = asNamespace("amatrix.opencl"))(),
+    error = function(e) NULL
+  )
+  if (is.list(info) && isTRUE(info$opencl_loaded) && !isTRUE(info$clblast_loaded)) {
+    return(paste0(
+      "OpenCL device present but CLBlast not loaded, so GPU BLAS and linear ",
+      "algebra fall back to the CPU; run amatrix.opencl::amatrix_install_clblast() ",
+      "to enable them"
+    ))
+  }
+  NA_character_
+}
+
 .amatrix_gpu_install_hint <- function() {
   repos_hint <- 'install.packages("amatrix.<backend>", repos = c("https://bbuchsbaum.r-universe.dev", "https://cloud.r-project.org"))'
   backend_hint <- if (identical(Sys.info()[["sysname"]], "Darwin") &&
@@ -128,6 +153,12 @@ amatrix_use_gpu <- function(backend = NULL, quiet = FALSE) {
       "amatrix: GPU enabled - %s backend (float32 'fast' precision, ~1e-4 vs float64; 'strict' float64 stays on CPU). amatrix_gpu_status() for details.",
       name
     ))
+    if (identical(name, "opencl")) {
+      clblast_hint <- .amatrix_opencl_clblast_hint()
+      if (!is.na(clblast_hint)) {
+        say(sprintf("amatrix: note - %s", clblast_hint))
+      }
+    }
     return(invisible(name))
   }
 
@@ -199,6 +230,12 @@ amatrix_gpu_status <- function() {
     }
     if (!installed) {
       reason <- sprintf("package %s not installed", spec$package)
+    }
+    if (identical(name, "opencl")) {
+      clblast_hint <- .amatrix_opencl_clblast_hint()
+      if (!is.na(clblast_hint)) {
+        reason <- clblast_hint
+      }
     }
     data.frame(
       backend = name,

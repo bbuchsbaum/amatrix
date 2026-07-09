@@ -1,0 +1,40 @@
+amatrix.opencl bundles third-party header files so that the package can be
+compiled on any platform without the OpenCL or CLBlast development packages
+being installed. All device libraries are resolved at run time via
+dlopen()/LoadLibrary(); none of the bundled headers are linked and no
+third-party source code is compiled into the package binary.
+
+--------------------------------------------------------------------------------
+Khronos OpenCL C API headers
+--------------------------------------------------------------------------------
+Files:
+  src/CL/cl.h
+  src/CL/cl_platform.h
+  src/CL/cl_version.h
+Copyright (c) 2008-2026 The Khronos Group Inc.
+License: Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+Source: https://github.com/KhronosGroup/OpenCL-Headers
+These files are the unmodified upstream Khronos headers.
+
+--------------------------------------------------------------------------------
+CLBlast C API header
+--------------------------------------------------------------------------------
+File:
+  src/clblast_c.h
+Copyright (c) 2015 Cedric Nugteren / the CLBlast project.
+License: Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+Source: https://github.com/CNugteren/CLBlast
+This file is the unmodified upstream CLBlast plain-C interface header.
+
+--------------------------------------------------------------------------------
+amatrix compatibility shims
+--------------------------------------------------------------------------------
+Files:
+  src/CL/opencl.h
+  src/OpenCL/opencl.h
+Copyright (c) 2026 Bradley Buchsbaum.
+License: MIT (the amatrix.opencl package license).
+These small umbrella headers are authored by the amatrix project. They redirect
+the <CL/opencl.h> / <OpenCL/opencl.h> includes used by clblast_c.h to the
+vendored Khronos core C API headers, so the extension headers (cl_gl.h,
+cl_ext.h) that the package does not use are not required.

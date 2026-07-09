@@ -1,96 +1,13 @@
 #!/bin/sh
-
+# amatrix.opencl configure.
+#
+# There is deliberately NO compile-time detection of OpenCL or CLBlast: both
+# are resolved at run time by src/amatrix_cl_loader.c, and the package must
+# build identically on machines with and without a GPU SDK. This script only
+# materialises src/Makevars from the checked-in src/Makevars.in template, so it
+# cannot probe hardware, cannot fail on a headless builder, and never aborts.
 set -eu
 
-src_dir="src"
-makevars="${src_dir}/Makevars"
-
-opencl_found=0
-clblast_found=0
-
-opencl_cppflags=""
-opencl_libs=""
-clblast_cppflags=""
-clblast_libs=""
-define_flags=""
-
-if command -v pkg-config >/dev/null 2>&1; then
-  if pkg-config --exists OpenCL 2>/dev/null; then
-    opencl_cppflags="$(pkg-config --cflags OpenCL 2>/dev/null || true)"
-    opencl_libs="$(pkg-config --libs OpenCL 2>/dev/null || true)"
-    opencl_found=1
-    echo "configure: pkg-config found OpenCL"
-  fi
-
-  if pkg-config --exists clblast 2>/dev/null; then
-    clblast_cppflags="$(pkg-config --cflags clblast 2>/dev/null || true)"
-    clblast_libs="$(pkg-config --libs clblast 2>/dev/null || true)"
-    clblast_found=1
-    echo "configure: pkg-config found CLBlast"
-  fi
-fi
-
-# CLBlast fallbacks when pkg-config is absent or ships no clblast.pc:
-#   1. CLBLAST_HOME override   2. Homebrew keg (brew --prefix clblast)
-if [ "${clblast_found}" -eq 0 ]; then
-  clblast_prefix=""
-  if [ -n "${CLBLAST_HOME:-}" ] && [ -d "${CLBLAST_HOME}" ]; then
-    clblast_prefix="${CLBLAST_HOME}"
-  elif command -v brew >/dev/null 2>&1; then
-    maybe_clblast="$(brew --prefix clblast 2>/dev/null || true)"
-    if [ -n "${maybe_clblast}" ] && [ -d "${maybe_clblast}" ]; then
-      clblast_prefix="${maybe_clblast}"
-    fi
-  fi
-
-  if [ -n "${clblast_prefix}" ] && [ -f "${clblast_prefix}/include/clblast.h" ]; then
-    clblast_cppflags="-I${clblast_prefix}/include"
-    clblast_libs="-L${clblast_prefix}/lib -lclblast"
-    clblast_found=1
-    echo "configure: found CLBlast at ${clblast_prefix}"
-  fi
-fi
-
-if [ "${opencl_found}" -eq 0 ] && [ "$(uname -s)" = "Darwin" ]; then
-  sdk_path="$(xcrun --show-sdk-path 2>/dev/null || true)"
-  framework_dir=""
-
-  if [ -n "${sdk_path}" ] && [ -d "${sdk_path}/System/Library/Frameworks/OpenCL.framework" ]; then
-    framework_dir="${sdk_path}/System/Library/Frameworks"
-  elif [ -d "/System/Library/Frameworks/OpenCL.framework" ]; then
-    framework_dir="/System/Library/Frameworks"
-  fi
-
-  if [ -n "${framework_dir}" ]; then
-    opencl_cppflags="-F${framework_dir}"
-    opencl_libs="-F${framework_dir} -framework OpenCL"
-    opencl_found=1
-    echo "configure: using OpenCL framework from ${framework_dir}"
-  fi
-fi
-
-if [ "${opencl_found}" -eq 1 ]; then
-  define_flags="-DHAVE_OPENCL"
-fi
-
-if [ "${opencl_found}" -eq 1 ] && [ "${clblast_found}" -eq 1 ]; then
-  define_flags="${define_flags} -DHAVE_CLBLAST"
-  echo "configure: building with HAVE_OPENCL and HAVE_CLBLAST"
-elif [ "${opencl_found}" -eq 1 ]; then
-  echo "configure: building with HAVE_OPENCL"
-else
-  echo "configure: OpenCL not detected, building mock bridge"
-fi
-
-cppflags="$(printf '%s %s %s' "${define_flags}" "${opencl_cppflags}" "${clblast_cppflags}" | xargs)"
-libs="$(printf '%s %s' "${opencl_libs}" "${clblast_libs}" | xargs)"
-
-cppflags_esc="$(printf '%s' "${cppflags}" | sed 's/[\/&]/\\&/g')"
-libs_esc="$(printf '%s' "${libs}" | sed 's/[\/&]/\\&/g')"
-
-sed \
-  -e "s|@OPENCL_CPPFLAGS@|${cppflags_esc}|g" \
-  -e "s|@OPENCL_LIBS@|${libs_esc}|g" \
-  "${src_dir}/Makevars.in" > "${makevars}"
+cp "src/Makevars.in" "src/Makevars"
 
 exit 0

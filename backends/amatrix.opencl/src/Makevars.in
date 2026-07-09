@@ -1,2 +1,18 @@
-PKG_CPPFLAGS = @OPENCL_CPPFLAGS@
-PKG_LIBS = @OPENCL_LIBS@
+# amatrix.opencl links against NEITHER OpenCL nor CLBlast.
+#
+# Both libraries, and every symbol they export, are resolved at run time via
+# dlopen()/dlsym() (see src/amatrix_cl_loader.c). The compiled shared object
+# therefore has no external GPU dependency and builds and installs on any
+# platform, with or without a GPU, an OpenCL ICD loader, or CLBlast present.
+# Nothing enumerates devices or maps a vendor library until the gated,
+# lazy probe amatrix_opencl_try_init() is explicitly invoked.
+#
+# The vendored Khronos OpenCL headers (src/CL/) and the CLBlast C header
+# (src/clblast_c.h) supply the compile-time types and enums only; they are not
+# linked. HAVE_OPENCL/HAVE_CLBLAST are always defined because those headers are
+# always present -- runtime availability is decided by the loader.
+#
+# -ldl provides dlopen()/dlsym() on Linux with glibc < 2.34; it is a harmless
+# no-op on macOS and on newer glibc where these symbols live in libc/libSystem.
+PKG_CPPFLAGS = -I. -DHAVE_OPENCL -DHAVE_CLBLAST -DCL_TARGET_OPENCL_VERSION=120
+PKG_LIBS = -ldl

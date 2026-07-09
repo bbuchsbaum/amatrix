@@ -1,0 +1,11 @@
+# Windows build for amatrix.opencl.
+#
+# OpenCL.dll and clblast.dll are resolved at run time via LoadLibrary()/
+# GetProcAddress() (see src/amatrix_cl_loader.c). Nothing is linked against
+# either library, so no OpenCL SDK or import library is required to build. The
+# runtime loader additionally searches tools::R_user_dir("amatrix.opencl",
+# "data"), where amatrix_install_clblast() places clblast.dll.
+#
+# LoadLibrary/GetProcAddress live in kernel32, which is linked by default.
+PKG_CPPFLAGS = -I. -DHAVE_OPENCL -DHAVE_CLBLAST -DCL_TARGET_OPENCL_VERSION=120
+PKG_LIBS =
