@@ -184,6 +184,11 @@ resident_handle <- function(x, backend = NULL) {
 
   old_key <- h$resident_key
   new_key <- .amatrix_next_resident_key(h$backend_name)
+  committed <- FALSE
+  # Release new_key on every non-committed exit — both the kernel-failure path
+  # and a throw in the post-op bookkeeping below (alias repointing / old-key
+  # drop), which would otherwise orphan the freshly stored new_key.
+  on.exit(if (!committed) .rh_drop_key(backend, new_key), add = TRUE)
   ok <- FALSE
 
   tryCatch({
@@ -196,9 +201,7 @@ resident_handle <- function(x, backend = NULL) {
       defer = TRUE
     )
     ok <- TRUE
-  }, error = function(e) {
-    .rh_drop_key(backend, new_key)
-  })
+  }, error = function(e) NULL)
 
   if (!ok) {
     if (isTRUE(drop_stats)) {
@@ -216,6 +219,7 @@ resident_handle <- function(x, backend = NULL) {
   }
   h$resident_key <- new_key
   h$owns_key <- identical(alias_count, 0L)
+  committed <- TRUE
   invisible(h)
 }
 
@@ -265,6 +269,11 @@ am_sweep_inplace <- function(h, MARGIN, STATS, FUN = "+") {
 
   old_key <- h$resident_key
   new_key <- .amatrix_next_resident_key(h$backend_name)
+  committed <- FALSE
+  # Release new_key on every non-committed exit — both the kernel-failure path
+  # and a throw in the post-op bookkeeping below (alias repointing / old-key
+  # drop), which would otherwise orphan the freshly stored new_key.
+  on.exit(if (!committed) .rh_drop_key(backend, new_key), add = TRUE)
   err <- NULL
   tryCatch(
     backend$broadcast_ewise_resident(
@@ -277,7 +286,6 @@ am_sweep_inplace <- function(h, MARGIN, STATS, FUN = "+") {
     ),
     error = function(e) {
       err <<- e
-      .rh_drop_key(backend, new_key)
     }
   )
   if (!is.null(err)) {
@@ -290,6 +298,7 @@ am_sweep_inplace <- function(h, MARGIN, STATS, FUN = "+") {
     backend$resident_drop(old_key)
   h$resident_key <- new_key
   h$owns_key <- identical(alias_count, 0L)
+  committed <- TRUE
   invisible(h)
 }
 
@@ -326,12 +335,16 @@ am_ewise_inplace <- function(h, rhs, op) {
 
   old_key <- h$resident_key
   new_key <- .amatrix_next_resident_key(h$backend_name)
+  committed <- FALSE
+  # Release new_key on every non-committed exit — both the kernel-failure path
+  # and a throw in the post-op bookkeeping below (alias repointing / old-key
+  # drop), which would otherwise orphan the freshly stored new_key.
+  on.exit(if (!committed) .rh_drop_key(backend, new_key), add = TRUE)
   err <- NULL
   tryCatch(
     backend$ewise_resident(old_key, rhs_payload, op, new_key, defer = TRUE),
     error = function(e) {
       err <<- e
-      .rh_drop_key(backend, new_key)
     }
   )
   if (!is.null(err)) {
@@ -343,6 +356,7 @@ am_ewise_inplace <- function(h, rhs, op) {
     backend$resident_drop(old_key)
   h$resident_key <- new_key
   h$owns_key <- identical(alias_count, 0L)
+  committed <- TRUE
   invisible(h)
 }
 

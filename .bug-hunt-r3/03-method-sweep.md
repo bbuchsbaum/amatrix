@@ -1,7 +1,7 @@
 # Round 3 Bug Hunt — Method Sweep Report
 
-**Generated:** 2026-07-01 21:33:17
-**Total failures recorded:** 2
+**Generated:** 2026-07-09 06:16:08
+**Total failures recorded:** 0
 
 ## Methods Tested
 
@@ -15,13 +15,6 @@ Arith (+,-,*,/) mat×mat and mat×scalar; Compare (==,!=,<,>) vs scalar; Math gr
 
 ## Failures by Symptom
 
-### ERROR (2)
-
-| Method | Expected | Actual | Note |
-|--------|----------|--------|------|
-| `det[dense/cpu]` | `no error` | `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"` |  |
-| `det[dense/mlx]` | `no error` | `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"` |  |
-
 ---
 
 ## Confirmed Bugs (Round-2 Issues Executed)
@@ -31,10 +24,9 @@ Confirmed 0 failure(s) that match round-2 issue patterns.
 
 ---
 
-## NEW Bugs (Not in Round-2 Issue List) — 2 found
+## NEW Bugs (Not in Round-2 Issue List) — 0 found
 
-- **NEW** `det[dense/cpu]` → ERROR (expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`)
-- **NEW** `det[dense/mlx]` → ERROR (expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`)
+None.
 
 ---
 
@@ -51,8 +43,7 @@ The following round-2 hypotheses were WRONG — these methods work correctly:
 
 ## Top 3 Failures by Impact
 
-1. **`det[dense/cpu]`** — ERROR: expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`
-2. **`det[dense/mlx]`** — ERROR: expected `no error`, got `no applicable method for 'determinant' applied to an object of class "c('adgeMatrix', 'aMatrix', 'dgeMatrix', 'unpackedMatrix', 'ddenseMatrix', 'generalMatrix', 'dMatrix', 'denseMatrix', 'Matrix')"`
+No failures recorded.
 
 ---
 

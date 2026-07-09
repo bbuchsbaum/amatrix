@@ -797,8 +797,11 @@ block_lanczos <- function(A,
   m <- NROW(A)
   n <- NCOL(A)
   A_left <- .amatrix_block_lanczos_source_operator(A)
-  A_right <- .amatrix_block_lanczos_right_operator(A, source_operator = A_left)
+  # Register the source-operator drop immediately after its (possibly resident)
+  # upload, BEFORE building the right operator. If the right-operator build
+  # throws, this on.exit still fires and releases A_left's device buffer.
   on.exit(.amatrix_block_lanczos_drop_source_operator(A_left), add = TRUE)
+  A_right <- .amatrix_block_lanczos_right_operator(A, source_operator = A_left)
   on.exit(.amatrix_block_lanczos_drop_right_operator(A_right), add = TRUE)
 
   Q_left_basis <- matrix(0, nrow = m, ncol = J * b)

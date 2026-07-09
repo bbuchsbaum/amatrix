@@ -117,10 +117,65 @@
   )
 }
 
+# Release the device buffer of a prior residency entry that is about to be
+# overwritten by a rebind. Only drops a key that is (a) still live on its
+# backend and (b) not referenced by any OTHER registry object (aliased keys are
+# shared and must survive). Returns TRUE only when it actually dropped a buffer.
+.amatrix_release_prior_resident_key <- function(current_object_key, prev) {
+  backend <- tryCatch(.amatrix_get_backend(prev$backend), error = function(e) NULL)
+  if (is.null(backend) || !.amatrix_backend_residency_capable(backend)) {
+    return(invisible(FALSE))
+  }
+
+  # A dead key is already gone from device memory — nothing to leak.
+  live <- if (isTRUE(prev$sparse)) {
+    is.function(backend$sparse_resident_has) &&
+      isTRUE(backend$sparse_resident_has(prev$resident_key))
+  } else {
+    is.function(backend$resident_has) &&
+      isTRUE(backend$resident_has(prev$resident_key))
+  }
+  if (!live) {
+    return(invisible(FALSE))
+  }
+
+  # Do not drop a key another registry entry still points at (alias).
+  for (rk in ls(envir = .amatrix_state$residency, all.names = TRUE)) {
+    if (identical(rk, current_object_key)) {
+      next
+    }
+    entry <- get0(rk, envir = .amatrix_state$residency, inherits = FALSE)
+    if (!is.null(entry) &&
+        identical(entry$backend, prev$backend) &&
+        identical(entry$resident_key, prev$resident_key) &&
+        identical(isTRUE(entry$sparse), isTRUE(prev$sparse))) {
+      return(invisible(FALSE))
+    }
+  }
+
+  drop_fn <- if (isTRUE(prev$sparse)) backend$sparse_resident_drop else backend$resident_drop
+  if (is.function(drop_fn)) {
+    try(drop_fn(prev$resident_key), silent = TRUE)
+    return(invisible(TRUE))
+  }
+  invisible(FALSE)
+}
+
 .amatrix_bind_resident <- function(x, backend, resident_key, sparse = FALSE) {
   object_key <- .amatrix_object_key(x)
   if (is.null(object_key)) {
     return(x)
+  }
+
+  # Rebinding to a new device buffer must not orphan the previous one. If a
+  # prior entry exists for this object pointing at a different (backend, key),
+  # release that buffer first (alias-safe) so it is not silently leaked.
+  prev <- get0(object_key, envir = .amatrix_state$residency, inherits = FALSE)
+  if (!is.null(prev) &&
+      !(identical(prev$backend, backend) &&
+        identical(prev$resident_key, resident_key) &&
+        identical(isTRUE(prev$sparse), isTRUE(sparse)))) {
+    .amatrix_release_prior_resident_key(object_key, prev)
   }
 
   # Store cache_state (a forward-only child env), NOT finalizer_env itself —
@@ -196,6 +251,20 @@
   entry <- .amatrix_resident_entry(x)
   if (is.null(entry)) {
     return(invisible(FALSE))
+  }
+
+  # A deferred adgeMatrix has no authoritative host copy (host @x is NaN
+  # placeholders); its only real data lives in the device buffer we are about
+  # to drop. Download the host copy first so amatrix_release_resident()'s
+  # documented contract holds — "the object remains fully usable afterwards:
+  # its data is served from the host copy". Without this the object becomes
+  # dead-deferred and later host access (including reuse through an
+  # am_product_plan) throws or reads NaN.
+  if (inherits(x, "adgeMatrix")) {
+    fenv <- x@finalizer_env
+    if (isTRUE(fenv$host_deferred) && is.null(fenv$host_x)) {
+      tryCatch(amatrix_materialize_dense(x), error = function(e) NULL)
+    }
   }
 
   backend <- tryCatch(.amatrix_get_backend(entry$backend), error = function(e) NULL)

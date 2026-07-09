@@ -91,10 +91,27 @@ amatrix_bind_resident <- function(x, backend = NULL, op = NULL, y = NULL) {
     if (!is.function(backend_obj$sparse_resident_store)) {
       stop(sprintf("backend '%s' does not support sparse residency", backend_name), call. = FALSE)
     }
+    # Protect the upload: if the store or the subsequent residency binding
+    # throws, release the device buffer instead of leaking it (no registry
+    # entry means no finalizer would ever reclaim it).
+    bound <- FALSE
+    on.exit(
+      if (!bound) .amatrix_release_resident_key(backend_name, resident_key, sparse = TRUE),
+      add = TRUE
+    )
     backend_obj$sparse_resident_store(resident_key, amatrix_materialize_host(obj))
-    return(.amatrix_bind_resident(obj, backend_name, resident_key, sparse = TRUE))
+    result <- .amatrix_bind_resident(obj, backend_name, resident_key, sparse = TRUE)
+    bound <- TRUE
+    return(result)
   }
 
+  bound <- FALSE
+  on.exit(
+    if (!bound) .amatrix_release_resident_key(backend_name, resident_key),
+    add = TRUE
+  )
   backend_obj$resident_store(resident_key, amatrix_materialize_host(obj))
-  .amatrix_bind_resident(obj, backend_name, resident_key)
+  result <- .amatrix_bind_resident(obj, backend_name, resident_key)
+  bound <- TRUE
+  result
 }

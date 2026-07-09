@@ -266,12 +266,13 @@ sinkhorn <- function(
   }
 
   h <- resident_handle(A, backend = backend_name)
-  backend <- .rh_backend(h)
-  has_vector_chain <- is.function(backend$rowSums_resident_key) &&
-    is.function(backend$colSums_resident_key) &&
-    is.function(backend$broadcast_ewise_resident_key)
+  # Register cleanup immediately after acquiring the handle. Only drop a key the
+  # handle actually owns: when resident_handle reused an already-resident
+  # matrix's buffer (owns_key = FALSE) that buffer belongs to the caller's
+  # object and must not be freed here.
   on.exit({
-    if (exists("h", inherits = FALSE) && isTRUE(h$active) && !is.null(h$resident_key)) {
+    if (exists("h", inherits = FALSE) && isTRUE(h$active) &&
+        isTRUE(h$owns_key) && !is.null(h$resident_key)) {
       backend <- tryCatch(.amatrix_get_backend(h$backend_name), error = function(e) NULL)
       if (!is.null(backend) && is.function(backend$resident_drop) &&
           isTRUE(backend$resident_has(h$resident_key))) {
@@ -281,6 +282,10 @@ sinkhorn <- function(
       h$resident_key <- NULL
     }
   }, add = TRUE)
+  backend <- .rh_backend(h)
+  has_vector_chain <- is.function(backend$rowSums_resident_key) &&
+    is.function(backend$colSums_resident_key) &&
+    is.function(backend$broadcast_ewise_resident_key)
 
   converged <- FALSE
   row_error <- Inf
