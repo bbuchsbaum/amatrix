@@ -2,7 +2,7 @@
 
 ## Authors
 
-- **Brad Buchsbaum**. Author, maintainer.
+- **Bradley Buchsbaum**. Author, maintainer.
 
 ## Citation
 
@@ -14,7 +14,7 @@ package version 0.1.0, <https://bbuchsbaum.github.io/amatrix/>.
 
     @Manual{,
       title = {amatrix: Backend-Agnostic Matrix Extensions},
-      author = {Brad Buchsbaum},
+      author = {Bradley Buchsbaum},
       year = {2026},
       note = {R package version 0.1.0},
       url = {https://bbuchsbaum.github.io/amatrix/},
