@@ -29,7 +29,8 @@
 ^sessionInfo-probe2\.txt$
 ^\.nightly-artifacts$
 ^amatrix-manual\.tex$
-^\.\.Rcheck$
+^.*\.Rcheck$
+^amatrix_.*\.tar\.gz$
 ^\.DS_Store$
 ^\.Rhistory$
 ^\.RData$

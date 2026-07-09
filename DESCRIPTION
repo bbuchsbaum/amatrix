@@ -2,7 +2,7 @@ Package: amatrix
 Type: Package
 Title: Backend-Agnostic Matrix Extensions
 Version: 0.1.0
-Authors@R: person("Brad", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
+Authors@R: person("Bradley", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
 Description: Matrix-compatible S4 classes with backend-dispatch hooks for
     accelerated execution and predictable CPU fallback.
 URL: https://bbuchsbaum.github.io/amatrix/, https://github.com/bbuchsbaum/amatrix
