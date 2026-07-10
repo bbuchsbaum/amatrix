@@ -1222,9 +1222,8 @@ static SEXP amatrix_mlx_qr_Q_resident_real(SEXP x_key, SEXP q_out_key) {
   return ScalarLogical(1);
 }
 
-SEXP amatrix_mlx_qr_Q_resident_bridge(SEXP x_key, SEXP q_out_key) {
-  return amatrix_mlx_qr_Q_resident_real(x_key, q_out_key);
-}
+/* amatrix_mlx_qr_Q_resident_bridge lives OUTSIDE this HAVE_MLXC region (with
+ * the other qr bridges) so the mock build defines every registered symbol. */
 
 static SEXP amatrix_mlx_qr_qty_key_real(SEXP q_key, SEXP y) {
   mlx_stream stream;
@@ -3107,6 +3106,20 @@ SEXP amatrix_mlx_qr_bridge(SEXP x, SEXP q_key) {
   return amatrix_mlx_qr_real(x, q_key);
 #else
   error("mlx qr bridge requires mlx-c");
+#endif
+}
+
+SEXP amatrix_mlx_qr_Q_resident_bridge(SEXP x_key, SEXP q_out_key) {
+  if (!isString(x_key) || XLENGTH(x_key) != 1) {
+    error("x_key must be a single string");
+  }
+  if (!isString(q_out_key) || XLENGTH(q_out_key) != 1) {
+    error("q_out_key must be a single string");
+  }
+#ifdef HAVE_MLXC
+  return amatrix_mlx_qr_Q_resident_real(x_key, q_out_key);
+#else
+  error("mlx qr Q resident bridge requires mlx-c");
 #endif
 }
 
