@@ -308,10 +308,18 @@
     return(FALSE)
   }
 
+  # enable_probe(register = FALSE) returns the native-availability flag; it does
+  # NOT throw when the runtime is absent, it returns FALSE. Honour that return
+  # value (as test-regression-arrayfire-matmul-layout.R does) instead of
+  # treating "did not error" as ready — otherwise a source-tree arrayfire that
+  # loads but has no working libaf (e.g. a CI runner) reports ready and the
+  # conformance ops error at run time.
   isTRUE(tryCatch({
-    enable_probe(register = FALSE)
-    register_backend(overwrite = TRUE)
-    TRUE
+    ready <- isTRUE(enable_probe(register = FALSE))
+    if (ready) {
+      register_backend(overwrite = TRUE)
+    }
+    ready
   }, error = function(e) FALSE))
 }
 

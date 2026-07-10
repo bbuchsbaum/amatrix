@@ -1,6 +1,21 @@
 for (spec in optional_backend_specs()) {
   test_that(sprintf("core harness integrates with optional backend package %s", spec$package), {
     skip_if_backend_package_missing(spec)
+    # This block executes real backend compute (matmul/qr/solve/... below), so a
+    # loadable package is not sufficient: the native runtime must be functional.
+    # arrayfire is the one backend whose package builds and loads from source
+    # even when its native runtime (libaf) is absent (mlx/opencl fail to build in
+    # that case and are already skipped above), so the ops would error at run
+    # time. Probe the native backend and skip cleanly if it is unavailable,
+    # exactly as test-regression-arrayfire-matmul-layout.R does.
+    if (identical(spec$backend, "arrayfire")) {
+      af_ns <- optional_backend_namespace(spec$package)
+      enable_probe <- get("amatrix_arrayfire_enable_probe", envir = af_ns, inherits = FALSE)
+      skip_if_not(
+        isTRUE(tryCatch(enable_probe(register = FALSE), error = function(e) FALSE)),
+        "arrayfire native backend not available"
+      )
+    }
 
     ns <- optional_backend_namespace(spec$package)
     register_backend <- get(spec$register_fun, envir = ns, inherits = FALSE)

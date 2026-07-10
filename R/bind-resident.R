@@ -58,7 +58,7 @@ amatrix_bind_resident <- function(x, backend = NULL, op = NULL, y = NULL) {
   }
 
   backend_obj <- .amatrix_get_backend(backend_name)
-  if (!isTRUE(backend_obj$available())) {
+  if (!.amatrix_backend_available_safe(backend_obj)) {
     stop(sprintf("backend '%s' is not available", backend_name), call. = FALSE)
   }
   if (!.amatrix_backend_residency_capable(backend_obj)) {

@@ -32,7 +32,7 @@
     backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
     if (is.null(backend) ||
         !isTRUE(.amatrix_backend_health_eligible(backend_name)) ||
-        !isTRUE(backend$available())) {
+        !.amatrix_backend_available_safe(backend)) {
       next
     }
 

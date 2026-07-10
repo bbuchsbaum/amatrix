@@ -61,7 +61,7 @@ amatrix_warm <- function(
   for (be in backend) {
     be_obj <- tryCatch(.amatrix_get_backend(be), error = function(e) NULL)
 
-    if (is.null(be_obj) || !isTRUE(be_obj$available())) {
+    if (is.null(be_obj) || !.amatrix_backend_available_safe(be_obj)) {
       results[[be]] <- list(warmed = FALSE, reason = "unavailable", elapsed_ms = NA_real_)
       if (!quiet) message(sprintf("amatrix_warm: '%s' not available, skipping", be))
       next

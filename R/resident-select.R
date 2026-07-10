@@ -55,7 +55,7 @@ amatrix_resident_backend_for <- function(x, op = NULL, y = NULL) {
     backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
     if (is.null(backend) ||
         !isTRUE(.amatrix_backend_health_eligible(backend_name)) ||
-        !isTRUE(backend$available()) ||
+        !.amatrix_backend_available_safe(backend) ||
         !.amatrix_backend_residency_capable(backend) ||
         !(x@precision %in% unique(backend$precision_modes()))) {
       next

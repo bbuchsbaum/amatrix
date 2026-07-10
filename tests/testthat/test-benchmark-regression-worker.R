@@ -75,6 +75,14 @@ test_that("benchmark regression worker activates OpenCL groups without blanket u
   repo_root <- ctx$repo_root
   helper_env <- ctx$helper_env
 
+  # This block asserts the OpenCL worker produces non-"unavailable" rows, which
+  # requires a functional OpenCL benchmark entry. Skip (rather than fail) when
+  # it is unavailable here, matching the Metal/OpenCL siblings below.
+  opencl_spec <- helper_env$.benchmark_optional_backend_specs(include_arrayfire = FALSE)[["opencl"]]
+  if (!isTRUE(helper_env$.benchmark_enable_backend(opencl_spec))) {
+    skip("OpenCL benchmark helper is unavailable in this environment")
+  }
+
   plan <- list(list(
     group_id = "dense-opencl-rsvd",
     suite = "dense",

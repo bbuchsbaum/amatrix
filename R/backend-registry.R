@@ -528,6 +528,14 @@ amatrix_backend_precision_modes <- function(name) {
 #' @seealso \code{\link{amatrix_backend_names}},
 #'   \code{\link{amatrix_register_backend}}
 #' @export
+# A backend's available() probe may itself error in degraded environments
+# (e.g. its namespace loaded without the compiled bridge, so .Call cannot
+# resolve the native symbol). Status, policy, and planning must treat a
+# throwing probe as "not available" — never propagate the error.
+.amatrix_backend_available_safe <- function(backend) {
+  isTRUE(tryCatch(backend$available(), error = function(e) FALSE))
+}
+
 amatrix_backend_status <- function(names = NULL) {
   if (is.null(names)) {
     if (.amatrix_optional_backends_enabled()) {
@@ -572,7 +580,7 @@ amatrix_backend_status <- function(names = NULL) {
       }
       FALSE
     } else {
-      isTRUE(backend$available())
+      .amatrix_backend_available_safe(backend)
     }
 
     data.frame(
@@ -681,7 +689,15 @@ amatrix_backend_health_probe <- function(name, tol = NULL) {
     return(invisible(.amatrix_backend_health_get(name)))
   }
 
-  if (!isTRUE(backend$available())) {
+  availability <- tryCatch(backend$available(), error = function(e) e)
+  if (inherits(availability, "error")) {
+    .amatrix_backend_health_mark(
+      name, "unhealthy",
+      sprintf("backend$available() errored: %s", conditionMessage(availability))
+    )
+    return(invisible(.amatrix_backend_health_get(name)))
+  }
+  if (!isTRUE(availability)) {
     .amatrix_backend_health_mark(name, "unhealthy", "backend$available() returned FALSE")
     return(invisible(.amatrix_backend_health_get(name)))
   }

@@ -78,6 +78,22 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
   prepare_benchmark_libpaths()
   .benchmark_debug_state(sprintf("ensure_optional_backend_namespace start package=%s repo_dir=%s", package, repo_dir %||% "<null>"))
 
+  # Prefer the INSTALLED backend: it is the deployable artifact benchmark
+  # regression is meant to measure, and a source-tree load_all() can silently
+  # pick up a stale compiled .so whose native symbols predate the R code
+  # (observed: "amatrix_mlx_resident_store_bridge not resolved" while the
+  # availability probe still passed). Set AMATRIX_BENCH_SOURCE_BACKENDS=1 to
+  # benchmark the working tree instead.
+  prefer_source <- identical(Sys.getenv("AMATRIX_BENCH_SOURCE_BACKENDS", unset = ""), "1")
+  if (!prefer_source && requireNamespace(package, quietly = TRUE)) {
+    ns <- loadNamespace(package)
+    .benchmark_debug(
+      "ensure_optional_backend_namespace loaded installed package=", package,
+      " ; ns_path=", getNamespaceInfo(ns, "path")
+    )
+    return(ns)
+  }
+
   if (!is.null(repo_dir) && dir.exists(repo_dir) && requireNamespace("pkgload", quietly = TRUE)) {
     pkgload_error <- NULL
     source_ns <- tryCatch(
@@ -115,20 +131,10 @@ ensure_optional_backend_namespace <- function(package, repo_dir = NULL) {
 
   if (requireNamespace(package, quietly = TRUE)) {
     ns <- loadNamespace(package)
-    ns_path <- getNamespaceInfo(ns, "path")
     .benchmark_debug(
       "ensure_optional_backend_namespace loaded installed package=", package,
-      " ; ns_path=", ns_path
+      " ; ns_path=", getNamespaceInfo(ns, "path")
     )
-    if (!is.null(repo_dir) && dir.exists(repo_dir)) {
-      warning(
-        sprintf(
-          "Backend '%s' loaded from installed path (%s) instead of source (%s) — installed .so may be stale",
-          package, ns_path, repo_dir
-        ),
-        call. = FALSE, immediate. = TRUE
-      )
-    }
     return(ns)
   }
 

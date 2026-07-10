@@ -81,7 +81,7 @@ amatrix_calibrate <- function(
 
   for (be in backend) {
     be_obj <- tryCatch(.amatrix_get_backend(be), error = function(e) NULL)
-    if (is.null(be_obj) || !isTRUE(be_obj$available())) {
+    if (is.null(be_obj) || !.amatrix_backend_available_safe(be_obj)) {
       if (!quiet) message(sprintf("amatrix_calibrate: '%s' not available, skipping", be))
       next
     }

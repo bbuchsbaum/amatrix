@@ -105,7 +105,7 @@ setMethod("show", "amSVD", function(object) {
   }
 
   backend <- tryCatch(.amatrix_get_backend(name), error = function(e) NULL)
-  if (is.null(backend) || !isTRUE(backend$available())) {
+  if (is.null(backend) || !.amatrix_backend_available_safe(backend)) {
     return(FALSE)
   }
 
@@ -159,7 +159,7 @@ setMethod("show", "amSVD", function(object) {
   for (backend_name in candidates) {
     backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
     if (is.null(backend) ||
-        !isTRUE(backend$available()) ||
+        !.amatrix_backend_available_safe(backend) ||
         !.amatrix_backend_residency_capable(backend) ||
         !(X@precision %in% unique(backend$precision_modes()))) {
       next
@@ -334,7 +334,7 @@ setMethod("show", "amSVD", function(object) {
 
   if (inherits(work_x, "adgeMatrix") && !is.null(target_backend)) {
     backend <- tryCatch(.amatrix_get_backend(target_backend), error = function(e) NULL)
-    if (!is.null(backend) && isTRUE(backend$available()) && is.function(backend$rsvd)) {
+    if (!is.null(backend) && .amatrix_backend_available_safe(backend) && is.function(backend$rsvd)) {
       fast_res <- backend$rsvd(
         work_x,
         k = as.integer(k),

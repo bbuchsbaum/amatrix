@@ -189,7 +189,7 @@ sinkhorn <- function(
   }
 
   backend <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
-  if (is.null(backend) || !isTRUE(backend$available()) || !.amatrix_backend_residency_capable(backend)) {
+  if (is.null(backend) || !.amatrix_backend_available_safe(backend) || !.amatrix_backend_residency_capable(backend)) {
     return(NULL)
   }
 

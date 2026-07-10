@@ -47,7 +47,7 @@
     for (backend_name in candidates) {
       backend_obj <- tryCatch(.amatrix_get_backend(backend_name), error = function(e) NULL)
       if (is.null(backend_obj) ||
-          !isTRUE(backend_obj$available()) ||
+          !.amatrix_backend_available_safe(backend_obj) ||
           !.amatrix_backend_residency_capable(backend_obj)) {
         next
       }

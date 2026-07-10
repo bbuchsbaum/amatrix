@@ -359,9 +359,40 @@ optional_backend_namespace <- function(package) {
         return(ns)
       }
     }
-    pkgload::load_all(repo_dir, quiet = TRUE, helpers = FALSE, export_all = FALSE)
-    if (package %in% loadedNamespaces()) {
-      return(asNamespace(package))
+    # A genuine source checkout can still be unbuildable in this environment
+    # (e.g. the backend's native GPU SDK is absent on a CI runner). load_all()
+    # then aborts inside compile_dll with "System command 'R' failed"; letting
+    # that propagate turns every skip guard into a hard error. Treat an
+    # unbuildable/unloadable source tree as "backend unavailable" and fall
+    # through to the installed-package lookup below (mirrors the robust
+    # ensure_optional_backend_namespace() in tools/benchmark-helpers.R).
+    loaded <- tryCatch(
+      {
+        pkgload::load_all(repo_dir, quiet = TRUE, helpers = FALSE, export_all = FALSE)
+        package %in% loadedNamespaces()
+      },
+      error = function(e) FALSE
+    )
+    if (isTRUE(loaded)) {
+      ns <- asNamespace(package)
+      # A source tree can load its R code yet carry a stale or absent compiled
+      # bridge; the availability probe then throws '.Call ... not resolved'
+      # instead of returning FALSE, and that degraded namespace poisons every
+      # consumer for the rest of the run. Validate the probe; if it cannot
+      # even run, unload and prefer the installed package below.
+      probe_ok <- TRUE
+      if (!is.null(spec) && !is.null(spec$available_fun) &&
+          exists(spec$available_fun, envir = ns, inherits = FALSE)) {
+        probe <- tryCatch(
+          get(spec$available_fun, envir = ns, inherits = FALSE)(),
+          error = function(e) e
+        )
+        probe_ok <- !inherits(probe, "error")
+      }
+      if (probe_ok) {
+        return(ns)
+      }
+      try(pkgload::unload(package), silent = TRUE)
     }
   }
 
@@ -398,5 +429,12 @@ backend_package_available <- function(spec) {
   if (is.null(ns)) {
     stop(sprintf("backend package '%s' is unavailable", spec$package), call. = FALSE)
   }
-  get(spec$available_fun, envir = ns, inherits = FALSE)()
+  # The availability probe itself can error in degraded harnesses (e.g. the
+  # namespace loaded from source without its compiled bridge, so .Call cannot
+  # resolve the native symbol). A probe that cannot run means the backend is
+  # not available here; report FALSE so guards skip instead of erroring.
+  tryCatch(
+    isTRUE(get(spec$available_fun, envir = ns, inherits = FALSE)()),
+    error = function(e) FALSE
+  )
 }

@@ -62,7 +62,7 @@ amatrix_execution_info <- function(
     backend <- tryCatch(.amatrix_get_backend(resident_backend), error = function(e) NULL)
     if (!is.null(backend) &&
         isTRUE(.amatrix_backend_health_eligible(resident_backend)) &&
-        isTRUE(backend$available()) &&
+        .amatrix_backend_available_safe(backend) &&
         x@precision %in% unique(backend$precision_modes()) &&
         .amatrix_backend_supports_resident_op(backend, op, x = x, y = y)) {
       return(list(name = resident_backend, backend = backend))
@@ -151,7 +151,7 @@ amatrix_backend_plan <- function(x, op, y = NULL) {
       entry$health <- health$status
       entry$health_reason <- health$reason %||% NA_character_
       entry$health_eligible <- .amatrix_backend_health_eligible(candidate_name)
-      entry$available <- isTRUE(backend$available())
+      entry$available <- .amatrix_backend_available_safe(backend)
       entry$precision_compatible <- x@precision %in% entry$precision_modes
       if (entry$available && entry$precision_compatible && entry$health_eligible) {
         entry$supported_cold <- isTRUE(backend$supports(op = op, x = x, y = y))
