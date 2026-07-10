@@ -1,12 +1,18 @@
 Package: amatrix.opencl
 Type: Package
-Title: OpenCL Backend Scaffold for amatrix
-Version: 0.0.0.9000
+Title: OpenCL and CLBlast Backend for 'amatrix'
+Version: 0.1.0
 Authors@R: person("Bradley", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
-Description: OpenCL backend package for amatrix. Registers a backend
-    contract implementation and provides a safe mock bridge that can be built
-    with or without OpenCL and CLBlast present at compile time.
+Description: Cross-platform GPU backend for the 'amatrix' package using
+    'OpenCL' with 'CLBlast' for dense float32 linear algebra. Both libraries
+    are located at run time (never linked), so the package builds and installs
+    on any platform, including Windows; when no OpenCL runtime or 'CLBlast'
+    is present the backend reports itself unavailable and 'amatrix' falls
+    back to CPU execution. See amatrix_install_clblast() for a guided
+    'CLBlast' setup.
 License: MIT + file LICENSE
+URL: https://github.com/bbuchsbaum/amatrix
+BugReports: https://github.com/bbuchsbaum/amatrix/issues
 Encoding: UTF-8
 Depends:
     R (>= 4.3)

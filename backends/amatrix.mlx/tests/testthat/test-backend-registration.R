@@ -7,11 +7,15 @@ test_that("mlx backend advertises dense-first capabilities", {
 
   expect_identical(backend$available(), amatrix_mlx_is_available())
   expect_false(backend$supports("matmul", amatrix::adgeMatrix(matrix(1:4, nrow = 2))))
-  expect_true(backend$supports("matmul", amatrix::adgeMatrix(matrix(1, nrow = 128, ncol = 128), precision = "fast")))
-  expect_true(backend$supports("ewise", amatrix::adgeMatrix(matrix(1:4, nrow = 2), precision = "fast")))
+  # supports() gates fast ops on dispatch size thresholds
+  # (.amatrix_mlx_product_thresholds): below-threshold inputs stay on CPU.
+  expect_true(backend$supports("matmul", amatrix::adgeMatrix(matrix(1, nrow = 512, ncol = 512), precision = "fast")))
+  expect_false(backend$supports("matmul", amatrix::adgeMatrix(matrix(1, nrow = 128, ncol = 128), precision = "fast")))
+  expect_true(backend$supports("ewise", amatrix::adgeMatrix(matrix(1, nrow = 512, ncol = 512), precision = "fast")))
+  expect_false(backend$supports("ewise", amatrix::adgeMatrix(matrix(1:4, nrow = 2), precision = "fast")))
   expect_true(backend$supports("qr", amatrix::adgeMatrix(matrix(1, nrow = 256, ncol = 256), precision = "fast")))
   expect_false(backend$supports("solve", amatrix::adgeMatrix(matrix(1:4, nrow = 2))))
-  expect_false(backend$supports("matmul", amatrix::adgeMatrix(matrix(1, nrow = 128, ncol = 128), precision = "strict")))
+  expect_false(backend$supports("matmul", amatrix::adgeMatrix(matrix(1, nrow = 512, ncol = 512), precision = "strict")))
   expect_false(backend$supports("matmul", amatrix::adgCMatrix(matrix(c(1, 0, 0, 1), nrow = 2))))
 })
 

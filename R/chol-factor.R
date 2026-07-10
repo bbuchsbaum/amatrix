@@ -108,6 +108,17 @@ setMethod("show", "amChol", function(object) {
   invisible(object)
 })
 
+#' Materialize the dense upper Cholesky factor of an amChol
+#'
+#' Returns the factor as a base R matrix regardless of where it currently
+#' lives: the host copy when present, otherwise the resident/deferred factor
+#' object is downloaded and cached.
+#'
+#' @param x An \code{\linkS4class{amChol}} object.
+#' @param ... Ignored.
+#' @return A base R numeric matrix containing the upper-triangular factor.
+#' @method as.matrix amChol
+#' @export
 as.matrix.amChol <- function(x, ...) .amatrix_amchol_factor_matrix(x)
 
 #' Compute the Cholesky factorization of an adgeMatrix

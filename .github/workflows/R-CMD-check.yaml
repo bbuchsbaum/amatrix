@@ -176,3 +176,54 @@ jobs:
             exit 1
           fi
           echo "Baseline purity gate OK."
+
+  # ---------------------------------------------------------------------------
+  # Backend sub-package checks: R CMD build + check for each backends/* package
+  # on its target OS, WITHOUT the native GPU library present. This enforces the
+  # graceful-degradation contract (mock bridge / available = FALSE) that the
+  # R-universe source builders exercise, and proves the Windows build path for
+  # amatrix.opencl / amatrix.arrayfire. Runners have no GPU: native execution
+  # is certified separately (planning_docs/backend-certification.md).
+  # Gate is on check ERROR; pre-existing WARNINGs are tracked for cleanup.
+  # ---------------------------------------------------------------------------
+  backend-checks:
+    runs-on: ${{ matrix.config.os }}
+    name: backends (${{ matrix.config.os }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: ubuntu-latest,  backends: "amatrix.mlx amatrix.metal amatrix.opencl amatrix.arrayfire"}
+          - {os: macos-latest,   backends: "amatrix.mlx amatrix.metal"}
+          - {os: windows-latest, backends: "amatrix.opencl amatrix.arrayfire"}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      _R_CHECK_FORCE_SUGGESTS_: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install dependencies and core amatrix
+        shell: Rscript {0}
+        run: |
+          install.packages(c("Matrix", "jsonlite", "testthat", "callr"))
+          install.packages(".", repos = NULL, type = "source")
+
+      - name: Build and check backend packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pkg in ${{ matrix.config.backends }}; do
+            echo "::group::$pkg"
+            R CMD build "backends/$pkg"
+            R CMD check --no-manual "$pkg"_*.tar.gz
+            echo "::endgroup::"
+          done

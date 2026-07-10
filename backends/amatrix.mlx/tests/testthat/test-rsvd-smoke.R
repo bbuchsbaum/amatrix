@@ -31,7 +31,9 @@ test_that("mlx rsvd bridge and factor path smoke test on native backend", {
   bridge_rel_sv_err <- max(abs(bridge_fit$d - ref_d) / pmax(abs(ref_d), 1e-12))
   factor_rel_sv_err <- max(abs(factor_fit@d - ref_d) / pmax(abs(ref_d), 1e-12))
 
-  expect_named(bridge_fit, c("u", "d", "v"))
+  # The bridge returns diagnostic fields (iter, mprod) beyond the core u/d/v
+  # contract; require the contract fields, allow diagnostics.
+  expect_contains(names(bridge_fit), c("u", "d", "v"))
   expect_equal(dim(bridge_fit$u), c(nrow(x), k))
   expect_length(bridge_fit$d, k)
   expect_equal(dim(bridge_fit$v), c(ncol(x), k))

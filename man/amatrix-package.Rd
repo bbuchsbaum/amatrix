@@ -33,7 +33,7 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Brad Buchsbaum \email{brad.buchsbaum@gmail.com}
+\strong{Maintainer}: Bradley Buchsbaum \email{brad.buchsbaum@gmail.com}
 
 }
 \keyword{internal}

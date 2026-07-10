@@ -1,13 +1,16 @@
 Package: amatrix.metal
 Type: Package
-Title: Metal Backend Scaffold for amatrix
-Version: 0.0.0.9000
+Title: Metal Sparse Backend for 'amatrix' on macOS
+Version: 0.1.0
 Authors@R: person("Bradley", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
-Description: Apple Metal backend package for amatrix. Registers an optional
-    sparse-first backend contract implementation and provides a direct
-    Objective-C++ bridge for sparse matrix times dense matrix products on
-    macOS when Metal is available at build time.
+Description: Experimental sparse-first GPU backend for the 'amatrix' package
+    using Apple 'Metal'. Provides a direct Objective-C++ bridge for sparse
+    matrix times dense matrix products on macOS; on other platforms (or
+    without the 'Metal' frameworks) it builds a mock bridge and reports
+    itself unavailable, so installation is safe anywhere.
 License: MIT + file LICENSE
+URL: https://github.com/bbuchsbaum/amatrix
+BugReports: https://github.com/bbuchsbaum/amatrix/issues
 Encoding: UTF-8
 Depends:
     R (>= 4.3)

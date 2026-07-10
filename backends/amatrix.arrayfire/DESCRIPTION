@@ -1,12 +1,15 @@
 Package: amatrix.arrayfire
 Type: Package
-Title: ArrayFire Backend Scaffold for amatrix
-Version: 0.0.0.9000
+Title: ArrayFire Backend for 'amatrix'
+Version: 0.1.0
 Authors@R: person("Bradley", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
-Description: ArrayFire backend package for amatrix. Registers a backend
-    contract implementation and uses the ArrayFire C API for dense matmul when
-    ArrayFire is available at build time.
+Description: Portable GPU backend for the 'amatrix' package using the
+    'ArrayFire' C API for dense float32 linear algebra. Builds with or without
+    the 'ArrayFire' runtime present; without it the backend reports itself
+    unavailable and 'amatrix' falls back to CPU execution.
 License: MIT + file LICENSE
+URL: https://github.com/bbuchsbaum/amatrix
+BugReports: https://github.com/bbuchsbaum/amatrix/issues
 Encoding: UTF-8
 Depends:
     R (>= 4.3)

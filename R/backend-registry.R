@@ -497,6 +497,14 @@ amatrix_backend_precision_modes <- function(name) {
   unique(backend$precision_modes())
 }
 
+# A backend's available() probe may itself error in degraded environments
+# (e.g. its namespace loaded without the compiled bridge, so .Call cannot
+# resolve the native symbol). Status, policy, and planning must treat a
+# throwing probe as "not available" — never propagate the error.
+.amatrix_backend_available_safe <- function(backend) {
+  isTRUE(tryCatch(backend$available(), error = function(e) FALSE))
+}
+
 #' Summarise the status of registered backends
 #'
 #' Returns a data.frame with one row per backend describing its
@@ -528,14 +536,6 @@ amatrix_backend_precision_modes <- function(name) {
 #' @seealso \code{\link{amatrix_backend_names}},
 #'   \code{\link{amatrix_register_backend}}
 #' @export
-# A backend's available() probe may itself error in degraded environments
-# (e.g. its namespace loaded without the compiled bridge, so .Call cannot
-# resolve the native symbol). Status, policy, and planning must treat a
-# throwing probe as "not available" — never propagate the error.
-.amatrix_backend_available_safe <- function(backend) {
-  isTRUE(tryCatch(backend$available(), error = function(e) FALSE))
-}
-
 amatrix_backend_status <- function(names = NULL) {
   if (is.null(names)) {
     if (.amatrix_optional_backends_enabled()) {

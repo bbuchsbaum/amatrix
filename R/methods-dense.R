@@ -574,6 +574,7 @@ setMethod("solve", signature(a = "adgeMatrix", b = "ANY"), function(a, b, ...) a
 #' det(A)
 #'
 #' @keywords internal
+#' @method determinant adgeMatrix
 #' @export
 determinant.adgeMatrix <- function(x, logarithm = TRUE, ...) {
   base::determinant(as.matrix(amatrix_materialize_host(x)),

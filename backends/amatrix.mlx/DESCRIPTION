@@ -1,12 +1,16 @@
 Package: amatrix.mlx
 Type: Package
-Title: MLX Backend Scaffold for amatrix
-Version: 0.0.0.9000
+Title: MLX Backend for 'amatrix' on Apple Silicon
+Version: 0.1.0
 Authors@R: person("Bradley", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
-Description: Apple MLX backend package for amatrix. Registers a backend
-    contract implementation and uses the MLX C API for dense product
-    operations when mlx-c is available at build time.
+Description: GPU-accelerated backend for the 'amatrix' package using Apple
+    'MLX' via the 'mlx-c' C API. Registers dense float32 matrix products,
+    factorizations, and resident (GPU-memory) execution on Apple Silicon;
+    builds a mock bridge and reports itself unavailable when 'mlx-c' is
+    absent, so installation is safe on any platform.
 License: MIT + file LICENSE
+URL: https://github.com/bbuchsbaum/amatrix
+BugReports: https://github.com/bbuchsbaum/amatrix/issues
 Encoding: UTF-8
 LazyData: true
 Depends:

@@ -32,7 +32,9 @@ test_that("mlx chol bridge and factor path smoke test on native backend", {
   bridge_ref_rel <- frob_norm(bridge_sol - ref_sol) / frob_norm(ref_sol)
   bridge_resid_rel <- frob_norm(spd %*% bridge_sol - rhs) / frob_norm(rhs)
   bridge_batched_rel <- frob_norm(bridge_sol - by_col) / frob_norm(by_col)
-  factor_recon_rel <- frob_norm(crossprod(factor_fit@factor) - spd) / frob_norm(spd)
+  # @factor may be empty when the factor lives resident (factor_obj); the
+  # public accessor as.matrix() materializes the dense upper factor.
+  factor_recon_rel <- frob_norm(crossprod(as.matrix(factor_fit)) - spd) / frob_norm(spd)
   factor_ref_rel <- frob_norm(factor_sol - ref_sol) / frob_norm(ref_sol)
   factor_resid_rel <- frob_norm(spd %*% factor_sol - rhs) / frob_norm(rhs)
 
