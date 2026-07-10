@@ -1,11 +1,8 @@
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Error.h>
-
-#ifdef error
-#undef error
-#endif
-
+// C++ and Objective-C headers MUST precede the R headers: Rinternals.h
+// (without R_NO_REMAP) defines function-like macros such as length() and
+// error() that poison libc++/Foundation headers on newer SDKs
+// ("too many arguments provided to function-like macro invocation" in
+// libc++ __locale, seen with the macOS 26 SDK).
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -16,6 +13,14 @@
 #ifdef HAVE_METAL
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#endif
+
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Error.h>
+
+#ifdef error
+#undef error
 #endif
 
 namespace {
