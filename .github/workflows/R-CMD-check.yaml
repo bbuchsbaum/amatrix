@@ -123,6 +123,9 @@ jobs:
             stop("Coverage-table gate failed — see output above.")
           }
 
+      - name: Coverage-table sync gate (exports + harness ops vs quality-tracking.md)
+        run: Rscript tools/sync-coverage-table.R
+
       - name: Dispatch audit gate (Track 3 machinery, optional until delivered)
         run: |
           if [ -f tools/audit-dispatch.R ]; then
