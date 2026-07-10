@@ -440,11 +440,20 @@ benchmark_time_ms <- function(fn, reps = 7L, warmup = 1L) {
     }
   }
 
+  # proc.time()'s elapsed clock has ~1 ms resolution on macOS, which quantizes
+  # sub-millisecond cells to 0/1 ms and turns baseline ratios into 0/Inf noise.
+  # Use bench's monotonic high-resolution clock when available (the documented
+  # methodology, quality-tracking.md §3), falling back to Sys.time() (µs).
+  hires_now <- if (requireNamespace("bench", quietly = TRUE)) {
+    bench::hires_time
+  } else {
+    function() as.numeric(Sys.time())
+  }
   timings <- vapply(seq_len(reps), function(idx) {
     gc()
-    start <- proc.time()[["elapsed"]]
+    start <- hires_now()
     fn()
-    (proc.time()[["elapsed"]] - start) * 1000
+    (hires_now() - start) * 1000
   }, numeric(1))
 
   list(

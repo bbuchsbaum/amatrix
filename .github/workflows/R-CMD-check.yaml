@@ -227,6 +227,14 @@ jobs:
           for pkg in ${{ matrix.config.backends }}; do
             echo "::group::$pkg"
             R CMD build "backends/$pkg"
-            R CMD check --no-manual "$pkg"_*.tar.gz
+            if ! R CMD check --no-manual "$pkg"_*.tar.gz; then
+              echo "::group::$pkg 00install.out"
+              cat "$pkg.Rcheck/00install.out" 2>/dev/null || true
+              echo "::endgroup::"
+              echo "::group::$pkg testthat.Rout.fail"
+              cat "$pkg.Rcheck/tests/testthat.Rout.fail" 2>/dev/null || true
+              echo "::endgroup::"
+              exit 1
+            fi
             echo "::endgroup::"
           done
