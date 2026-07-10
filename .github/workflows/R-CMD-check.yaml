@@ -187,7 +187,7 @@ jobs:
   # R-universe source builders exercise, and proves the Windows build path for
   # amatrix.opencl / amatrix.arrayfire. Runners have no GPU: native execution
   # is certified separately (planning_docs/backend-certification.md).
-  # Gate is on check ERROR; pre-existing WARNINGs are tracked for cleanup.
+  # Gate is on check ERROR or WARNING (all warnings cleared 2026-07-10).
   # ---------------------------------------------------------------------------
   backend-checks:
     runs-on: ${{ matrix.config.os }}
@@ -234,6 +234,11 @@ jobs:
               echo "::group::$pkg testthat.Rout.fail"
               cat "$pkg.Rcheck/tests/testthat.Rout.fail" 2>/dev/null || true
               echo "::endgroup::"
+              exit 1
+            fi
+            if grep -qE '^Status:.*WARNING' "$pkg.Rcheck/00check.log"; then
+              echo "::error::$pkg check produced WARNINGs:"
+              grep -B1 -A6 'WARNING$' "$pkg.Rcheck/00check.log" || true
               exit 1
             fi
             echo "::endgroup::"
