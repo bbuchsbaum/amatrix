@@ -52,6 +52,7 @@ test_that("mlx bridge boundary reports coherent native status", {
 })
 
 test_that("mlx bridge boundary is callable", {
+  skip_if_not(amatrix_mlx_native_available(), "mlx native backend not available")
   backend <- amatrix_mlx_backend()
   x <- matrix(c(1, 2, 3, 4), nrow = 2)
 
@@ -77,6 +78,7 @@ test_that("mlx bridge boundary is callable", {
 })
 
 test_that("mlx qr bridge can stamp compact representation mode", {
+  skip_if_not(amatrix_mlx_native_available(), "mlx native backend not available")
   old <- options(amatrix.mlx.qr_helper_mode = "compact")
   on.exit(options(old), add = TRUE)
 
@@ -89,6 +91,7 @@ test_that("mlx qr bridge can stamp compact representation mode", {
 })
 
 test_that("mlx compact qr can use tsqr-blocked factorization", {
+  skip_if_not(amatrix_mlx_native_available(), "mlx native backend not available")
   old <- options(amatrix.mlx.qr_helper_mode = "compact", amatrix.mlx.qr_compact_method = "tsqr", amatrix.mlx.qr_tsqr_block_rows = 4L)
   on.exit(options(old), add = TRUE)
 

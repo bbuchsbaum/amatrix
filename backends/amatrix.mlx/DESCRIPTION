@@ -17,9 +17,10 @@ Depends:
     R (>= 4.3)
 Imports:
     amatrix,
-    methods,
-    Matrix
+    methods
 Suggests:
+    irlba,
+    Matrix,
     testthat (>= 3.0.0)
 OS_type: unix
 SystemRequirements: mlx-c (>= 0.6, via Homebrew or MLX_C_PREFIX); Apple

@@ -17,7 +17,7 @@
 amatrix_arrayfire_register(overwrite = TRUE)
 amatrix_arrayfire_enable_probe(register = TRUE)
 amatrix_arrayfire_is_available()
-amatrix_arrayfire_native_available()
+amatrix_arrayfire_native_available(force = FALSE)
 amatrix_arrayfire_capabilities()
 amatrix_arrayfire_diagnostics()
 amatrix_arrayfire_bridge_info()
@@ -28,6 +28,8 @@ amatrix_arrayfire_backend()
     backend of the same name (default \code{TRUE}).}
   \item{register}{logical; whether to register the backend with
     \pkg{amatrix} after enabling the runtime probe (default \code{TRUE}).}
+  \item{force}{logical; when \code{TRUE} the cached probe result is
+    discarded and the native runtime is probed again (default \code{FALSE}).}
 }
 \value{
   \code{amatrix_arrayfire_register} returns the backend name invisibly.

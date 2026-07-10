@@ -1,4 +1,7 @@
 PKG_CPPFLAGS = @AF_CPPFLAGS@
-PKG_LIBS = @AF_LIBS@
+# The BDC SVD path (dgebrd/dorgbr/dbdsdc) calls R's LAPACK directly; macOS
+# only tolerates the missing link via -undefined dynamic_lookup, Windows and
+# strict Linux linkers do not.
+PKG_LIBS = @AF_LIBS@ $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 # For CUDA/ROCm builds where af_svd is known stable, uncomment:
 #   PKG_CPPFLAGS += -DAMATRIX_AF_NATIVE_SVD_SAFE

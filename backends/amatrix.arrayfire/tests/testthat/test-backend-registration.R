@@ -14,10 +14,6 @@ test_that("arrayfire backend advertises dense-first capabilities", {
   expect_false(backend$supports("ewise", amatrix::adgeMatrix(matrix(1, nrow = 1024, ncol = 1024), precision = "fast")))
   expect_false(backend$supports("rowSums", amatrix::adgeMatrix(matrix(1, nrow = 1024, ncol = 1024), precision = "fast")))
   expect_false(backend$supports("colSums", amatrix::adgeMatrix(matrix(1, nrow = 1024, ncol = 1024), precision = "fast")))
-  old_backend <- amatrix_arrayfire_active_backend()
-  amatrix_arrayfire_set_backend("cpu")
-  on.exit(amatrix_arrayfire_set_backend(if (identical(old_backend, 4L)) "opencl" else "cpu"), add = TRUE)
-  expect_true(backend$supports("qr", amatrix::adgeMatrix(matrix(1, nrow = 512, ncol = 512), precision = "fast")))
   expect_false(backend$supports("solve", amatrix::adgeMatrix(matrix(1:4, nrow = 2))))
   expect_false(backend$supports("matmul", amatrix::adgeMatrix(matrix(1, nrow = 512, ncol = 512), precision = "strict")))
   expect_false(backend$supports("matmul", amatrix::adgCMatrix(matrix(c(1, 0, 0, 1), nrow = 2))))
@@ -56,7 +52,24 @@ test_that("arrayfire bridge boundary reports coherent native status", {
   expect_identical(info$capabilities, amatrix_arrayfire_capabilities())
 })
 
+test_that("arrayfire qr capability is advertised on the AF CPU backend", {
+  # qr_safe() consults the ACTIVE ArrayFire backend, so this needs libaf.
+  skip_if_not(
+    isTRUE(tryCatch(amatrix_arrayfire_native_available(force = TRUE), error = function(e) FALSE)),
+    "arrayfire native backend not available"
+  )
+  backend <- amatrix_arrayfire_backend()
+  old_backend <- amatrix_arrayfire_active_backend()
+  amatrix_arrayfire_set_backend("cpu")
+  on.exit(amatrix_arrayfire_set_backend(if (identical(old_backend, 4L)) "opencl" else "cpu"), add = TRUE)
+  expect_true(backend$supports("qr", amatrix::adgeMatrix(matrix(1, nrow = 512, ncol = 512), precision = "fast")))
+})
+
 test_that("arrayfire bridge boundary is callable", {
+  skip_if_not(
+    isTRUE(tryCatch(amatrix_arrayfire_native_available(force = TRUE), error = function(e) FALSE)),
+    "arrayfire native backend not available"
+  )
   backend <- amatrix_arrayfire_backend()
   x <- matrix(c(1, 2, 3, 4), nrow = 2)
   old_backend <- amatrix_arrayfire_active_backend()
@@ -176,6 +189,23 @@ test_that("svd dispatcher routes square-ish matrices to bdc_svd when native unsa
   ref_d <- base::svd(x, nu = 0L, nv = 0L)$d
   expect_equal(sort(res$d, decreasing = TRUE), ref_d, tolerance = 1e-4,
                label = "dispatcher BDC path singular values")
+})
+
+test_that("svd dispatcher routes tall-thin matrices to ts_svd", {
+  # ts_svd runs device crossprod, so this path needs the native runtime
+  # (the BDC path above is pure LAPACK and runs anywhere).
+  skip_if_not(
+    isTRUE(tryCatch(amatrix_arrayfire_native_available(force = TRUE), error = function(e) FALSE)),
+    "arrayfire native backend not available"
+  )
+  old_probe <- getOption("amatrix.arrayfire.native_svd_available")
+  options(amatrix.arrayfire.native_svd_available = FALSE)
+  old_backend <- amatrix_arrayfire_active_backend()
+  amatrix_arrayfire_set_backend("cpu")
+  on.exit({
+    options(amatrix.arrayfire.native_svd_available = old_probe)
+    amatrix_arrayfire_set_backend(if (identical(old_backend, 4L)) "opencl" else "cpu")
+  }, add = TRUE)
 
   # Tall-thin should still go to ts_svd (aspect >= 4 bypasses BDC)
   set.seed(11)
@@ -302,6 +332,12 @@ test_that("forced availability bypasses size heuristics for backend tests", {
   old <- getOption("amatrix.arrayfire.available")
   options(amatrix.arrayfire.available = TRUE)
   on.exit(options(amatrix.arrayfire.available = old), add = TRUE)
+  # qr keeps its safety gate even under forced availability; qr_safe()
+  # consults the active AF backend, which needs libaf — use the documented
+  # experimental escape hatch so this test exercises the bypass everywhere.
+  old_qr <- getOption("amatrix.arrayfire.experimental_qr")
+  options(amatrix.arrayfire.experimental_qr = TRUE)
+  on.exit(options(amatrix.arrayfire.experimental_qr = old_qr), add = TRUE)
 
   backend <- amatrix_arrayfire_backend()
   x <- amatrix::adgeMatrix(matrix(1:4, nrow = 2), precision = "fast")

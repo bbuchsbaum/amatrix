@@ -1,4 +1,6 @@
 test_that("mlx sparse resident bridges match Matrix on small products", {
+  skip_if_not(amatrix_mlx_native_available(), "mlx native backend not available")
+  skip_if_not_installed("Matrix")
   set.seed(1)
   x_host <- Matrix::rsparsematrix(256, 128, density = 0.05)
   y_host <- matrix(rnorm(128 * 16), nrow = 128, ncol = 16)

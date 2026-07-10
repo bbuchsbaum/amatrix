@@ -18,7 +18,8 @@ Depends:
     R (>= 4.3)
 Imports:
     amatrix,
-    methods
+    methods,
+    Matrix
 Suggests:
     testthat (>= 3.0.0)
 SystemRequirements: OpenCL runtime (ships with GPU drivers; loaded at runtime,

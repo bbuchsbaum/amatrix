@@ -16,8 +16,7 @@ Depends:
     R (>= 4.3)
 Imports:
     amatrix,
-    methods,
-    Matrix
+    methods
 Suggests:
     testthat (>= 3.0.0)
 OS_type: unix

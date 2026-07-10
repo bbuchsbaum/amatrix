@@ -15,7 +15,9 @@ test_that("mlx spectral safe mode falls back without native bridge calls", {
   expect_equal(dim(sv_fit$v), c(ncol(x), 8L))
   expect_length(sv_fit$d, min(nrow(x), ncol(x)))
 
-  expect_named(rs_fit, c("u", "d", "v", "iter", "mprod"))
+  # The rsvd fallback engine depends on what is installed: irlba::svdr adds
+  # iter/mprod diagnostics, the base-R path returns only the u/d/v contract.
+  expect_contains(names(rs_fit), c("u", "d", "v"))
   expect_equal(dim(rs_fit$u), c(nrow(x), 8L))
   expect_equal(dim(rs_fit$v), c(ncol(x), 8L))
   expect_length(rs_fit$d, 8L)
