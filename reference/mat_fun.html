@@ -83,27 +83,27 @@ positive definite matrix and reconstruct the result:
 <span class="r-in"><span><span class="fu">mat_sqrt</span><span class="op">(</span><span class="va">S</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 4 x 4 Matrix of class "adgeMatrix"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>           [,1]       [,2]       [,3]       [,4]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] 2.3878623  0.6744472  0.6235799  0.1911931</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] 0.6744472  2.3122822  1.1160848 -0.2370981</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] 0.6235799  1.1160848  1.9587087 -0.2028453</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] 0.1911931 -0.2370981 -0.2028453  1.2118061</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            [,1]        [,2]        [,3]       [,4]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  2.1941853 -0.13485827 -0.11525719  0.6386226</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] -0.1348583  1.18257693 -0.02940746 -0.4459531</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.1152572 -0.02940746  1.08597129 -0.1713995</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]  0.6386226 -0.44595306 -0.17139950  2.8304459</span>
 <span class="r-in"><span><span class="fu">mat_log</span><span class="op">(</span><span class="va">S</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 4 x 4 Matrix of class "adgeMatrix"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>           [,1]       [,2]       [,3]       [,4]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] 1.5928519  0.5036866  0.4933769  0.3026269</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] 0.5036866  1.3073505  1.0988872 -0.2712384</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] 0.4933769  1.0988872  0.9410608 -0.2388235</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] 0.3026269 -0.2712384 -0.2388235  0.3190247</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]        [,2]        [,3]       [,4]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  1.49384166 -0.09758931 -0.12197059  0.5114231</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] -0.09758931  0.25252423 -0.08830011 -0.4749923</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.12197059 -0.08830011  0.14603552 -0.1830043</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]  0.51142312 -0.47499235 -0.18300425  1.9709234</span>
 <span class="r-in"><span><span class="fu">mat_pow</span><span class="op">(</span><span class="va">S</span>, <span class="op">-</span><span class="fl">1</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 4 x 4 Matrix of class "adgeMatrix"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]        [,2]       [,3]       [,4]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.27007056 -0.08690596 -0.1098987 -0.1724070</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] -0.08690596  0.50234254 -0.4068124  0.1140956</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.10989873 -0.40681239  0.6520366  0.1115524</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] -0.17240700  0.11409559  0.1115524  0.7886285</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]       [,2]       [,3]        [,4]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.25222387 0.01030074 0.04577453 -0.08982148</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.01030074 0.83620345 0.09764327  0.18523976</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]  0.04577453 0.09764327 0.88065489  0.07823660</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] -0.08982148 0.18523976 0.07823660  0.19649329</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

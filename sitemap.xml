@@ -68,6 +68,7 @@
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/amatrix_use_gpu.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/amatrix_warm.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/array_lm.html</loc></url>
+<url><loc>https://bbuchsbaum.github.io/amatrix/reference/as.matrix.amChol.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/as_adgCMatrix.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/as_adgeMatrix.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/as_adgeMatrix.resident_handle.html</loc></url>
@@ -90,6 +91,7 @@
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/crossprod-sparse-methods.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/crossprod_add_diag.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/crossprod_weighted.html</loc></url>
+<url><loc>https://bbuchsbaum.github.io/amatrix/reference/determinant.adgeMatrix.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/dist_matrix.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/dot.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/eigen-methods.html</loc></url>

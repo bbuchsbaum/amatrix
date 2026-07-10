@@ -391,6 +391,8 @@ Key help pages:
   : Warm up GPU backends to eliminate cold-start latency
 - [`array_lm()`](https://bbuchsbaum.github.io/amatrix/reference/array_lm.md)
   : Fit linear models with array-shaped response
+- [`as.matrix(`*`<amChol>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/as.matrix.amChol.md)
+  : Materialize the dense upper Cholesky factor of an amChol
 - [`as_adgCMatrix()`](https://bbuchsbaum.github.io/amatrix/reference/as_adgCMatrix.md)
   : Coerce an object to adgCMatrix
 - [`as_adgeMatrix()`](https://bbuchsbaum.github.io/amatrix/reference/as_adgeMatrix.md)

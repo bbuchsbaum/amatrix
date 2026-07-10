@@ -30,4 +30,4 @@ Useful links:
 
 ## Author
 
-**Maintainer**: Brad Buchsbaum <brad.buchsbaum@gmail.com>
+**Maintainer**: Bradley Buchsbaum <brad.buchsbaum@gmail.com>
