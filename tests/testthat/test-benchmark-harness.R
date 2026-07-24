@@ -23,6 +23,11 @@ benchmark_harness_context <- function() {
 }
 
 make_synthetic_results <- function() {
+  # These rows must use the harness's REAL emitted vocabulary or the
+  # full-key baseline join can never match: cpu cells always record
+  # dispatch_path "cold" (never "cpu"), rhs_width is the B-matrix width for
+  # matmul and 0 (not NA) for single-operand ops, and density is 0 (not NA)
+  # for dense cells. Compare any row of a freshly generated tools/baseline.csv.
   data.frame(
     suite             = c("dense", "dense", "dense", "dense", "dense"),
     op                = c("matmul", "crossprod", "rsvd", "matmul", "dist"),
@@ -30,11 +35,11 @@ make_synthetic_results <- function() {
     variant           = c("cold",   "cold",      "cold",  "warm",   "cold"),
     requested_backend = "cpu",
     dispatch_backend  = "cpu",
-    dispatch_path     = "cpu",
+    dispatch_path     = "cold",
     nrow              = c(1024L, 1024L, 1024L, 256L, 4096L),
     ncol              = c(128L,  128L,  128L,  32L,  128L),
-    rhs_width         = NA_integer_,
-    density           = NA_real_,
+    rhs_width         = c(128L,  0L,    0L,    32L,  0L),
+    density           = 0,
     density_bucket    = "dense",
     status            = "ok",
     median_ms         = c(5.0, 9.0, 13.0, 0.9, 2.5),
