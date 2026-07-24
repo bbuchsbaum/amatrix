@@ -8,6 +8,11 @@ The intended promise is:
 - trustworthy CPU fallback
 - no backend-specific logic in your high-level code
 
+> **Runnable proof:** `demopkg/amatrix.demo` in this repo is a complete
+> worked example of the hot-kernel swap — logistic regression via IRLS with
+> `crossprod_weighted()` / `xty_weighted()` / `solve()`, tested against
+> `stats::glm.fit()` and benchmarked CPU vs GPU. Start there.
+
 ## Adoption Levels
 
 There are three practical adoption levels.

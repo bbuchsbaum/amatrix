@@ -78,6 +78,8 @@ Persistent session setters such as `amatrix_set_default_policy()` and `amatrix_s
 
 For especially hot repeated paths, you can still bind resident storage explicitly with `amatrix_bind_resident()`, but that should be an optimization step rather than the default package-author workflow.
 
+If you maintain a package and want a complete worked example of this adoption path, see [`demopkg/amatrix.demo`](demopkg/amatrix.demo) in this repo: logistic regression via IRLS whose hot kernels are `amatrix` calls — the same function runs on plain matrices (CPU) and on `adgeMatrix` inputs (GPU), verified against `stats::glm.fit()` and benchmarked with `logit_demo_benchmark()`.
+
 ## When is it worth using?
 
 - one design matrix and many response columns

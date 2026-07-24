@@ -2,6 +2,7 @@
 ^backends$
 ^docs$
 ^models$
+^demopkg$
 ^\.omc$
 ^\.beads$
 ^\.mote$

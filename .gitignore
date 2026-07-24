@@ -57,3 +57,4 @@ amatrix.models_*.tar.gz
 *.Rcheck/
 Rplots.pdf
 /docs/
+amatrix.demo_*.tar.gz

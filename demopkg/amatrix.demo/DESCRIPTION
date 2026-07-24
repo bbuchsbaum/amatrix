@@ -1,0 +1,24 @@
+Package: amatrix.demo
+Type: Package
+Title: Demonstration of Accelerating a Classic Algorithm with 'amatrix'
+Version: 0.1.0
+Authors@R: person("Bradley", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
+Description: Internal demonstration package for 'amatrix'. Implements
+    logistic regression via iteratively reweighted least squares (IRLS)
+    with the hot kernels expressed as 'amatrix' operations, so the same
+    code runs on plain base matrices (CPU) and on accelerated 'adgeMatrix'
+    inputs (GPU backends) without modification. Not intended for release.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.3)
+Imports:
+    stats,
+    amatrix
+Suggests:
+    testthat (>= 3.0.0),
+    amatrix.mlx
+Additional_repositories: https://bbuchsbaum.r-universe.dev
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
