@@ -102,6 +102,15 @@ explicitly with
 but that should be an optimization step rather than the default
 package-author workflow.
 
+If you maintain a package and want a complete worked example of this
+adoption path, see
+[`demopkg/amatrix.demo`](https://bbuchsbaum.github.io/amatrix/demopkg/amatrix.demo)
+in this repo: logistic regression via IRLS whose hot kernels are
+`amatrix` calls — the same function runs on plain matrices (CPU) and on
+`adgeMatrix` inputs (GPU), verified against
+[`stats::glm.fit()`](https://rdrr.io/r/stats/glm.html) and benchmarked
+with `logit_demo_benchmark()`.
+
 ## When is it worth using?
 
 - one design matrix and many response columns

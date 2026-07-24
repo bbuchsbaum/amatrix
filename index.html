@@ -118,6 +118,7 @@
 <span><span class="op">}</span><span class="op">)</span></span></code></pre></div>
 <p>Persistent session setters such as <code><a href="reference/amatrix_set_default_policy.html">amatrix_set_default_policy()</a></code> and <code><a href="reference/amatrix_set_default_precision.html">amatrix_set_default_precision()</a></code> are still available for power users who genuinely want session-wide behavior, for example from <code>.Rprofile</code>.</p>
 <p>For especially hot repeated paths, you can still bind resident storage explicitly with <code><a href="reference/amatrix_bind_resident.html">amatrix_bind_resident()</a></code>, but that should be an optimization step rather than the default package-author workflow.</p>
+<p>If you maintain a package and want a complete worked example of this adoption path, see <a href="demopkg/amatrix.demo"><code>demopkg/amatrix.demo</code></a> in this repo: logistic regression via IRLS whose hot kernels are <code>amatrix</code> calls — the same function runs on plain matrices (CPU) and on <code>adgeMatrix</code> inputs (GPU), verified against <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm.fit()</a></code> and benchmarked with <code>logit_demo_benchmark()</code>.</p>
 </div>
 <div class="section level2">
 <h2 id="when-is-it-worth-using">When is it worth using?<a class="anchor" aria-label="anchor" href="#when-is-it-worth-using"></a>
