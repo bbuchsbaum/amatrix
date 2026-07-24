@@ -263,7 +263,24 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
       utils::read.csv(baseline_path, stringsAsFactors = FALSE),
       error = function(e) NULL
     )
+
+    # Accept both the legacy report schema (op/size/backend) and the canonical
+    # benchmark-harness schema (op/size_label/requested_backend). The harness
+    # no longer ships a `speedup_vs_cpu` column, so it is derived below from the
+    # per-(op, size) cpu reference time rather than read.
+    if (!is.null(raw)) {
+      if (!"size" %in% names(raw) && "size_label" %in% names(raw)) {
+        raw$size <- raw$size_label
+      }
+      if (!"backend" %in% names(raw) && "requested_backend" %in% names(raw)) {
+        raw$backend <- raw$requested_backend
+      }
+    }
+
     if (!is.null(raw) && all(c("op", "size", "backend", "variant", "median_ms") %in% names(raw))) {
+      if ("status" %in% names(raw)) {
+        raw <- raw[raw$status == "ok", , drop = FALSE]
+      }
       # Pivot cold/warm rows into side-by-side columns. Speedup is backend-local.
       key <- paste(raw$op, raw$size, raw$backend, sep = "\001")
       cold_idx <- raw$variant == "cold"
@@ -272,16 +289,6 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
       warm_map <- stats::setNames(raw$median_ms[warm_idx], key[warm_idx])
       all_keys <- unique(c(names(cold_map), names(warm_map)))
 
-      # Carry speedup_vs_cpu from whichever variant is present (prefer cold).
-      speedup_cold <- stats::setNames(
-        raw$speedup_vs_cpu[cold_idx] %||% NA_real_,
-        key[cold_idx]
-      )
-      speedup_warm <- stats::setNames(
-        raw$speedup_vs_cpu[warm_idx] %||% NA_real_,
-        key[warm_idx]
-      )
-
       parts <- strsplit(all_keys, "\001", fixed = TRUE)
       ops      <- vapply(parts, `[[`, character(1), 1L)
       sizes    <- vapply(parts, `[[`, character(1), 2L)
@@ -289,7 +296,21 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
 
       cold_vec <- cold_map[all_keys]
       warm_vec <- warm_map[all_keys]
-      speedup  <- ifelse(is.na(speedup_cold[all_keys]), speedup_warm[all_keys], speedup_cold[all_keys])
+      # Representative time per cell: warm (steady state) if present, else cold.
+      rep_ms <- ifelse(is.finite(warm_vec), warm_vec, cold_vec)
+
+      # speedup_vs_cpu = cpu reference time / this cell's time, matched on
+      # (op, size). cpu cells are 1 by construction (same numerator and
+      # denominator). A recorded column, when present, takes precedence.
+      cpu_ms <- rep_ms[match(paste(ops, sizes, "cpu", sep = "\001"), all_keys)]
+      speedup <- cpu_ms / rep_ms
+      if ("speedup_vs_cpu" %in% names(raw)) {
+        sp_cold <- stats::setNames(raw$speedup_vs_cpu[cold_idx], key[cold_idx])
+        sp_warm <- stats::setNames(raw$speedup_vs_cpu[warm_idx], key[warm_idx])
+        recorded <- ifelse(is.na(sp_cold[all_keys]), sp_warm[all_keys], sp_cold[all_keys])
+        speedup <- ifelse(is.na(recorded), speedup, recorded)
+      }
+
       ratio    <- ifelse(
         is.finite(cold_vec) & is.finite(warm_vec) & warm_vec > 0,
         cold_vec / warm_vec,

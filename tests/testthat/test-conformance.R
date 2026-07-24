@@ -1264,6 +1264,17 @@ test_that("MLX QR cache keys distinguish native and compact strategies", {
   if (is.null(optional_backend_namespace("amatrix.mlx"))) {
     skip("Optional backend package 'amatrix.mlx' is not installed")
   }
+  if (!isTRUE(amatrix_backend_status("mlx")$available)) {
+    # The block below forces amatrix.mlx.available = TRUE to exercise the
+    # native-vs-compact helper-path distinction. That distinction only
+    # materialises when MLX can genuinely factor on this host; where the
+    # native probe reports no usable Metal device (e.g. a GPU-less CI
+    # runner), the resident path falls back and every helper_path collapses
+    # to the generic "compact_factor"/"native" values. Skip honestly rather
+    # than assert a path the backend cannot take here. Mirrors the guard on
+    # the sibling "tall-skinny compact MLX QR" test above.
+    skip("mlx backend not available")
+  }
 
   set.seed(904)
   X_host <- matrix(rnorm(1024 * 128), nrow = 1024, ncol = 128)

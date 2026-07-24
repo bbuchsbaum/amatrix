@@ -612,7 +612,16 @@ test_that("method sweep: write report to .bug-hunt-r3/03-method-sweep.md", {
   # testthat::test_path() returns tests/testthat/<file>, so go up 3 levels to repo root
   repo_root  <- normalizePath(file.path(dirname(testthat::test_path()), "..", ".."),
                               mustWork = FALSE)
-  report_dir <- file.path(repo_root, ".bug-hunt-r3")
+  # Only write into the repo when running from a source checkout; under
+  # R CMD check the resolved root is the check directory, and writing there
+  # violates CRAN policy. Fall back to the session temp dir.
+  in_source_tree <- file.exists(file.path(repo_root, "DESCRIPTION")) &&
+    dir.exists(file.path(repo_root, ".git"))
+  report_dir <- if (in_source_tree) {
+    file.path(repo_root, ".bug-hunt-r3")
+  } else {
+    file.path(tempdir(), "bug-hunt-r3")
+  }
   dir.create(report_dir, showWarnings = FALSE, recursive = TRUE)
   report_path <- file.path(report_dir, "03-method-sweep.md")
 

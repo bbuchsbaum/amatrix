@@ -50,6 +50,7 @@ test_that("amatrix-vmc: ArrayFire defaults to the cpu runtime on Apple Silicon",
         "spec <- .benchmark_optional_backend_specs(include_arrayfire=TRUE)[['arrayfire']];",
         "stopifnot(.benchmark_enable_backend(spec));",
         "ns <- ensure_optional_backend_namespace('amatrix.arrayfire', repo_dir='backends/amatrix.arrayfire');",
+        "cat(sprintf('AF_NATIVE_AVAILABLE=%s\\n', isTRUE(tryCatch(get('amatrix_arrayfire_native_available', envir=ns, inherits=FALSE)(force=TRUE), error=function(e) FALSE))));",
         "diag <- get('amatrix_arrayfire_diagnostics', envir=ns, inherits=FALSE)();",
         "cat(sprintf('ACTIVE_BACKEND=%s\\n', diag$active_backend))"
       )
@@ -57,6 +58,17 @@ test_that("amatrix-vmc: ArrayFire defaults to the cpu runtime on Apple Silicon",
   )
 
   expect_equal(launch$status, 0L, info = paste(launch$output, collapse = "\n"))
+  # "defaults to the cpu runtime (active backend 1)" presupposes a *functional*
+  # ArrayFire native runtime. On a host that only has the vendored source tree
+  # (no libaf, e.g. the hard-deps CI runner) the diagnostics report no usable
+  # backend; skip rather than assert a CPU default the runtime cannot provide.
+  skip_if_not(
+    any(grepl("^AF_NATIVE_AVAILABLE=TRUE$", launch$output)),
+    paste(
+      "ArrayFire native runtime unavailable on this host (source tree present, libaf absent).",
+      paste(launch$output, collapse = "\n")
+    )
+  )
   expect_true(any(grepl("^ACTIVE_BACKEND=1$", launch$output)), info = paste(launch$output, collapse = "\n"))
 })
 
@@ -123,7 +135,20 @@ test_that("amatrix-vmc: ArrayFire benchmark worker no longer crashes on Apple Si
 
   rows <- readRDS(out_path)
   expect_true(all(rows$requested_backend == "arrayfire"))
+  # The regression this test guards (amatrix-vmc): the worker must never abort.
+  # This assertion is unconditional — a crash here is a real failure anywhere.
   expect_false(any(rows$status == "crash"), info = paste(unique(stats::na.omit(rows$error_message)), collapse = "\n"))
+  # "at least one ok" additionally requires a *functional* ArrayFire runtime.
+  # On hosts without the ArrayFire native library (e.g. the hard-deps CI runner,
+  # where only the vendored source tree is present) every cell degrades to
+  # "unavailable" — no crash, but no "ok" either. Skip only in that case: the
+  # skip condition is the runtime being absent (all cells "unavailable"), NOT
+  # the outcome under test, so a functional runtime that produces errors still
+  # fails here.
+  skip_if(
+    all(rows$status == "unavailable"),
+    "ArrayFire native runtime unavailable on this host (all cells 'unavailable'); no-crash regression guard above still enforced."
+  )
   expect_true(any(rows$status == "ok"), info = paste(unique(stats::na.omit(rows$error_message)), collapse = "\n"))
 })
 

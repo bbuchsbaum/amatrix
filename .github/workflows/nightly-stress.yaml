@@ -35,7 +35,13 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       NOT_CRAN: "true"
-      AMATRIX_COVERAGE_STRICT: "1"
+      # AMATRIX_COVERAGE_STRICT is intentionally NOT set job-wide. The strict
+      # coverage matrix (Track 3) is a readiness *indicator*, not a merge gate:
+      # the coverage-table.R strict test is expected to fail until the
+      # Metamorphic/Adversarial/Regression columns are filled. It is enforced
+      # only in the dedicated, continue-on-error "Strict coverage gate" step
+      # below. Setting it job-wide leaked it into the gating full-test step,
+      # turning a known-incomplete matrix into a spurious nightly failure.
       AMATRIX_STRESS_SEEDS: "100"
       AMATRIX_RESIDENCY_TRIPWIRE: "1"
 
@@ -77,6 +83,8 @@ jobs:
       - name: Strict coverage gate (Track 3 readiness indicator)
         id: strict-coverage
         continue-on-error: true
+        env:
+          AMATRIX_COVERAGE_STRICT: "1"
         shell: Rscript {0}
         run: |
           suppressMessages(devtools::load_all(quiet = TRUE))
@@ -133,6 +141,10 @@ jobs:
       - name: Fallback log + backend status snapshot
         id: fallback-log
         # Non-fatal: the snapshot is for the artifact bundle, not a gate.
+        # if: always() — the snapshot is diagnostic and most valuable exactly
+        # when an earlier gating step failed (e.g. to capture the MLX worker's
+        # error_message and backend availability after a red full-test step).
+        if: always()
         continue-on-error: true
         shell: Rscript {0}
         run: |

@@ -210,6 +210,10 @@ test_that("OpenCL covariance uses the backend path and matches stats::cov", {
 test_that("OpenCL tall-skinny QR uses resident Q helpers and matches base QR coefficients", {
   spec <- .opencl_model_spec()
   skip_if_backend_package_missing(spec)
+  skip_if_not(
+    isTRUE(amatrix_backend_status("opencl")$available),
+    "opencl backend not available (no usable GPU device on this host)"
+  )
 
   register_backend <- .opencl_register_backend(spec)
 
@@ -345,6 +349,10 @@ test_that("OpenCL planner avoids experimental QR solve by default for dense non-
 test_that("OpenCL QR solve helper matches base solve when experimental route is enabled", {
   spec <- .opencl_model_spec()
   skip_if_backend_package_missing(spec)
+  skip_if_not(
+    isTRUE(amatrix_backend_status("opencl")$available),
+    "opencl backend not available (no usable GPU device on this host)"
+  )
 
   register_backend <- .opencl_register_backend(spec)
 
