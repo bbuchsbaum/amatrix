@@ -116,3 +116,85 @@
 #' @keywords internal
 #' @name amatrix-methods-internal
 NULL
+
+# ── Identity-safe unary / rounding methods ───────────────────────────────────
+#
+# Matrix implements unary minus, round(), signif() and zapsmall() as
+# `x@x <- f(x@x); x`, which preserves every amatrix slot — including
+# `object_id` and `finalizer_env`. The result would then be a *different*
+# matrix sharing the identity of its source, so identity-keyed caches
+# (Cholesky / QR / XtX) and the residency registry would hand back state that
+# belongs to the original data. These methods route through the host value and
+# mint a fresh wrapper instead.
+
+.amatrix_fresh_like <- function(x, host_value) {
+  if (inherits(x, "adgCMatrix")) {
+    if (!inherits(host_value, "dgCMatrix")) {
+      host_value <- methods::as(methods::as(methods::as(host_value, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+    }
+    return(new_adgCMatrix(
+      host_value,
+      preferred_backend = x@preferred_backend,
+      policy = x@policy,
+      precision = x@precision
+    ))
+  }
+  .amatrix_rewrap_like(x, host_value)
+}
+
+.amatrix_plain_host <- function(x) {
+  host <- amatrix_materialize_host(x)
+  if (inherits(x, "adgCMatrix")) {
+    methods::as(host, "dgCMatrix")
+  } else {
+    out <- as.matrix(host)
+    dimnames(out) <- dimnames(x)
+    out
+  }
+}
+
+#' @noRd
+setMethod("Arith", signature(e1 = "adgeMatrix", e2 = "missing"), function(e1, e2) {
+  if (identical(.Generic, "+")) return(e1)
+  .amatrix_fresh_like(e1, methods::callGeneric(.amatrix_plain_host(e1)))
+})
+
+#' @noRd
+setMethod("Arith", signature(e1 = "adgCMatrix", e2 = "missing"), function(e1, e2) {
+  if (identical(.Generic, "+")) return(e1)
+  .amatrix_fresh_like(e1, methods::callGeneric(.amatrix_plain_host(e1)))
+})
+
+#' @noRd
+setMethod("Math2", signature(x = "adgeMatrix"), function(x, digits) {
+  host <- .amatrix_plain_host(x)
+  value <- if (missing(digits)) methods::callGeneric(host) else methods::callGeneric(host, digits)
+  .amatrix_fresh_like(x, value)
+})
+
+#' @noRd
+setMethod("Math2", signature(x = "adgCMatrix"), function(x, digits) {
+  host <- .amatrix_plain_host(x)
+  value <- if (missing(digits)) methods::callGeneric(host) else methods::callGeneric(host, digits)
+  .amatrix_fresh_like(x, value)
+})
+
+# base::zapsmall() gained arguments in R 4.4, so the method definition takes
+# its formals from the running R rather than hard-coding either signature.
+.amatrix_zapsmall_method <- local({
+  f <- function() NULL
+  formals(f) <- formals(base::zapsmall)
+  body(f) <- quote({
+    cl <- match.call()
+    cl[[1L]] <- quote(zapsmall)
+    cl$x <- .amatrix_plain_host(x)
+    .amatrix_fresh_like(x, eval(cl, parent.frame()))
+  })
+  f
+})
+
+#' @noRd
+setMethod("zapsmall", signature(x = "adgeMatrix"), .amatrix_zapsmall_method)
+
+#' @noRd
+setMethod("zapsmall", signature(x = "adgCMatrix"), .amatrix_zapsmall_method)

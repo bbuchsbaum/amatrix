@@ -49,9 +49,13 @@
 }
 
 .onLoad <- function(libname, pkgname) {
+  # Session-unique id for object identity. Must not draw from R's RNG:
+  # loading a package may not perturb the user's .Random.seed. tempfile()
+  # uses its own (non-RNG) source of randomness.
   .amatrix_state$session_id <- paste0(
     format(Sys.time(), "%Y%m%d%H%M%OS6"), "-",
-    as.hexmode(sample.int(2^31 - 1L, 1L))
+    Sys.getpid(), "-",
+    basename(tempfile(pattern = ""))
   )
   ns <- asNamespace(pkgname)
   registerS3method("as.matrix", "KronMatrix", get("as.matrix.KronMatrix", envir = ns), envir = ns)

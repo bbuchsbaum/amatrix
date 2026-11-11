@@ -469,6 +469,14 @@ chol_solve <- function(factor, B) {
   B_arg <- .amatrix_triangular_rhs_arg(B)
   B_mat <- NULL
 
+  n_factor <- .amatrix_amchol_dim(factor)[1L]
+  if (!identical(as.integer(nrow(B_arg)), as.integer(n_factor))) {
+    .amatrix_abort_bad_arg(sprintf(
+      "B must have %d row(s) to match the factor, not %d",
+      as.integer(n_factor), as.integer(nrow(B_arg))
+    ))
+  }
+
   # GPU path: dispatch through the backend's chol_solve_factor when the factor
   # was computed in fast mode on a GPU-capable backend.
   x <- if (isTRUE(factor@precision == "fast") &&

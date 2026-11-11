@@ -714,9 +714,10 @@ amatrix_backend_health_probe <- function(name, tol = NULL) {
   }
 
   canary <- tryCatch({
-    set.seed(2026041500L)
-    x_host <- matrix(rnorm(100L), nrow = 10L, ncol = 10L)
-    y_host <- matrix(rnorm(100L), nrow = 10L, ncol = 10L)
+    # Deterministic, well-scaled canary operands. Deliberately not drawn
+    # from R's RNG so probing never alters the user's random stream.
+    x_host <- matrix(sin(seq_len(100L)), nrow = 10L, ncol = 10L)
+    y_host <- matrix(cos(seq_len(100L) * 0.7), nrow = 10L, ncol = 10L)
     x_a <- new_adgeMatrix(x_host, preferred_backend = name,
                           policy = "cpu", precision = if ("strict" %in% modes) "strict" else "fast")
     y_a <- new_adgeMatrix(y_host, preferred_backend = name,

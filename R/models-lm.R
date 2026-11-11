@@ -294,17 +294,25 @@
   )
 }
 
-.amatrix_lm_cache_value <- function(X_arg, cache = TRUE, need_xtx = TRUE, need_qr = FALSE, cache_key = NULL) {
+# `stamp` is optional exact payload (e.g. the weight vector) that the cache key
+# only summarises. A cached entry is reused only when its stamp is identical,
+# so a key collision can never return a factorization of different data.
+.amatrix_lm_cache_value <- function(X_arg, cache = TRUE, need_xtx = TRUE, need_qr = FALSE, cache_key = NULL,
+                                    stamp = NULL) {
   stopifnot(inherits(X_arg, "adgeMatrix"))
 
   cache_key <- if (is.null(cache_key)) .amatrix_lm_cache_key(X_arg) else cache_key
   cached <- if (isTRUE(cache)) .amatrix_lm_cache_get(cache_key) else NULL
+  if (!is.null(cached) && !identical(cached$stamp, stamp)) {
+    cached <- NULL
+  }
   cache_reused <- FALSE
   if (is.null(cached)) {
     cached <- list()
   } else {
     cache_reused <- TRUE
   }
+  cached$stamp <- stamp
 
   if (isTRUE(need_xtx) && is.null(cached$xtx)) {
     cached$xtx <- am_crossprod(X_arg)
@@ -1141,7 +1149,8 @@ wls_fit <- function(
       object_id = X_arg@object_id
     )
     weighted_Y <- .amatrix_model_response_host(Y_arg) * sqrt(as.double(weights))
-    cache_value <- .amatrix_lm_cache_value(weighted_X, cache = cache, need_xtx = FALSE, need_qr = TRUE, cache_key = cache_key)
+    cache_value <- .amatrix_lm_cache_value(weighted_X, cache = cache, need_xtx = FALSE, need_qr = TRUE,
+                                           cache_key = cache_key, stamp = as.double(weights))
     qr_fit <- cache_value$qr
     coefficients <- .amatrix_rewrap_like(weighted_X, .amatrix_qr_solve_value(qr_fit, b = weighted_Y))
     qr_meta <- .amatrix_qr_fit_metadata(qr_fit)
