@@ -1,3 +1,13 @@
+# TRUE when `value` is a logical matrix. Deliberately inspects only the class:
+# calling as.matrix() here would allocate a dense n x p copy of every sparse
+# result just to look at its type.
+.amatrix_value_is_logical <- function(value) {
+  if (inherits(value, "Matrix")) {
+    return(inherits(value, c("lMatrix", "nMatrix")))
+  }
+  is.matrix(value) && is.logical(value)
+}
+
 .amatrix_rewrap_like <- function(template, value) {
   if (inherits(template, "adlgeMatrix")) {
     if (inherits(value, "sparseMatrix") && inherits(value, "lsparseMatrix")) {
@@ -8,7 +18,7 @@
         precision = template@precision
       ))
     }
-    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+    if (.amatrix_value_is_logical(value)) {
       return(new_adlgeMatrix(
         value,
         preferred_backend = template@preferred_backend,
@@ -33,7 +43,7 @@
         precision = template@precision
       ))
     }
-    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+    if (.amatrix_value_is_logical(value)) {
       return(new_adlgeMatrix(
         value,
         preferred_backend = template@preferred_backend,
@@ -58,7 +68,12 @@
   }
 
   if (inherits(template, "adgeMatrix")) {
-    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+    # Matrix may hand back a sparse or diagonal result for a dense operand
+    # (e.g. A * <mostly-zero matrix>). The template is dense, so densify.
+    if (inherits(value, "Matrix") && !inherits(value, "denseMatrix")) {
+      value <- as.matrix(value)
+    }
+    if (.amatrix_value_is_logical(value)) {
       return(new_adlgeMatrix(
         value,
         preferred_backend = template@preferred_backend,
@@ -83,7 +98,7 @@
         precision = template@precision
       ))
     }
-    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+    if (.amatrix_value_is_logical(value)) {
       return(new_adlgeMatrix(
         value,
         preferred_backend = template@preferred_backend,
@@ -108,6 +123,26 @@
   }
 
   value
+}
+
+# Promote a plain base matrix / Matrix operand to the matching amatrix class so
+# the exported wrappers accept the inputs their documentation promises.
+# amatrix objects and everything else (vectors, NULL, ...) pass through.
+.amatrix_promote_arg <- function(x) {
+  if (inherits(x, c("aMatrix", "aTransposeView"))) {
+    return(x)
+  }
+  if (is.matrix(x) && (is.numeric(x) || is.logical(x))) {
+    storage.mode(x) <- "double"
+    return(as_adgeMatrix(x))
+  }
+  if (inherits(x, "sparseMatrix")) {
+    return(as_adgCMatrix(methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")))
+  }
+  if (inherits(x, "denseMatrix")) {
+    return(as_adgeMatrix(methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "unpackedMatrix")))
+  }
+  x
 }
 
 .amatrix_host_arg <- function(value) {
@@ -197,12 +232,23 @@
   NULL
 }
 
+# Host operand for cbind2/rbind2. Logical amatrix classes must be stripped to
+# their plain Matrix parents explicitly: amatrix_materialize_host() returns
+# them unchanged, which made cbind2(aMatrix, aMatrix) re-dispatch to itself
+# until the C stack overflowed.
+.amatrix_bind_host_arg <- function(value) {
+  if (inherits(value, c("adlgeMatrix", "adlgCMatrix"))) {
+    return(.amatrix_logical_host_arg(value))
+  }
+  .amatrix_host_arg(value)
+}
+
 .amatrix_bind2 <- function(kind, x, y) {
   template <- .amatrix_template(x, y)
   value <- switch(
     kind,
-    cbind2 = methods::cbind2(.amatrix_host_arg(x), .amatrix_host_arg(y)),
-    rbind2 = methods::rbind2(.amatrix_host_arg(x), .amatrix_host_arg(y)),
+    cbind2 = methods::cbind2(.amatrix_bind_host_arg(x), .amatrix_bind_host_arg(y)),
+    rbind2 = methods::rbind2(.amatrix_bind_host_arg(x), .amatrix_bind_host_arg(y)),
     stop(sprintf("unsupported bind kind '%s'", kind), call. = FALSE)
   )
 
@@ -953,6 +999,7 @@
 #'
 #' @export
 matmul <- function(x, y) {
+  x <- .amatrix_promote_arg(x)
   if (.amatrix_sparse_rhs_lowerable(x, y)) {
     return(.amatrix_lower_sparse_rhs_matmul(x, y))
   }
@@ -1106,6 +1153,8 @@ am_tcrossprod <- function(x, y = NULL, ...) {
 #' @export
 gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
                     transA = FALSE, transB = FALSE) {
+  A <- .amatrix_promote_arg(A)
+  if (!is.null(C)) C <- .amatrix_promote_arg(C)
   AB <- if (transA && transB) {
     # t(A) %*% t(B) = t(B %*% A): use identity to avoid materialising t(B) to host.
     am_transpose(matmul(B, A))
@@ -1148,6 +1197,7 @@ gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
 #'
 #' @export
 rowsums <- function(x, na.rm = FALSE, dims = 1L) {
+  x <- .amatrix_promote_arg(x)
   choice <- .amatrix_backend_for(x, "rowSums")
   resident <- .amatrix_try_resident_rowSums(x, na.rm, dims, choice$name)
   if (!is.null(resident)) return(resident)
@@ -1163,6 +1213,7 @@ rowsums <- function(x, na.rm = FALSE, dims = 1L) {
 #' @rdname rowsums
 #' @export
 colsums <- function(x, na.rm = FALSE, dims = 1L) {
+  x <- .amatrix_promote_arg(x)
   choice <- .amatrix_backend_for(x, "colSums")
   resident <- .amatrix_try_resident_colSums(x, na.rm, dims, choice$name)
   if (!is.null(resident)) return(resident)
@@ -1187,14 +1238,17 @@ am_transpose <- function(x) {
   .amatrix_rewrap_like(x, t(as.matrix(amatrix_materialize_host(x))))
 }
 
-am_subset <- function(x, i, j, ..., drop = TRUE) {
+# `.linear` is TRUE for the one-subscript form `x[i]` (no comma), which the
+# calling S4 method detects with nargs(). It selects elements in column-major
+# order, exactly as for a base matrix, rather than rows.
+am_subset <- function(x, i, j, ..., drop = TRUE, .linear = FALSE) {
   host_x <- amatrix_materialize_host(x)
   i_arg <- if (!missing(i)) .amatrix_subscript_arg(i) else NULL
   j_arg <- if (!missing(j)) .amatrix_subscript_arg(j) else NULL
   value <- if (missing(i) && missing(j)) {
     host_x[..., drop = drop]
   } else if (missing(j)) {
-    if (.amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
+    if (isTRUE(.linear) || .amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
       host_x[i_arg]
     } else {
       host_x[i_arg, , ..., drop = drop]
@@ -1207,7 +1261,7 @@ am_subset <- function(x, i, j, ..., drop = TRUE) {
   .amatrix_rewrap_value(x, value)
 }
 
-am_subassign <- function(x, i, j, ..., value) {
+am_subassign <- function(x, i, j, ..., value, .linear = FALSE) {
   host_x <- amatrix_materialize_host(x)
   host_value <- .amatrix_host_arg(value)
   i_arg <- if (!missing(i)) .amatrix_subscript_arg(i) else NULL
@@ -1215,7 +1269,7 @@ am_subassign <- function(x, i, j, ..., value) {
   if (missing(i) && missing(j)) {
     host_x[...] <- host_value
   } else if (missing(j)) {
-    if (.amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
+    if (isTRUE(.linear) || .amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
       host_x[i_arg] <- host_value
     } else {
       host_x[i_arg, , ...] <- host_value
@@ -1479,7 +1533,7 @@ am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) 
 #' @seealso \code{\link{rsvd}}
 #' @export
 eigh <- function(x) {
-  am_eigen(x, symmetric = TRUE)
+  am_eigen(.amatrix_promote_arg(x), symmetric = TRUE)
 }
 
 # ── Weighted am_crossprod helpers ─────────────────────────────────────────────
@@ -1768,7 +1822,12 @@ am_diag <- function(x, nrow, ncol, names = TRUE) {
   extract_mode <- (missing(nrow) && missing(ncol)) &&
                   (is.matrix(x) || inherits(x, "aMatrix"))
   if (extract_mode) {
-    x_host <- as.matrix(amatrix_materialize_host(x))
+    # Read the diagonal straight from the host representation; as.matrix()
+    # would copy a dense matrix and fully densify a sparse one.
+    x_host <- amatrix_materialize_host(x)
+    if (inherits(x_host, "Matrix")) {
+      return(Matrix::diag(x_host, names = names))
+    }
     return(base::diag(x_host, names = names))
   }
   # Create mode: diag(d) → diagonal adgeMatrix; nrow/ncol set the size
@@ -1834,9 +1893,13 @@ crossprod_add_diag <- function(X, lambda) {
   if (isTRUE(check_positive) && any(lam <= 0))
     warning("matrix has non-positive eigenvalues; result may be complex or NaN",
             call. = FALSE)
-  Q     <- res$vectors
+  Q     <- as.matrix(res$vectors)
   new_lam <- f(lam)
-  .amatrix_rewrap_like(X_arg, Q %*% diag(new_lam) %*% t(Q))
+  # Scale the columns of Q by the transformed eigenvalues. (diag(new_lam) is
+  # avoided: for a 1 x 1 input diag(<scalar>) builds an identity of that size.)
+  result <- (Q * rep(new_lam, each = nrow(Q))) %*% t(Q)
+  dimnames(result) <- dimnames(X_arg)
+  .amatrix_rewrap_like(X_arg, result)
 }
 
 #' Matrix functions via symmetric eigendecomposition
@@ -2612,6 +2675,9 @@ am_colargmin <- function(x) .am_argreduce(x, "colargmin")
 #' @return A matrix of the same dimensions as \code{e1}.
 #' @export
 ewise <- function(op, e1, e2 = NULL) {
+  if (!inherits(e1, "aMatrix") && !inherits(e2, "aMatrix")) {
+    e1 <- .amatrix_promote_arg(e1)
+  }
   template <- .amatrix_template(e1, e2)
 
   # Try GPU resident path FIRST — no host materialization needed
@@ -3060,55 +3126,65 @@ kernel_matrix <- function(X, Y = NULL,
 
 # norm: matrix and vector norms.
 #
-# Supported types (matching base::norm):
-#   "1" - max absolute column sum (1-norm)
-#   "I" - max absolute row sum (infinity-norm)
-#   "F" - Frobenius norm  (default for matrices; Euclidean for vectors)
-#   "M" - max absolute entry
-#   "2" - spectral norm (largest singular value); uses rsvd for large matrices
+# Matrix types follow base::norm exactly, including its default ("O"):
+#   "O"/"1" - max absolute column sum (one norm)
+#   "I"     - max absolute row sum (infinity norm)
+#   "F"/"E" - Frobenius norm
+#   "M"     - max absolute entry
+#   "2"     - spectral norm (largest singular value), computed exactly
 #
-# For numeric vector inputs, "2" and "F" return Euclidean norm,
-# "1" returns sum(|x|), "I"/"M" return max(|x|).
+# For numeric vector inputs (which base::norm rejects), "2"/"F"/"E" return the
+# Euclidean norm (the default), "O"/"1" return sum(|x|), "I"/"M" max(|x|).
 #
-# Implementation uses S4 methods to override Matrix package's ANY dispatch.
+# norm() is an S4 generic that dispatches on (x, type), and S4 ignores default
+# values in method definitions, so each class needs an explicit
+# type = "missing" method. No method is registered for plain base matrices:
+# doing so would change norm() for every matrix in the session.
 
 .norm_type <- function(type) {
-  toupper(match.arg(type, c("1", "I", "F", "f", "M", "m", "2")))
+  if (!is.character(type) || length(type) != 1L || is.na(type)) {
+    stop("'type' must be a single character string", call. = FALSE)
+  }
+  key <- toupper(substr(type, 1L, 1L))
+  if (!nzchar(key) || !key %in% c("O", "1", "I", "F", "E", "M", "2")) {
+    stop(sprintf("invalid 'type' for norm(): \"%s\"", type), call. = FALSE)
+  }
+  switch(key, "1" = "O", "E" = "F", key)
 }
 
-# S4 method for adgeMatrix (primary dispatch)
-#' @noRd
-setMethod("norm", "adgeMatrix", function(x, type = "F", ...) {
-  type <- .norm_type(type)
-  if (type == "2") {
-    sv <- rsvd(x, k = 1L)
-    return(sv$d[[1L]])
-  }
-  base::norm(.am_as_double_matrix(x), type = type)
-})
+.amatrix_dense_norm <- function(x, type) {
+  base::norm(.am_as_double_matrix(x), type = .norm_type(type))
+}
 
-# S4 method for plain base R matrix
-#' @noRd
-setMethod("norm", "matrix", function(x, type = "F", ...) {
-  type <- .norm_type(type)
-  if (type == "2") {
-    sv <- rsvd(as_adgeMatrix(x), k = 1L)
-    return(sv$d[[1L]])
-  }
-  base::norm(x, type = type)
-})
-
-# S4 method for numeric vector: vector norms
-#' @noRd
-setMethod("norm", "numeric", function(x, type = "F", ...) {
-  type <- .norm_type(type)
-  switch(type,
+.amatrix_vector_norm <- function(x, type) {
+  switch(.norm_type(type),
     "2" = ,
     "F" = sqrt(sum(x^2)),
-    "1" = sum(abs(x)),
+    "O" = sum(abs(x)),
     "I" = ,
     "M" = max(abs(x))
   )
+}
+
+#' @noRd
+setMethod("norm", signature(x = "adgeMatrix", type = "missing"), function(x, type, ...) {
+  .amatrix_dense_norm(x, "O")
+})
+
+#' @noRd
+setMethod("norm", signature(x = "adgeMatrix", type = "character"), function(x, type, ...) {
+  .amatrix_dense_norm(x, type)
+})
+
+# Vector norms (base::norm errors on a bare numeric vector).
+#' @noRd
+setMethod("norm", signature(x = "numeric", type = "missing"), function(x, type, ...) {
+  .amatrix_vector_norm(x, "2")
+})
+
+#' @noRd
+setMethod("norm", signature(x = "numeric", type = "character"), function(x, type, ...) {
+  .amatrix_vector_norm(x, type)
 })
 
 # ---------------------------------------------------------------------------

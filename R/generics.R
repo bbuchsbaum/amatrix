@@ -12,6 +12,7 @@
 #' @exportMethod colMeans
 #' @exportMethod solve
 #' @exportMethod chol
+#' @exportMethod norm
 #' @exportMethod qr
 #' @exportMethod eigen
 #' @exportMethod diag
@@ -76,8 +77,11 @@ if (!isGeneric("qr.resid")) {
   setGeneric("qr.resid", function(qr, y) standardGeneric("qr.resid"))
 }
 
+# Standard generic derived from base::svd, so base::svd stays the default
+# method: svd() keeps working for vectors, data frames and plain Matrix
+# objects after amatrix is attached.
 if (!isGeneric("svd")) {
-  setGeneric("svd", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) standardGeneric("svd"))
+  setGeneric("svd")
 }
 
 if (!isGeneric("eigen")) {

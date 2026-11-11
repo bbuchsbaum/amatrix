@@ -78,10 +78,14 @@
 \alias{dimnames<-,adgCMatrix,ANY-method}
 \alias{dimnames<-,adgeMatrix,ANY-method}
 \alias{eigen,matrix-method}
-\alias{norm,adgCMatrix,ANY-method}
-\alias{norm,adgeMatrix,ANY-method}
-\alias{norm,matrix,ANY-method}
-\alias{norm,numeric,ANY-method}
+\alias{log,adgCMatrix-method}
+\alias{log,adgeMatrix-method}
+\alias{norm,adgCMatrix,character-method}
+\alias{norm,adgCMatrix,missing-method}
+\alias{norm,adgeMatrix,character-method}
+\alias{norm,adgeMatrix,missing-method}
+\alias{norm,numeric,character-method}
+\alias{norm,numeric,missing-method}
 \alias{qr,adgCMatrix-method}
 \alias{qr,adgeMatrix-method}
 \alias{qr.Q,amQR-method}
@@ -96,7 +100,6 @@
 \alias{solve,KronMatrix,matrix-method}
 \alias{solve,KronMatrix,missing-method}
 \alias{solve,KronMatrix,numeric-method}
-\alias{svd,matrix-method}
 \alias{t,KronMatrix-method}
 \alias{t,aTransposeView-method}
 \alias{t,adgCMatrix-method}

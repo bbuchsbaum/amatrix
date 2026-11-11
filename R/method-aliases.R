@@ -82,10 +82,14 @@
 #'   dimnames<-,adgCMatrix,ANY-method
 #'   dimnames<-,adgeMatrix,ANY-method
 #'   eigen,matrix-method
-#'   norm,adgCMatrix,ANY-method
-#'   norm,adgeMatrix,ANY-method
-#'   norm,matrix,ANY-method
-#'   norm,numeric,ANY-method
+#'   log,adgCMatrix-method
+#'   log,adgeMatrix-method
+#'   norm,adgCMatrix,character-method
+#'   norm,adgCMatrix,missing-method
+#'   norm,adgeMatrix,character-method
+#'   norm,adgeMatrix,missing-method
+#'   norm,numeric,character-method
+#'   norm,numeric,missing-method
 #'   qr,adgCMatrix-method
 #'   qr,adgeMatrix-method
 #'   qr.Q,amQR-method
@@ -100,7 +104,6 @@
 #'   solve,KronMatrix,matrix-method
 #'   solve,KronMatrix,missing-method
 #'   solve,KronMatrix,numeric-method
-#'   svd,matrix-method
 #'   t,KronMatrix-method
 #'   t,aTransposeView-method
 #'   t,adgCMatrix-method

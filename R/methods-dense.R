@@ -60,12 +60,29 @@ setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"),function(x, y) ma
 # here because it calls .amatrix_backend_for(x, ...) which expects x to be an
 # aMatrix with @preferred_backend slot.
 #
-# numeric %*% adgeMatrix: am_crossprod(A, x_col) = t(A) %*% x_col = n×1.
-# Values identical to x_row %*% A (1×n); drop()/t() in irlba normalise both.
+# numeric %*% adgeMatrix follows base R: a vector of length nrow(A) is a row
+# vector (result 1 x n); if A has a single row the vector is a column instead
+# (outer product). The row-vector case is computed as t(A) %*% x_col through
+# the backend crossprod path and reshaped to 1 x n (only n values move).
 #' @rdname matmul-methods
 #' @aliases %*%,numeric,adgeMatrix-method
 setMethod("%*%", signature(x = "numeric", y = "adgeMatrix"), function(x, y) {
-  am_crossprod(y, matrix(x, ncol = 1L))
+  wrap <- function(m) {
+    new_adgeMatrix(m,
+      preferred_backend = y@preferred_backend,
+      policy            = y@policy,
+      precision         = y@precision)
+  }
+  if (length(x) == nrow(y)) {
+    col <- am_crossprod(y, matrix(as.double(x), ncol = 1L))
+    row <- matrix(as.double(as.matrix(col)), nrow = 1L,
+                  dimnames = list(NULL, colnames(y)))
+    return(wrap(row))
+  }
+  if (nrow(y) == 1L) {
+    return(matmul(wrap(matrix(as.double(x), ncol = 1L)), y))
+  }
+  stop("non-conformable arguments", call. = FALSE)
 })
 
 #' @rdname matmul-methods
@@ -106,12 +123,12 @@ setMethod("ncol",     "aTransposeView", function(x) x@Dim[2L])
 #' @noRd
 setMethod("dimnames", "aTransposeView", function(x) x@Dimnames)
 
-.amatrix_subset_transpose_view <- function(x, i, j, ..., drop = TRUE) {
+.amatrix_subset_transpose_view <- function(x, i, j, ..., drop = TRUE, .linear = FALSE) {
   host <- t(as.matrix(amatrix_materialize_dense(x@source)))
   if (missing(i) && missing(j)) {
     value <- host[, , ..., drop = drop]
   } else if (missing(j)) {
-    value <- host[i, , ..., drop = drop]
+    value <- if (isTRUE(.linear)) host[i] else host[i, , ..., drop = drop]
   } else if (missing(i)) {
     value <- host[, j, ..., drop = drop]
   } else {
@@ -133,31 +150,31 @@ setMethod("dimnames", "aTransposeView", function(x) x@Dimnames)
 
 #' @noRd
 setMethod("[", signature(x = "aTransposeView", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
-  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop)
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 #' @noRd
 setMethod("[", signature(x = "aTransposeView", i = "index", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
-  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop)
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 #' @noRd
 setMethod("[", signature(x = "aTransposeView", i = "index", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
-  .amatrix_subset_transpose_view(x, i, j, ..., drop = TRUE)
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = TRUE, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 #' @noRd
 setMethod("[", signature(x = "aTransposeView", i = "missing", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
-  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop)
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 #' @noRd
 setMethod("[", signature(x = "aTransposeView", i = "missing", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
-  .amatrix_subset_transpose_view(x, i, j, ..., drop = TRUE)
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = TRUE, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 #' @noRd
 setMethod("[", signature(x = "aTransposeView", i = "index", j = "missing", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
-  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop)
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 #' @noRd
 setMethod("[", signature(x = "aTransposeView", i = "index", j = "missing", drop = "missing"), function(x, i, j, ..., drop) {
-  .amatrix_subset_transpose_view(x, i, j, ..., drop = TRUE)
+  .amatrix_subset_transpose_view(x, i, j, ..., drop = TRUE, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 # t(A) %*% B — route to crossprod(A, B) using the source resident key
@@ -418,37 +435,37 @@ setMethod("rbind2", signature(x = "Matrix", y = "aMatrix"), function(x, y, ...) 
 
 #' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
-  am_subset(x, i, j, ..., drop = drop)
+  am_subset(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
-  am_subset(x, i, j, ..., drop = drop)
+  am_subset(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
-  am_subset(x, i, j, ..., drop = TRUE)
+  am_subset(x, i, j, ..., drop = TRUE, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "missing", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
-  am_subset(x, i, j, ..., drop = drop)
+  am_subset(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "missing", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
-  am_subset(x, i, j, ..., drop = TRUE)
+  am_subset(x, i, j, ..., drop = TRUE, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "index", j = "missing", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
-  am_subset(x, i, j, ..., drop = drop)
+  am_subset(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgeMatrix", i = "index", j = "missing", drop = "missing"), function(x, i, j, ..., drop) {
-  am_subset(x, i, j, ..., drop = TRUE)
+  am_subset(x, i, j, ..., drop = TRUE, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' Scalar extraction from an adgeMatrix
@@ -484,51 +501,51 @@ setMethod("[[", signature(x = "adgeMatrix"), function(x, i, j, ...) {
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "ANY", j = "ANY", value = "ANY"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "Matrix", j = "missing", value = "ANY"), function(x, i, j, ..., value) {
-  am_subassign(x, i, value = value)
+  am_subassign(x, i, value = value, .linear = TRUE)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "ndenseMatrix", j = "missing", value = "numeric"), function(x, i, j, ..., value) {
-  am_subassign(x, i, value = value)
+  am_subassign(x, i, value = value, .linear = TRUE)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "ngeMatrix", j = "missing", value = "numeric"), function(x, i, j, ..., value) {
-  am_subassign(x, i, value = value)
+  am_subassign(x, i, value = value, .linear = TRUE)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "matrix", j = "missing", value = "ANY"), function(x, i, j, ..., value) {
-  am_subassign(x, i, value = value)
+  am_subassign(x, i, value = value, .linear = TRUE)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", value = "numeric"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", value = "integer"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", value = "logical"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", value = "matrix"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "index", value = "Matrix"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "missing", j = "index", value = "ANY"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgeMatrix", i = "index", j = "missing", value = "ANY"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 #' Solve a linear system for adgeMatrix
@@ -640,13 +657,8 @@ setMethod("svd", "adgeMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), L
   am_svd(x, nu = nu, nv = nv, LINPACK = LINPACK, ...)
 })
 
-#' @rdname svd-methods
-#' @aliases svd,matrix-method
-# Fallback: keep base::svd working for plain matrix after we take the generic
-#' @noRd
-setMethod("svd", "matrix", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
-  base::svd(x, nu = nu, nv = nv)
-})
+# Plain matrices (and everything else) fall through to base::svd, which is the
+# default method of the standard generic declared in R/generics.R.
 
 #' Eigendecomposition for adgeMatrix
 #'
@@ -695,6 +707,14 @@ setMethod("diag", "adgeMatrix", function(x = 1, nrow, ncol, names = TRUE) {
 #' @noRd
 setMethod("Math", "adgeMatrix", function(x) {
   .amatrix_rewrap_value(x, callGeneric(amatrix_materialize_host(x)))
+})
+
+# log() is in the Math group, but the group method only receives `x`, so
+# log(x, base) silently computed the natural log. An explicit method keeps
+# the base argument.
+#' @noRd
+setMethod("log", "adgeMatrix", function(x, ...) {
+  .amatrix_rewrap_value(x, log(amatrix_materialize_host(x), ...))
 })
 
 #' @noRd
