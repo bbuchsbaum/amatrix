@@ -23,3 +23,17 @@ am_colargmin(x)
 ## Value
 
 An integer vector of indices.
+
+## Examples
+
+``` r
+x <- adgeMatrix(matrix(c(3, 1, 2, 9, 7, 8), 2, 3))
+am_rowargmax(x)
+#> [1] 3 2
+am_rowargmin(x)
+#> [1] 2 1
+am_colargmax(x)
+#> [1] 1 2 2
+am_colargmin(x)
+#> [1] 2 1 1
+```

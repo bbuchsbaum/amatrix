@@ -95,7 +95,12 @@ factorization is cached for reuse across calls sharing the same <code>X</code>.<
 
 <dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
 <dd><p>Solver method: <code>"normal"</code> (normal equations, default)
-or <code>"qr"</code> (QR decomposition).</p></dd>
+or <code>"qr"</code> (QR decomposition). The normal equations are the fastest
+route and reuse a cached \(X^\top X\), but they square the condition
+number of <code>X</code>: a warning of class <code>amatrix_ill_conditioned</code> is
+raised when \(X^\top X\) is close to singular, in which case
+<code>"qr"</code> should be used. A rank-deficient <code>X</code> is an error of
+class <code>amatrix_rank_deficient</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -132,12 +137,12 @@ or <code>"qr"</code> (QR decomposition).</p></dd>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 5 x 1 Matrix of class "adgeMatrix"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>            [,1]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.1216600</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] -0.4435443</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.3293089</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] -0.1313543</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [5,]  0.1483752</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] -0.01768660</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.54747493</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.02178289</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]  0.16732455</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [5,] -0.09059265</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

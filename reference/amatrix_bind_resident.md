@@ -38,3 +38,14 @@ amatrix_bind_resident(x, backend = NULL, op = NULL, y = NULL)
 An `adgeMatrix` or `adgCMatrix` with a live resident binding on
 `backend`. When no suitable accelerator backend is available in
 automatic mode, returns `x` unchanged.
+
+## Examples
+
+``` r
+x <- adgeMatrix(matrix(rnorm(12), 3, 4))
+# With only the CPU backend there is no device to bind to, so x is
+# returned unchanged; with a GPU backend it becomes device-resident.
+y <- amatrix_bind_resident(x)
+amatrix_residency_info(y)$live
+#> [1] FALSE
+```

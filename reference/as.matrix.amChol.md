@@ -26,3 +26,13 @@ as.matrix(x, ...)
 ## Value
 
 A base R numeric matrix containing the upper-triangular factor.
+
+## Examples
+
+``` r
+S <- crossprod(matrix(rnorm(20), 5, 4)) + diag(4)
+fac <- chol_factor(adgeMatrix(S))
+R <- as.matrix(fac)
+all.equal(crossprod(R), S, check.attributes = FALSE)
+#> [1] TRUE
+```

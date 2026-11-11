@@ -49,7 +49,11 @@ lm_fit(
 - method:
 
   Solver method: `"normal"` (normal equations, default) or `"qr"` (QR
-  decomposition).
+  decomposition). The normal equations are the fastest route and reuse a
+  cached \\X^\top X\\, but they square the condition number of `X`: a
+  warning of class `amatrix_ill_conditioned` is raised when \\X^\top X\\
+  is close to singular, in which case `"qr"` should be used. A
+  rank-deficient `X` is an error of class `amatrix_rank_deficient`.
 
 ## Value
 
@@ -91,10 +95,10 @@ fit <- lm_fit(X, y)
 coef(fit)
 #> An amatrix dense matrix [cpu|policy=auto|precision=strict]
 #> 5 x 1 Matrix of class "adgeMatrix"
-#>            [,1]
-#> [1,]  0.1216600
-#> [2,] -0.4435443
-#> [3,] -0.3293089
-#> [4,] -0.1313543
-#> [5,]  0.1483752
+#>             [,1]
+#> [1,] -0.01768660
+#> [2,]  0.54747493
+#> [3,] -0.02178289
+#> [4,]  0.16732455
+#> [5,] -0.09059265
 ```

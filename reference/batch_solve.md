@@ -29,3 +29,14 @@ A list of solution matrices (or vectors when each rhs is a vector).
 
 [`batch_chol`](https://bbuchsbaum.github.io/amatrix/reference/batch_chol.md),
 [`chol_solve`](https://bbuchsbaum.github.io/amatrix/reference/chol_solve.md)
+
+## Examples
+
+``` r
+mats <- lapply(1:2, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
+facs <- batch_chol(mats)
+rhs <- lapply(1:2, function(i) rnorm(3))
+sols <- batch_solve(facs, rhs)
+all.equal(sols[[1]], solve(mats[[1]], rhs[[1]]))
+#> [1] TRUE
+```

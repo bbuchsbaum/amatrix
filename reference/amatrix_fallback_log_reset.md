@@ -17,3 +17,11 @@ Invisibly, `NULL`.
 ## See also
 
 [`amatrix_fallback_log`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_fallback_log.md)
+
+## Examples
+
+``` r
+amatrix_fallback_log_reset()
+nrow(amatrix_fallback_log())
+#> [1] 0
+```

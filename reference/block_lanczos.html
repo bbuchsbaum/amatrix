@@ -58,7 +58,8 @@ significantly reducing kernel-launch overhead on accelerated backends.</p>
 <span>  block_size <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  n_steps <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  mode <span class="op">=</span> <span class="st">"fast"</span>,</span>
-<span>  backend <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  backend <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  tol <span class="op">=</span> <span class="fl">1e-05</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">block_svd</span><span class="op">(</span></span>
@@ -67,7 +68,8 @@ significantly reducing kernel-launch overhead on accelerated backends.</p>
 <span>  block_size <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  n_steps <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  mode <span class="op">=</span> <span class="st">"fast"</span>,</span>
-<span>  backend <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  backend <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  tol <span class="op">=</span> <span class="fl">1e-05</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -96,8 +98,9 @@ and <code>nu</code>.</p></dd>
 
 
 <dt id="arg-n-steps">n_steps<a class="anchor" aria-label="anchor" href="#arg-n-steps"></a></dt>
-<dd><p>Number of Krylov steps. When <code>NULL</code> (default), chosen
-automatically.</p></dd>
+<dd><p>Number of Krylov steps. When <code>NULL</code> (default), a
+starting value is chosen automatically and doubled until the residuals
+meet <code>tol</code>. An explicit value is used as given.</p></dd>
 
 
 <dt id="arg-mode">mode<a class="anchor" aria-label="anchor" href="#arg-mode"></a></dt>
@@ -110,6 +113,12 @@ plain matrices.</p></dd>
 plain matrices. Ignored when <code>A</code> is already an <code>aMatrix</code>.</p></dd>
 
 
+<dt id="arg-tol">tol<a class="anchor" aria-label="anchor" href="#arg-tol"></a></dt>
+<dd><p>Convergence tolerance on the residuals
+\(\|A v_i - \sigma_i u_i\| / \sigma_1\). A warning of class
+<code>amatrix_not_converged</code> is raised when it is not met.</p></dd>
+
+
 <dt id="arg-k">k<a class="anchor" aria-label="anchor" href="#arg-k"></a></dt>
 <dd><p>Number of singular values/vectors. Alias for <code>nv = nu = k</code>.</p></dd>
 
@@ -120,7 +129,7 @@ plain matrices. Ignored when <code>A</code> is already an <code>aMatrix</code>.<
 <dd><p>Numeric matrix <code>[m, nu]</code>: left singular vectors.</p></dd>
 
     <dt>d</dt>
-<dd><p>Numeric vector of length <code>min(nu, nv)</code>: singular values
+<dd><p>Numeric vector of length <code>max(nu, nv)</code>: singular values
       in decreasing order.</p></dd>
 
     <dt>v</dt>
@@ -131,6 +140,13 @@ plain matrices. Ignored when <code>A</code> is already an <code>aMatrix</code>.<
 
     <dt>mprod</dt>
 <dd><p>Integer: total matrix-vector products issued.</p></dd>
+
+    <dt>residuals</dt>
+<dd><p>Numeric vector: relative residual of each returned
+      triplet.</p></dd>
+
+    <dt>converged</dt>
+<dd><p>Logical: whether all residuals met <code>tol</code>.</p></dd>
 
 
 </dl></div>

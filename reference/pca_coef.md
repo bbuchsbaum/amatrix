@@ -1,11 +1,13 @@
-# Project and reconstruct data using a truncated SVD
+# Principal-component regression coefficients from a truncated SVD
 
 Convenience wrapper that calls
 [`svd_project`](https://bbuchsbaum.github.io/amatrix/reference/svd_project.md)
 followed by
 [`svd_reconstruct`](https://bbuchsbaum.github.io/amatrix/reference/svd_reconstruct.md),
-yielding the rank-`k` least-squares approximation of `Y` in the column
-space of the original matrix.
+i.e. computes \\V D^{-1} U^\top Y\\: the minimum-norm least-squares
+coefficients of `Y` on the rank-`k` approximation of the original matrix
+`X`. Multiply `X` by the result to obtain fitted values. Singular values
+that are zero to working precision are dropped (pseudo-inverse).
 
 ## Usage
 
@@ -29,8 +31,8 @@ pca_coef(factor, Y)
 
 ## Value
 
-Numeric matrix with the same dimensions as `Y`, containing the rank-`k`
-approximation.
+Numeric matrix of dimensions `ncol(X) x ncol(Y)`: the coefficient
+matrix.
 
 ## Examples
 
@@ -38,5 +40,7 @@ approximation.
 m <- matrix(rnorm(30), nrow = 6)
 A <- adgeMatrix(m)
 fac <- svd_factor(A, k = 2L)
-approx <- pca_coef(fac, m)
+y <- rnorm(6)
+beta <- pca_coef(fac, y)
+fitted <- m %*% beta
 ```

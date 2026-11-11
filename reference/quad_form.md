@@ -37,5 +37,5 @@ A <- adgeMatrix(m)
 fac <- chol_factor(A)
 v <- rnorm(4)
 quad_form(fac, v)
-#> [1] 4.197893
+#> [1] 0.3302705
 ```

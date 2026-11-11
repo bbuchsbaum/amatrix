@@ -111,15 +111,17 @@ changes — run:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://bbuchsbaum.github.io/amatrix/">amatrix</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Calibrate the currently-registered non-CPU backends.</span></span>
-<span><span class="fu"><a href="../reference/amatrix_calibrate.html">amatrix_calibrate</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co"># Calibrate the currently-registered non-CPU backends and keep the result</span></span>
+<span><span class="co"># for future sessions.</span></span>
+<span><span class="fu"><a href="../reference/amatrix_calibrate.html">amatrix_calibrate</a></span><span class="op">(</span>persist <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
 <p>This measures every calibration op on every registered backend at a
-set of canonical sizes, derives the minimum workload size at which each
-backend beats the CPU, and persists the result to the user cache
-directory. The cache is tagged with a <code>sys_hash</code> covering
-your OS, machine, and R version; if you move the cache to a different
-machine, amatrix detects the mismatch and refuses to use the stale
-data.</p>
+set of canonical sizes and derives the minimum workload size at which
+each backend beats the CPU. With <code>persist = TRUE</code> the result
+is saved to the user cache directory; by default it is kept for the
+current session only and nothing is written to disk. The cache is tagged
+with a <code>sys_hash</code> covering your OS, machine, and R version;
+if you move the cache to a different machine, amatrix detects the
+mismatch and refuses to use the stale data.</p>
 <p>Inspect the current calibration at any time:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">info</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/amatrix_calibration_info.html">amatrix_calibration_info</a></span><span class="op">(</span><span class="op">)</span></span>

@@ -25,6 +25,7 @@
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/amSVD-class.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/am_argreduce.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/am_ewise_inplace.html</loc></url>
+<url><loc>https://bbuchsbaum.github.io/amatrix/reference/am_irlba.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/am_qr.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/am_scatter_mean.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/am_sweep.html</loc></url>
@@ -100,7 +101,6 @@
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/ewise.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/gemm.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/index.html</loc></url>
-<url><loc>https://bbuchsbaum.github.io/amatrix/reference/irlba.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/irlba_native.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/kernel_matrix.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/kron.html</loc></url>
@@ -112,6 +112,7 @@
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/lu_solve.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/many_lm.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/mat_fun.html</loc></url>
+<url><loc>https://bbuchsbaum.github.io/amatrix/reference/mat_trace.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/matmul-sparse-methods.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/matmul.html</loc></url>
@@ -149,7 +150,6 @@
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/svd_reconstruct.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/sym.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/tcrossprod_weighted.html</loc></url>
-<url><loc>https://bbuchsbaum.github.io/amatrix/reference/trace.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/trace_estim.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/with_amatrix.html</loc></url>
 <url><loc>https://bbuchsbaum.github.io/amatrix/reference/wls_fit.html</loc></url>

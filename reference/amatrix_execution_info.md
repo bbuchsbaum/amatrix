@@ -70,3 +70,14 @@ A named list with elements:
 [`amatrix_backend_plan`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_plan.md),
 [`amatrix_backend_matrix`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_matrix.md),
 [`amatrix_explain`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_explain.md)
+
+## Examples
+
+``` r
+x <- adgeMatrix(matrix(rnorm(12), 3, 4))
+info <- amatrix_execution_info(x, ops = c("matmul", "crossprod"))
+names(info)
+#> [1] "object_id"         "preferred_backend" "pinned_backend"   
+#> [4] "policy"            "precision"         "residency"        
+#> [7] "plans"            
+```

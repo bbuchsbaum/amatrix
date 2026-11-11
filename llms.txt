@@ -320,6 +320,8 @@ Key help pages:
   : Row and column argmax/argmin
 - [`am_ewise_inplace()`](https://bbuchsbaum.github.io/amatrix/reference/am_ewise_inplace.md)
   : In-place elementwise operation on a resident handle
+- [`am_irlba()`](https://bbuchsbaum.github.io/amatrix/reference/am_irlba.md)
+  : GPU-accelerated truncated SVD via irlba
 - [`am_qr()`](https://bbuchsbaum.github.io/amatrix/reference/am_qr.md) :
   QR decomposition of an amatrix object
 - [`am_scatter_mean()`](https://bbuchsbaum.github.io/amatrix/reference/am_scatter_mean.md)
@@ -488,8 +490,6 @@ Key help pages:
   Element-wise operations
 - [`gemm()`](https://bbuchsbaum.github.io/amatrix/reference/gemm.md) :
   Generalised matrix multiply (BLAS DGEMM interface)
-- [`irlba()`](https://bbuchsbaum.github.io/amatrix/reference/irlba.md) :
-  GPU-accelerated truncated SVD via irlba
 - [`irlba_native()`](https://bbuchsbaum.github.io/amatrix/reference/irlba_native.md)
   : GPU-native truncated SVD via Lanczos bidiagonalization
 - [`kernel_matrix()`](https://bbuchsbaum.github.io/amatrix/reference/kernel_matrix.md)
@@ -512,7 +512,7 @@ Key help pages:
 - [`lm_loo_cv()`](https://bbuchsbaum.github.io/amatrix/reference/lm_loo_cv.md)
   : Leave-one-out cross-validation for linear models
 - [`lu_factor()`](https://bbuchsbaum.github.io/amatrix/reference/lu_factor.md)
-  : Store a general square matrix for LU-based solving
+  : LU-factor a general square matrix
 - [`lu_solve()`](https://bbuchsbaum.github.io/amatrix/reference/lu_solve.md)
   : Solve a linear system using an LU factor
 - [`many_lm()`](https://bbuchsbaum.github.io/amatrix/reference/many_lm.md)
@@ -521,6 +521,8 @@ Key help pages:
   [`mat_pow()`](https://bbuchsbaum.github.io/amatrix/reference/mat_fun.md)
   [`mat_log()`](https://bbuchsbaum.github.io/amatrix/reference/mat_fun.md)
   : Matrix functions via symmetric eigendecomposition
+- [`mat_trace()`](https://bbuchsbaum.github.io/amatrix/reference/mat_trace.md)
+  : Matrix trace
 - [`` `%*%`( ``*`<adgeMatrix>`*`,`*`<matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
   [`` `%*%`( ``*`<adgeMatrix>`*`,`*`<Matrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
   [`` `%*%`( ``*`<adgeMatrix>`*`,`*`<dgeMatrix>`*`)`](https://bbuchsbaum.github.io/amatrix/reference/matmul-methods.md)
@@ -542,7 +544,7 @@ Key help pages:
 - [`pairwise_sqdist_argmin()`](https://bbuchsbaum.github.io/amatrix/reference/pairwise_sqdist_argmin.md)
   : Nearest-centroid assignment via fused squared-distance computation
 - [`pca_coef()`](https://bbuchsbaum.github.io/amatrix/reference/pca_coef.md)
-  : Project and reconstruct data using a truncated SVD
+  : Principal-component regression coefficients from a truncated SVD
 - [`qr_downdate()`](https://bbuchsbaum.github.io/amatrix/reference/qr_downdate.md)
   : QR downdate after removing one row
 - [`qr_info()`](https://bbuchsbaum.github.io/amatrix/reference/qr_info.md)
@@ -607,9 +609,7 @@ Key help pages:
 - [`sym()`](https://bbuchsbaum.github.io/amatrix/reference/sym.md) :
   Symmetrise a matrix
 - [`tcrossprod_weighted()`](https://bbuchsbaum.github.io/amatrix/reference/tcrossprod_weighted.md)
-  : Weighted outer cross-product XWX'
-- [`trace()`](https://bbuchsbaum.github.io/amatrix/reference/trace.md) :
-  Matrix trace
+  : Row-weighted outer cross-product
 - [`trace_estim()`](https://bbuchsbaum.github.io/amatrix/reference/trace_estim.md)
   : Stochastic trace estimator (Hutchinson)
 - [`with_amatrix()`](https://bbuchsbaum.github.io/amatrix/reference/with_amatrix.md)

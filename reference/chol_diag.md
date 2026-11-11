@@ -30,5 +30,5 @@ m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
 A <- adgeMatrix(m)
 fac <- chol_factor(A)
 chol_diag(fac)
-#> [1] 2.998567 1.344080 1.722819 1.905674
+#> [1] 1.790340 2.777708 1.136846 1.283089
 ```

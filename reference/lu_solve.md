@@ -1,8 +1,9 @@
 # Solve a linear system using an LU factor
 
 Solves `A %*% x = B` where `A` is the square matrix stored in `factor`,
-delegating to [`base::solve`](https://rdrr.io/r/base/solve.html) (LAPACK
-`DGESV`).
+reusing the LU factorization computed by
+[`lu_factor`](https://bbuchsbaum.github.io/amatrix/reference/lu_factor.md)
+(LAPACK `DGETRS`); repeated solves do not refactor `A`.
 
 ## Usage
 

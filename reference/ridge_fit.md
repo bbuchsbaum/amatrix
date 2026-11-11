@@ -40,7 +40,10 @@ ridge_fit(
 - penalize_intercept:
 
   Logical; when `FALSE` (default) the intercept coefficient is excluded
-  from the penalty.
+  from the penalty. This applies to the column added by
+  `intercept = TRUE` and also to a first column of `X` that consists
+  entirely of ones, which is treated as an explicit intercept. Set
+  `TRUE` to penalize every column.
 
 - include_fitted:
 
@@ -98,10 +101,10 @@ fit <- ridge_fit(X, y, lambda = 1)
 coef(fit)
 #> An amatrix dense matrix [cpu|policy=auto|precision=strict]
 #> 5 x 1 Matrix of class "adgeMatrix"
-#>            [,1]
-#> [1,] -0.1668487
-#> [2,]  0.2730467
-#> [3,]  0.2133478
-#> [4,]  0.2117855
-#> [5,]  0.1316191
+#>              [,1]
+#> [1,]  0.479988455
+#> [2,]  0.403505812
+#> [3,] -0.113753501
+#> [4,]  0.207760337
+#> [5,] -0.006039383
 ```

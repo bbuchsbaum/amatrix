@@ -77,7 +77,9 @@ to compute pairwise distances within <code>X</code> (returns [m, m] matrix).</p>
 
 <dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
 <dd><p>One of <code>"euclidean"</code> (default), <code>"sqeuclidean"</code>,
-or <code>"cosine"</code>.</p></dd>
+or <code>"cosine"</code> (cosine distance,
+\(1 - x^\top y / (\|x\| \|y\|)\); for the similarity itself use
+<code><a href="kernel_matrix.html">kernel_matrix</a>(kernel = "cosine")</code>).</p></dd>
 
 
 <dt id="arg-tile-size">tile_size<a class="anchor" aria-label="anchor" href="#arg-tile-size"></a></dt>

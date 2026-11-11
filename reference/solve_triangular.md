@@ -1,8 +1,9 @@
 # Solve a triangular linear system
 
-Solves `R %*% x = B` (or `t(R) %*% x = B` when `lower = TRUE`) for `x`,
-where `R` is a triangular matrix. Dispatches to a GPU backend when `R`
-is an
+Solves `R %*% x = B` for `x`, where `R` is a triangular matrix: by back
+substitution when `R` is upper triangular (the default) or forward
+substitution when `lower = TRUE`. Only the corresponding triangle of `R`
+is referenced. Dispatches to a GPU backend when `R` is an
 [`amChol`](https://bbuchsbaum.github.io/amatrix/reference/amChol-class.md)
 or `adgeMatrix` with a live resident key and a capable backend.
 
@@ -32,8 +33,8 @@ solve_triangular(R, B, lower = FALSE)
 
 ## Value
 
-Numeric vector or matrix `x` satisfying `R %*% x == B` (or its transpose
-variant). Returns a vector when `B` is a vector or single-column matrix.
+Numeric vector or matrix `x` satisfying `R %*% x == B`. Returns a vector
+when `B` is a vector or single-column matrix.
 
 ## Examples
 

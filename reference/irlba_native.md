@@ -77,5 +77,17 @@ dispatch, this function:
 
 ## See also
 
-[`irlba`](https://bbuchsbaum.github.io/amatrix/reference/irlba.md),
+[`am_irlba`](https://bbuchsbaum.github.io/amatrix/reference/am_irlba.md),
 [`adgeMatrix`](https://bbuchsbaum.github.io/amatrix/reference/adgeMatrix.md)
+
+## Examples
+
+``` r
+if (requireNamespace("irlba", quietly = TRUE)) {
+  set.seed(1)
+  A <- matrix(rnorm(200), 20, 10)
+  # Falls back to am_irlba() when the ArrayFire backend is not available
+  fit <- suppressMessages(irlba_native(A, nv = 2L))
+  fit$d
+}
+```

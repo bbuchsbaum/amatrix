@@ -95,6 +95,32 @@ rethinking backend selection each time.</p>
   useful for internal algorithms that immediately need host matrix data.</p>
     </div>
 
+    <div class="section level2">
+    <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">x</span> <span class="op">&lt;-</span> <span class="fu"><a href="adgeMatrix.html">adgeMatrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">20</span><span class="op">)</span>, <span class="fl">5</span>, <span class="fl">4</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu">amatrix_compile_product</span><span class="op">(</span><span class="va">x</span>, op <span class="op">=</span> <span class="st">"matmul"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Reuse the plan for several right-hand sides</span></span></span>
+<span class="r-in"><span><span class="fu">plan</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">8</span><span class="op">)</span>, <span class="fl">4</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5 x 2 Matrix of class "adgeMatrix"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            [,1]       [,2]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] -2.7054843  2.9514750</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  2.5681976 -1.9322226</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.3880687 -1.9392116</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]  0.6225021 -0.6963171</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [5,]  3.9459324 -3.4105414</span>
+<span class="r-in"><span><span class="fu">plan</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fl">4</span><span class="op">)</span>, <span class="fl">4</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5 x 1 Matrix of class "adgeMatrix"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.17194633</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.07256624</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.21162045</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] -0.02776609</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [5,]  0.05398815</span>
+<span class="r-in"><span></span></span>
+</code></pre></div>
+    </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>
 

@@ -25,3 +25,12 @@ A list of `amChol` objects, one per input matrix.
 
 [`chol_factor`](https://bbuchsbaum.github.io/amatrix/reference/chol_factor.md),
 [`batch_solve`](https://bbuchsbaum.github.io/amatrix/reference/batch_solve.md)
+
+## Examples
+
+``` r
+mats <- lapply(1:3, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
+facs <- batch_chol(mats)
+length(facs)
+#> [1] 3
+```

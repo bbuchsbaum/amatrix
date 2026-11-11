@@ -1,10 +1,10 @@
-# Store a general square matrix for LU-based solving
+# LU-factor a general square matrix
 
-Wraps a square numeric matrix or `adgeMatrix` in an
+Computes the pivoted LU factorization of a square numeric matrix or
+`adgeMatrix` (LAPACK `DGETRF`) and returns it in an
 [`amLU`](https://bbuchsbaum.github.io/amatrix/reference/amLU-class.md)
-object. The actual LU decomposition is performed by
-[`base::solve`](https://rdrr.io/r/base/solve.html) at solve time via
-LAPACK's `DGESV`.
+object for repeated use by
+[`lu_solve`](https://bbuchsbaum.github.io/amatrix/reference/lu_solve.md).
 
 ## Usage
 

@@ -14,7 +14,8 @@ block_lanczos(
   block_size = NULL,
   n_steps = NULL,
   mode = "fast",
-  backend = NULL
+  backend = NULL,
+  tol = 1e-05
 )
 
 block_svd(
@@ -23,7 +24,8 @@ block_svd(
   block_size = NULL,
   n_steps = NULL,
   mode = "fast",
-  backend = NULL
+  backend = NULL,
+  tol = 1e-05
 )
 ```
 
@@ -49,7 +51,9 @@ block_svd(
 
 - n_steps:
 
-  Number of Krylov steps. When `NULL` (default), chosen automatically.
+  Number of Krylov steps. When `NULL` (default), a starting value is
+  chosen automatically and doubled until the residuals meet `tol`. An
+  explicit value is used as given.
 
 - mode:
 
@@ -63,6 +67,12 @@ block_svd(
   [`adgeMatrix()`](https://bbuchsbaum.github.io/amatrix/reference/adgeMatrix.md)
   when coercing plain matrices. Ignored when `A` is already an
   `aMatrix`.
+
+- tol:
+
+  Convergence tolerance on the residuals \\\\A v_i - \sigma_i u_i\\ /
+  \sigma_1\\. A warning of class `amatrix_not_converged` is raised when
+  it is not met.
 
 - k:
 
@@ -78,7 +88,7 @@ A named list with components:
 
 - d:
 
-  Numeric vector of length `min(nu, nv)`: singular values in decreasing
+  Numeric vector of length `max(nu, nv)`: singular values in decreasing
   order.
 
 - v:
@@ -92,6 +102,14 @@ A named list with components:
 - mprod:
 
   Integer: total matrix-vector products issued.
+
+- residuals:
+
+  Numeric vector: relative residual of each returned triplet.
+
+- converged:
+
+  Logical: whether all residuals met `tol`.
 
 ## See also
 

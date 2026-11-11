@@ -46,3 +46,21 @@ as_adgCMatrix(
 ## Value
 
 An `adgCMatrix`.
+
+## Examples
+
+``` r
+m <- Matrix::sparseMatrix(i = c(1, 2, 3), j = c(1, 3, 2), x = c(1, 2, 3))
+A <- as_adgCMatrix(m)
+class(A)
+#> [1] "adgCMatrix"
+#> attr(,"package")
+#> [1] "amatrix"
+A %*% c(1, 1, 1)
+#> An amatrix dense matrix [cpu|policy=auto|precision=strict]
+#> 3 x 1 Matrix of class "adgeMatrix"
+#>      [,1]
+#> [1,]    1
+#> [2,]    2
+#> [3,]    3
+```

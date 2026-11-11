@@ -20,8 +20,9 @@ eigh(x)
 ## Value
 
 A list with components `values` (numeric vector of eigenvalues in
-ascending order) and `vectors` (numeric matrix whose columns are the
-corresponding eigenvectors).
+decreasing order, as for [`eigen`](https://rdrr.io/r/base/eigen.html))
+and `vectors` (numeric matrix whose columns are the corresponding
+eigenvectors).
 
 ## See also
 

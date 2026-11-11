@@ -36,3 +36,14 @@ pairwise_sqdist_argmin(X, Ct, x_norms = NULL, c_norms = NULL)
 ## Value
 
 Integer vector of length n, 1-indexed nearest centroid per row.
+
+## Examples
+
+``` r
+set.seed(1)
+X <- matrix(rnorm(40), 10, 4)
+centroids <- X[c(1, 5, 9), ]
+# Centroids go in COLUMNS: pass t(centroids)
+pairwise_sqdist_argmin(X, t(centroids))
+#>  [1] 1 2 3 3 2 2 2 3 3 1
+```

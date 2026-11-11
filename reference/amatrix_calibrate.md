@@ -16,7 +16,7 @@ amatrix_calibrate(
   sparse_densities = c(0.01, 0.05, 0.2),
   n_reps = 10L,
   margin = 0.1,
-  persist = TRUE,
+  persist = FALSE,
   quiet = FALSE
 )
 ```
@@ -58,8 +58,10 @@ amatrix_calibrate(
 
 - persist:
 
-  Logical. If `TRUE` (default), save calibration to the user cache
-  directory so future sessions load it automatically.
+  Logical. If `TRUE`, save the calibration to the user cache directory
+  (`tools::R_user_dir("amatrix", "cache")`) so future sessions load it
+  automatically. The default `FALSE` keeps it in the current session
+  only; nothing is written to disk unless you ask for it.
 
 - quiet:
 
@@ -75,3 +77,14 @@ Invisibly, a list with elements `version`, `calibrated_at` (POSIXct),
 
 [`amatrix_calibration_info`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_calibration_info.md),
 [`amatrix_backend_plan`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_plan.md)
+
+## Examples
+
+``` r
+# Benchmarks every registered non-CPU backend. With only the CPU backend
+# registered there is nothing to measure and this returns immediately.
+cal <- amatrix_calibrate(quiet = TRUE)
+names(cal)
+#> [1] "version"       "calibrated_at" "sys_hash"      "thresholds"   
+#> [5] "results"      
+```

@@ -30,7 +30,10 @@ dist_matrix(
 
 - method:
 
-  One of `"euclidean"` (default), `"sqeuclidean"`, or `"cosine"`.
+  One of `"euclidean"` (default), `"sqeuclidean"`, or `"cosine"` (cosine
+  distance, \\1 - x^\top y / (\\x\\ \\y\\)\\; for the similarity itself
+  use
+  [`kernel_matrix`](https://bbuchsbaum.github.io/amatrix/reference/kernel_matrix.md)`(kernel = "cosine")`).
 
 - tile_size:
 

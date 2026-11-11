@@ -29,3 +29,12 @@ amatrix_resident_backend_for(x, op = NULL, y = NULL)
 
 A backend name, or `NULL` when no residency-capable accelerator is
 available for the requested operation.
+
+## Examples
+
+``` r
+x <- adgeMatrix(matrix(rnorm(12), 3, 4))
+# NULL when no residency-capable accelerator is registered
+amatrix_resident_backend_for(x, op = "matmul")
+#> NULL
+```

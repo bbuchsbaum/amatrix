@@ -1,11 +1,11 @@
 # LU factorization result for general square matrices
 
-Stores the original square matrix for use with LAPACK's `DGESV` routine.
-Unlike
-[`amChol`](https://bbuchsbaum.github.io/amatrix/reference/amChol-class.md),
-which caches the explicit triangular factor, `amLU` retains `A` and
-delegates factorization to
-[`base::solve`](https://rdrr.io/r/base/solve.html) at solve time.
+Stores a square matrix together with its pivoted LU factorization
+(LAPACK `DGETRF`), computed once by
+[`lu_factor`](https://bbuchsbaum.github.io/amatrix/reference/lu_factor.md)
+and reused by every
+[`lu_solve`](https://bbuchsbaum.github.io/amatrix/reference/lu_solve.md)
+call (LAPACK `DGETRS`).
 
 ## Slots
 
@@ -13,6 +13,11 @@ delegates factorization to
 
   Numeric square matrix; the original matrix passed to
   [`lu_factor`](https://bbuchsbaum.github.io/amatrix/reference/lu_factor.md).
+
+- `lu`:
+
+  The Matrix `denseLU` factorization of `A`, or `NULL` for an empty
+  object.
 
 - `source_id`:
 

@@ -1,7 +1,8 @@
-# Weighted outer cross-product XWX'
+# Row-weighted outer cross-product
 
-Computes \\X \mathrm{diag}(w) X^T\\, an `n x n` weighted outer
-cross-product. A GPU-resident fast path is used when available.
+Computes \\W^{1/2} X X^T W^{1/2}\\ with \\W = \mathrm{diag}(w)\\: the
+`n x n` outer cross-product of the row-weighted matrix \\W^{1/2} X\\. A
+GPU-resident fast path is used when available.
 
 ## Usage
 
@@ -36,10 +37,10 @@ w <- runif(5)
 tcrossprod_weighted(X, w)
 #> An amatrix dense matrix [cpu|policy=auto|precision=strict]
 #> 5 x 5 Matrix of class "adgeMatrix"
-#>             [,1]        [,2]        [,3]       [,4]       [,5]
-#> [1,]  0.64444500  0.16630568  0.08517043 -0.2312366  0.8627601
-#> [2,]  0.16630568  0.15443738 -0.02017602 -0.3607475  0.1652764
-#> [3,]  0.08517043 -0.02017602  0.17693276 -0.1520681 -0.1489719
-#> [4,] -0.23123658 -0.36074745 -0.15206813  1.3279877  0.4241809
-#> [5,]  0.86276011  0.16527644 -0.14897187  0.4241809  2.0028797
+#>            [,1]         [,2]       [,3]       [,4]         [,5]
+#> [1,]  0.5528871 -0.465195025 -0.0662382 -0.9561148 -0.271782917
+#> [2,] -0.4651950  0.903362448  0.1149791  0.5045299 -0.008577877
+#> [3,] -0.0662382  0.114979103  0.9767493 -0.7482508 -1.421692970
+#> [4,] -0.9561148  0.504529927 -0.7482508  2.6936906  1.982184869
+#> [5,] -0.2717829 -0.008577877 -1.4216930  1.9821849  2.498311341
 ```

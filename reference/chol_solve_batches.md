@@ -26,3 +26,14 @@ chol_solve_batches(factor, B)
 ## Value
 
 A list of solution vectors/matrices.
+
+## Examples
+
+``` r
+S <- crossprod(matrix(rnorm(20), 5, 4)) + diag(4)
+fac <- chol_factor(adgeMatrix(S))
+rhs <- list(rnorm(4), matrix(rnorm(8), 4, 2))
+sols <- chol_solve_batches(fac, rhs)
+all.equal(sols[[1]], solve(S, rhs[[1]]))
+#> [1] TRUE
+```

@@ -52,3 +52,16 @@ method is unavailable.
 
 [`amatrix_backend_plan`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_backend_plan.md),
 [`amatrix_materialize_host`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_materialize_host.md)
+
+## Examples
+
+``` r
+x <- adgeMatrix(matrix(1:6, 2, 3))
+# Dispatch rowSums through the planned backend, with a base-R fallback
+amatrix_dispatch_op(
+  x, op = "rowSums", method = "rowSums",
+  args = list(na.rm = FALSE, dims = 1L),
+  fallback = function() rowSums(as.matrix(x))
+)
+#> [1]  9 12
+```

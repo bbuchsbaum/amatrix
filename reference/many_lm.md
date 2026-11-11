@@ -80,11 +80,13 @@ An object of class `"am_many_lm_fit"`, a named list containing:
 
 - rss:
 
-  Numeric vector of length `q`: residual sums of squares.
+  Numeric vector of length `q`: residual sums of squares, or `NULL`
+  unless `include_residuals = TRUE`.
 
 - sigma2:
 
-  Numeric vector of length `q`: residual variances.
+  Numeric vector of length `q`: residual variances, or `NULL` unless
+  `include_residuals = TRUE`.
 
 - rank:
 

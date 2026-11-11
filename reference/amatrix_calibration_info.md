@@ -26,5 +26,5 @@ or `NULL` if no calibration data exists for this session.
 ``` r
 cal <- amatrix_calibration_info()
 is.null(cal) # TRUE when no calibration has been run
-#> [1] TRUE
+#> [1] FALSE
 ```

@@ -69,6 +69,20 @@ positive-definite <code>adgCMatrix</code>.</p>
     <p>An <code>adgCMatrix</code> or sparse Cholesky factor object.</p>
     </div>
 
+    <div class="section level2">
+    <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">S</span> <span class="op">&lt;-</span> <span class="fu">Matrix</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/Matrix/man/sparseMatrix.html" class="external-link">sparseMatrix</a></span><span class="op">(</span>i <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">3</span>, j <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">3</span>, x <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">4</span>, <span class="fl">9</span>, <span class="fl">16</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">A</span> <span class="op">&lt;-</span> <span class="fu"><a href="adgCMatrix.html">adgCMatrix</a></span><span class="op">(</span><span class="va">S</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/chol.html" class="external-link">chol</a></span><span class="op">(</span><span class="va">A</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix sparse matrix [cpu|policy=auto|precision=strict]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3 x 3 sparse Matrix of class "adgCMatrix"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] 2 . .</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] . 3 .</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] . . 4</span>
+<span class="r-in"><span></span></span>
+</code></pre></div>
+    </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>
 

@@ -31,3 +31,15 @@ A `K`-by-`ncol(x)` matrix of group sums.
 
 [`segment_mean`](https://bbuchsbaum.github.io/amatrix/reference/segment_mean.md),
 [`am_scatter_mean`](https://bbuchsbaum.github.io/amatrix/reference/am_scatter_mean.md)
+
+## Examples
+
+``` r
+x <- matrix(1:12, 6, 2)
+labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
+segment_sum(x, labels, K = 3L)
+#>      [,1] [,2]
+#> [1,]   10   28
+#> [2,]    7   19
+#> [3,]    4   10
+```

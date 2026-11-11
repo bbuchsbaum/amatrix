@@ -127,10 +127,12 @@ and the weighted path is selected.</p></dd>
 <dd><p><code>adgeMatrix</code> <code>[n, q]</code> or <code>NULL</code>.</p></dd>
 
     <dt>rss</dt>
-<dd><p>Numeric vector of length <code>q</code>: residual sums of squares.</p></dd>
+<dd><p>Numeric vector of length <code>q</code>: residual sums of squares,
+      or <code>NULL</code> unless <code>include_residuals = TRUE</code>.</p></dd>
 
     <dt>sigma2</dt>
-<dd><p>Numeric vector of length <code>q</code>: residual variances.</p></dd>
+<dd><p>Numeric vector of length <code>q</code>: residual variances,
+      or <code>NULL</code> unless <code>include_residuals = TRUE</code>.</p></dd>
 
     <dt>rank</dt>
 <dd><p>Integer model rank.</p></dd>

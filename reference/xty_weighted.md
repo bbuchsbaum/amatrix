@@ -42,9 +42,9 @@ y <- rnorm(5)
 xty_weighted(X, w, y)
 #> An amatrix dense matrix [cpu|policy=auto|precision=strict]
 #> 4 x 1 Matrix of class "adgeMatrix"
-#>              [,1]
-#> [1,]  1.209024440
-#> [2,] -0.001972357
-#> [3,] -1.227735079
-#> [4,]  1.016346260
+#>            [,1]
+#> [1,] -1.3836076
+#> [2,]  1.8628194
+#> [3,]  0.5248669
+#> [4,] -2.0282482
 ```

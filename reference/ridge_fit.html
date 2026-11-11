@@ -88,7 +88,10 @@ prepended to <code>X</code> before fitting.</p></dd>
 
 <dt id="arg-penalize-intercept">penalize_intercept<a class="anchor" aria-label="anchor" href="#arg-penalize-intercept"></a></dt>
 <dd><p>Logical; when <code>FALSE</code> (default) the
-intercept coefficient is excluded from the penalty.</p></dd>
+intercept coefficient is excluded from the penalty. This applies to the
+column added by <code>intercept = TRUE</code> and also to a first column of
+<code>X</code> that consists entirely of ones, which is treated as an
+explicit intercept. Set <code>TRUE</code> to penalize every column.</p></dd>
 
 
 <dt id="arg-include-fitted">include_fitted<a class="anchor" aria-label="anchor" href="#arg-include-fitted"></a></dt>
@@ -142,12 +145,12 @@ sharing the same <code>X</code>.</p></dd>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 5 x 1 Matrix of class "adgeMatrix"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>            [,1]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,] -0.1668487</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.2730467</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]  0.2133478</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]  0.2117855</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [5,]  0.1316191</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              [,1]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.479988455</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.403505812</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.113753501</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]  0.207760337</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [5,] -0.006039383</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

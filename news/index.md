@@ -94,6 +94,71 @@ Initial public release.
   (routed to CPU under the hood) and now maps to `"exact"` with a
   one-time-per-session deprecation warning. Use `"exact"` or `"fast"`.
 
+### Pre-release review fixes
+
+- Drop-in semantics: `x[i]` / `x[i] <- v` index elements as in base R;
+  `log(x, base)` honours `base`;
+  [`norm()`](https://rdrr.io/r/base/norm.html) matches
+  [`base::norm()`](https://rdrr.io/r/base/norm.html) for every type and
+  no longer alters [`norm()`](https://rdrr.io/r/base/norm.html) for
+  plain matrices; [`t()`](https://rdrr.io/r/base/t.html) views support
+  the usual matrix operations; results keep their amatrix class across
+  sub-assignment, products with vectors and plain matrices, and
+  [`kronecker()`](https://rdrr.io/r/base/kronecker.html).
+- Identity-keyed caches can no longer return a factor of different data
+  (after `-x`, [`round()`](https://rdrr.io/r/base/Round.html),
+  [`signif()`](https://rdrr.io/r/base/Round.html),
+  [`zapsmall()`](https://rdrr.io/r/base/zapsmall.html), or re-used
+  weights), and cache entries are released when their source matrix is
+  collected.
+- Loading the package, probing a backend and `trace_estim(seed = )` no
+  longer touch the user’s random-number stream.
+- [`block_lanczos()`](https://bbuchsbaum.github.io/amatrix/reference/block_lanczos.md)
+  /
+  [`block_svd()`](https://bbuchsbaum.github.io/amatrix/reference/block_lanczos.md)
+  check residuals against a new `tol` argument, extend the iteration
+  automatically and warn (`amatrix_not_converged`) when the tolerance is
+  not met.
+- [`lm_fit()`](https://bbuchsbaum.github.io/amatrix/reference/lm_fit.md)
+  /
+  [`wls_fit()`](https://bbuchsbaum.github.io/amatrix/reference/wls_fit.md)
+  raise `amatrix_rank_deficient` for a singular design and warn
+  (`amatrix_ill_conditioned`) when the normal equations are unreliable;
+  [`lm_loo_cv()`](https://bbuchsbaum.github.io/amatrix/reference/lm_loo_cv.md)
+  uses the exact leverage identity;
+  [`lu_factor()`](https://bbuchsbaum.github.io/amatrix/reference/lu_factor.md)
+  stores a real LU factorization.
+- [`amatrix_calibrate()`](https://bbuchsbaum.github.io/amatrix/reference/amatrix_calibrate.md)
+  writes to the user cache directory only with `persist = TRUE`.
+- `dist_matrix(method = "cosine")` returns the cosine distance
+  (`1 - similarity`); the similarity is
+  `kernel_matrix(kernel = "cosine")`.
+- [`sweep()`](https://rdrr.io/r/base/sweep.html) now dispatches on
+  amatrix objects (it is exported as a standard generic with
+  [`base::sweep`](https://rdrr.io/r/base/sweep.html) as default);
+  [`am_sweep()`](https://bbuchsbaum.github.io/amatrix/reference/am_sweep.md)
+  defaults to `FUN = "-"` like base;
+  [`rowscale()`](https://bbuchsbaum.github.io/amatrix/reference/rowscale.md),
+  [`colscale()`](https://bbuchsbaum.github.io/amatrix/reference/rowscale.md)
+  and multiplicative sweeps keep sparse input sparse.
+  [`mean()`](https://rdrr.io/r/base/mean.html),
+  [`which()`](https://rdrr.io/r/base/which.html) and
+  [`isSymmetric()`](https://rdrr.io/r/base/isSymmetric.html) work with
+  only amatrix attached. `dim(x) <- value` returns a valid, freshly
+  identified object.
+- Much lower per-operation overhead and fewer data copies on the CPU
+  path.
+- Attaching the package no longer masks other packages’ functions: the
+  matrix trace is
+  [`mat_trace()`](https://bbuchsbaum.github.io/amatrix/reference/mat_trace.md)
+  (was `trace`, which masked
+  [`base::trace`](https://rdrr.io/r/base/trace.html)), the truncated-SVD
+  wrapper is
+  [`am_irlba()`](https://bbuchsbaum.github.io/amatrix/reference/am_irlba.md)
+  (was `irlba`, which masked `irlba::irlba`), and `svd` is a standard
+  generic with [`base::svd`](https://rdrr.io/r/base/svd.html) as its
+  default.
+
 ### Error handling and diagnostics
 
 - User-facing errors in wrapper functions now emit classed conditions

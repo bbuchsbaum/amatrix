@@ -45,16 +45,19 @@ changes — run:
 
 library(amatrix)
 
-# Calibrate the currently-registered non-CPU backends.
-amatrix_calibrate()
+# Calibrate the currently-registered non-CPU backends and keep the result
+# for future sessions.
+amatrix_calibrate(persist = TRUE)
 ```
 
 This measures every calibration op on every registered backend at a set
-of canonical sizes, derives the minimum workload size at which each
-backend beats the CPU, and persists the result to the user cache
-directory. The cache is tagged with a `sys_hash` covering your OS,
-machine, and R version; if you move the cache to a different machine,
-amatrix detects the mismatch and refuses to use the stale data.
+of canonical sizes and derives the minimum workload size at which each
+backend beats the CPU. With `persist = TRUE` the result is saved to the
+user cache directory; by default it is kept for the current session only
+and nothing is written to disk. The cache is tagged with a `sys_hash`
+covering your OS, machine, and R version; if you move the cache to a
+different machine, amatrix detects the mismatch and refuses to use the
+stale data.
 
 Inspect the current calibration at any time:
 

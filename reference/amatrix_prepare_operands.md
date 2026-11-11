@@ -46,3 +46,13 @@ amatrix_prepare_operands(
 ## Value
 
 A list with elements `x`, `y`, and `backend`.
+
+## Examples
+
+``` r
+x <- adgeMatrix(matrix(rnorm(20), 5, 4))
+y <- matrix(rnorm(8), 4, 2)
+ops <- amatrix_prepare_operands(x, y, op = "matmul")
+names(ops)
+#> [1] "x"       "y"       "backend"
+```

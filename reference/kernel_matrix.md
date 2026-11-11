@@ -87,3 +87,21 @@ Kernels:
 ## See also
 
 [`dist_matrix`](https://bbuchsbaum.github.io/amatrix/reference/dist_matrix.md)
+
+## Examples
+
+``` r
+set.seed(1)
+X <- matrix(rnorm(20), 5, 4)
+K <- kernel_matrix(X, kernel = "rbf", sigma = 1.5)
+dim(K)
+#> [1] 5 5
+# Cross-kernel between two sets of rows
+kernel_matrix(X, X[1:2, ], kernel = "linear")
+#>             [,1]        [,2]
+#> [1,]  3.35311408  0.07512096
+#> [2,]  0.07512096  0.42355183
+#> [3,] -1.06387913 -0.05104410
+#> [4,] -4.85682215 -0.30306633
+#> [5,]  1.71810337  0.34058802
+```
