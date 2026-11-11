@@ -162,13 +162,14 @@ amatrix_calibrate <- function(
   if (persist) {
     path <- .amatrix_calibration_path()
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-    tryCatch(
-      saveRDS(calibration, path),
-      error = function(e) {
-        if (!quiet) message(sprintf("amatrix_calibrate: could not persist to %s: %s", path, e$message))
-      }
-    )
-    if (!quiet) message(sprintf("amatrix_calibrate: saved to %s", path))
+    saved <- tryCatch({
+      saveRDS(calibration, path)
+      TRUE
+    }, error = function(e) {
+      if (!quiet) message(sprintf("amatrix_calibrate: could not persist to %s: %s", path, e$message))
+      FALSE
+    })
+    if (saved && !quiet) message(sprintf("amatrix_calibrate: saved to %s", path))
   }
 
   if (!quiet) {
@@ -403,7 +404,8 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
   path <- .amatrix_calibration_path()
   if (!file.exists(path)) return(invisible(NULL))
   cal <- tryCatch(readRDS(path), error = function(e) NULL)
-  if (is.null(cal)) return(invisible(NULL))
+  # A readable but malformed cache file must never break dispatch.
+  if (!is.list(cal) || !is.list(cal$thresholds)) return(invisible(NULL))
 
   # Version gate — v1 is grandfathered with NULL hash (will re-calibrate on
   # next explicit amatrix_calibrate() call). v2+ carries sys_hash.
@@ -439,7 +441,7 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
   if (is.infinite(thresh)) return(FALSE) # GPU never wins
 
   workload <- .amatrix_dispatch_workload(x, op, y = y)
-  if (identical(workload, 0L)) return(TRUE)
+  if (!is.finite(workload) || workload == 0) return(TRUE)
 
   workload >= thresh
 }
@@ -657,41 +659,45 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
 .amatrix_dispatch_workload <- function(x, op, y = NULL) {
   sig <- .amatrix_dispatch_signature(x, op, y = y)
   width <- .amatrix_rhs_width(y)
-  width_eff <- if (is.na(width)) 1L else max(1L, width)
+  width_eff <- if (is.na(width)) 1 else max(1, as.numeric(width))
 
+  # Workloads are element counts and routinely exceed .Machine$integer.max
+  # (e.g. 2000 x 1200 %*% 1200 x 1000), so all arithmetic is done in doubles.
   if (inherits(x, "adgCMatrix")) {
-    nnz <- length(x@x)
-    return(as.integer(nnz * if (startsWith(sig, "spmm:")) width_eff else 1L))
+    nnz <- as.numeric(length(x@x))
+    return(nnz * if (startsWith(sig, "spmm:")) width_eff else 1)
   }
 
-  base_work <- as.integer(nrow(x) * ncol(x))
+  base_work <- as.numeric(nrow(x)) * as.numeric(ncol(x))
   if (identical(sig, "solve")) {
-    return(as.integer(base_work * width_eff))
+    return(base_work * width_eff)
   }
   if (identical(sig, "svd")) {
-    return(as.integer(base_work * min(nrow(x), ncol(x))))
+    return(base_work * min(nrow(x), ncol(x)))
   }
   if (sig %in% c("gemm")) {
-    return(as.integer(base_work * width_eff))
+    return(base_work * width_eff)
   }
 
   base_work
 }
 
 .amatrix_benchmark_workload <- function(op, nr, nc) {
+  nr <- as.numeric(nr)
+  nc <- as.numeric(nc)
   switch(op,
-    gemm = as.integer(nr * nc * nc),
-    gemv = as.integer(nr * nc),
-    crossprod = as.integer(nr * nc),
-    rowSums = as.integer(nr * nc),
-    colSums = as.integer(nr * nc),
-    qr = as.integer(nr * nc),
-    chol = as.integer(nc * nc),
-    solve = as.integer(nc * nc * min(max(2L, getOption("amatrix.calibration.solve_rhs_width", 8L)), max(2L, nc))),
-    svd = as.integer(nr * nc * min(nr, nc)),
-    spmv = as.integer(nr * nc),
-    spmm = as.integer(nr * nc * nc),
-    as.integer(nr * nc)
+    gemm = nr * nc * nc,
+    gemv = nr * nc,
+    crossprod = nr * nc,
+    rowSums = nr * nc,
+    colSums = nr * nc,
+    qr = nr * nc,
+    chol = nc * nc,
+    solve = nc * nc * min(max(2, getOption("amatrix.calibration.solve_rhs_width", 8L)), max(2, nc)),
+    svd = nr * nc * min(nr, nc),
+    spmv = nr * nc,
+    spmm = nr * nc * nc,
+    nr * nc
   )
 }
 

@@ -19,6 +19,10 @@
       if (is.null(oid) || !nzchar(oid)) {
         return(invisible(NULL))
       }
+      # Cached factors (chol / QR / XtX / SVD) are keyed by this object's id.
+      # Once the object is unreachable no lookup can ever hit them again, so
+      # drop them here; otherwise the model cache grows without bound.
+      try(.amatrix_cache_invalidate_object(oid), silent = TRUE)
       object_key <- paste0("obj:", oid)
       entry <- get0(object_key, envir = .amatrix_state$residency, inherits = FALSE)
       if (is.null(entry)) {
