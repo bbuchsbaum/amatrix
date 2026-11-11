@@ -19,6 +19,14 @@ A list of solution matrices (or vectors when each rhs is a vector).
 Solve B linear systems \code{A_b x_b = B_b} where each \code{A_b} is
 represented by its Cholesky factor from \code{\link{batch_chol}}.
 }
+\examples{
+mats <- lapply(1:2, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
+facs <- batch_chol(mats)
+rhs <- lapply(1:2, function(i) rnorm(3))
+sols <- batch_solve(facs, rhs)
+all.equal(sols[[1]], solve(mats[[1]], rhs[[1]]))
+
+}
 \seealso{
 \code{\link{batch_chol}}, \code{\link{chol_solve}}
 }

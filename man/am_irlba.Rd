@@ -66,6 +66,15 @@ where they belong (the subspace dimension \code{work} is always small).
 Do \strong{not} pass \code{mult=} — it is deprecated in irlba and forces a
 non-standard dispatch path. Pass an \code{adgeMatrix} instead.
 }
+\examples{
+if (requireNamespace("irlba", quietly = TRUE)) {
+  set.seed(1)
+  A <- matrix(rnorm(200), 20, 10)
+  fit <- am_irlba(A, nv = 2)
+  fit$d
+}
+
+}
 \seealso{
 \code{\link{adgeMatrix}}, \code{\link{svd_factor}}
 }

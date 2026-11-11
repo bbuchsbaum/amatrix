@@ -765,6 +765,11 @@ amatrix_backend_health_probe <- function(name, tol = NULL) {
 .amatrix_log_fallback <- function(op, backend, reason,
                                   from_backend = NULL, to_backend = "cpu") {
   .amatrix_backend_health_init()
+  # Keep the most recent entries only: a persistently failing backend would
+  # otherwise grow this list for the life of the session.
+  if (length(.amatrix_state$fallback_log) >= 1000L) {
+    .amatrix_state$fallback_log <- utils::tail(.amatrix_state$fallback_log, 999L)
+  }
   idx <- length(.amatrix_state$fallback_log) + 1L
   .amatrix_state$fallback_log[[idx]] <- list(
     timestamp = Sys.time(),
@@ -827,6 +832,10 @@ amatrix_fallback_log <- function() {
 #' clean run.
 #'
 #' @return Invisibly, \code{NULL}.
+#'
+#' @examples
+#' amatrix_fallback_log_reset()
+#' nrow(amatrix_fallback_log())
 #'
 #' @seealso \code{\link{amatrix_fallback_log}}
 #' @export

@@ -35,3 +35,11 @@ resident accelerator backend when beneficial. The returned object is a
 callable function, so repeated right-hand sides can be applied without
 rethinking backend selection each time.
 }
+\examples{
+x <- adgeMatrix(matrix(rnorm(20), 5, 4))
+plan <- amatrix_compile_product(x, op = "matmul")
+# Reuse the plan for several right-hand sides
+plan(matrix(rnorm(8), 4, 2))
+plan(matrix(rnorm(4), 4, 1))
+
+}

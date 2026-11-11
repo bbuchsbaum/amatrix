@@ -14,6 +14,11 @@ Resets the fallback log to empty. Typically called at the start of a
 test block to isolate the assertion that the log is empty after a
 clean run.
 }
+\examples{
+amatrix_fallback_log_reset()
+nrow(amatrix_fallback_log())
+
+}
 \seealso{
 \code{\link{amatrix_fallback_log}}
 }

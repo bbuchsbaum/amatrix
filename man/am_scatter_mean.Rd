@@ -19,3 +19,10 @@ A \code{K}-by-\code{ncol(x)} matrix of group means.
 \description{
 Compute the mean of rows of \code{x} grouped by integer \code{labels}.
 }
+\examples{
+x <- matrix(1:12, 6, 2)
+labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
+# One row of column means per cluster
+am_scatter_mean(x, labels, K = 3L)
+
+}

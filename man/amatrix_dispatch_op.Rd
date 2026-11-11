@@ -36,6 +36,16 @@ the cold path (materializing \code{x} to host) if needed. If the
 chosen backend does not implement \code{method}, the \code{fallback}
 function is called instead.
 }
+\examples{
+x <- adgeMatrix(matrix(1:6, 2, 3))
+# Dispatch rowSums through the planned backend, with a base-R fallback
+amatrix_dispatch_op(
+  x, op = "rowSums", method = "rowSums",
+  args = list(na.rm = FALSE, dims = 1L),
+  fallback = function() rowSums(as.matrix(x))
+)
+
+}
 \seealso{
 \code{\link{amatrix_backend_plan}},
   \code{\link{amatrix_materialize_host}}

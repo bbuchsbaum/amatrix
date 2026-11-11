@@ -32,3 +32,11 @@ corresponding \code{aMatrix} object with a live resident binding. This is
 primarily useful for repeated GPU work where paying the upload cost once is
 preferable to relying on cold-path dispatch.
 }
+\examples{
+x <- adgeMatrix(matrix(rnorm(12), 3, 4))
+# With only the CPU backend there is no device to bind to, so x is
+# returned unchanged; with a GPU backend it becomes device-resident.
+y <- amatrix_bind_resident(x)
+amatrix_residency_info(y)$live
+
+}

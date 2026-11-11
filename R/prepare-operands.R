@@ -82,6 +82,13 @@
 #' @param precision Precision to use when wrapping base matrices.
 #' @param policy Policy to use when wrapping base matrices.
 #' @return A list with elements \code{x}, \code{y}, and \code{backend}.
+#'
+#' @examples
+#' x <- adgeMatrix(matrix(rnorm(20), 5, 4))
+#' y <- matrix(rnorm(8), 4, 2)
+#' ops <- amatrix_prepare_operands(x, y, op = "matmul")
+#' names(ops)
+#'
 #' @export
 amatrix_prepare_operands <- function(
   x,

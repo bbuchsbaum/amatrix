@@ -49,6 +49,12 @@
 #'   keyed by backend then op), and \code{results} (data.frame of all
 #'   benchmark measurements).
 #'
+#' @examples
+#' # Benchmarks every registered non-CPU backend. With only the CPU backend
+#' # registered there is nothing to measure and this returns immediately.
+#' cal <- amatrix_calibrate(quiet = TRUE)
+#' names(cal)
+#'
 #' @seealso \code{\link{amatrix_calibration_info}},
 #'   \code{\link{amatrix_backend_plan}}
 #' @export

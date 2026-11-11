@@ -35,3 +35,10 @@ Converts inputs to \code{amatrix} wrappers when needed, chooses a
 residency-capable accelerator backend in automatic mode, and binds the
 operands so repeated products reuse the resident fast path.
 }
+\examples{
+x <- adgeMatrix(matrix(rnorm(20), 5, 4))
+y <- matrix(rnorm(8), 4, 2)
+ops <- amatrix_prepare_operands(x, y, op = "matmul")
+names(ops)
+
+}

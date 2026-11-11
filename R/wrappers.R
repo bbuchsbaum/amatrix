@@ -2195,6 +2195,12 @@ dot <- function(x, y) {
 #' @param labels Integer vector of group labels (1-based).
 #' @param K Number of groups.
 #' @return A \code{K}-by-\code{ncol(x)} matrix of group sums.
+#'
+#' @examples
+#' x <- matrix(1:12, 6, 2)
+#' labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
+#' segment_sum(x, labels, K = 3L)
+#'
 #' @seealso \code{\link{segment_mean}}, \code{\link{am_scatter_mean}}
 #' @export
 segment_sum <- function(x, labels, K) {
@@ -2231,6 +2237,12 @@ segment_sum <- function(x, labels, K) {
 #' @param labels Integer vector of group labels (1-based).
 #' @param K Number of groups.
 #' @return A \code{K}-by-\code{ncol(x)} matrix of group means.
+#'
+#' @examples
+#' x <- matrix(1:12, 6, 2)
+#' labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
+#' segment_mean(x, labels, K = 3L)
+#'
 #' @seealso \code{\link{segment_sum}}, \code{\link{am_scatter_mean}}
 #' @export
 segment_mean <- function(x, labels, K) {
@@ -2416,6 +2428,14 @@ sweep.adgCMatrix <- function(x, MARGIN, STATS, FUN = "-",
 #' @param alpha Scalar multiplier for \code{A\%*\%B} (default 1).
 #' @param beta  Scalar multiplier for \code{C} (default 1).
 #' @return \code{adgeMatrix} if A is resident, otherwise plain matrix.
+#'
+#' @examples
+#' A <- adgeMatrix(matrix(1:6, 2, 3))
+#' B <- matrix(1:12, 3, 4)
+#' C <- matrix(1, 2, 4)
+#' # 2 * (A %*% B) + 0.5 * C
+#' addmm(A, B, C, alpha = 2, beta = 0.5)
+#'
 #' @export
 addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
   B_mat <- as.matrix(B); storage.mode(B_mat) <- "double"
@@ -2509,6 +2529,14 @@ addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
 #' @param x_norms Optional n-vector of precomputed \eqn{\|x_i\|^2}. Computed if \code{NULL}.
 #' @param c_norms Optional K-vector of precomputed \eqn{\|c_k\|^2}. Computed if \code{NULL}.
 #' @return Integer vector of length n, 1-indexed nearest centroid per row.
+#'
+#' @examples
+#' set.seed(1)
+#' X <- matrix(rnorm(40), 10, 4)
+#' centroids <- X[c(1, 5, 9), ]
+#' # Centroids go in COLUMNS: pass t(centroids)
+#' pairwise_sqdist_argmin(X, t(centroids))
+#'
 #' @export
 pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
   Ct_mat  <- as.matrix(Ct);  storage.mode(Ct_mat) <- "double"
@@ -2586,6 +2614,13 @@ pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
 #' @param labels Integer vector of group labels (1-based).
 #' @param K Number of groups.
 #' @return A \code{K}-by-\code{ncol(x)} matrix of group means.
+#'
+#' @examples
+#' x <- matrix(1:12, 6, 2)
+#' labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
+#' # One row of column means per cluster
+#' am_scatter_mean(x, labels, K = 3L)
+#'
 #' @export
 am_scatter_mean <- function(x, labels, K) {
   labels <- as.integer(labels)
@@ -2638,6 +2673,12 @@ am_scatter_mean <- function(x, labels, K) {
 #' @param STATS Numeric vector of statistics to apply.
 #' @param FUN Operation: \code{"+"}, \code{"-"}, \code{"*"}, or \code{"/"}.
 #' @return A matrix of the same dimensions as \code{x}.
+#'
+#' @examples
+#' x <- adgeMatrix(matrix(1:6, 2, 3))
+#' # Subtract the column means
+#' am_sweep(x, 2, colMeans(as.matrix(x)), FUN = "-")
+#'
 #' @seealso \code{\link{am_sweep_inplace}}
 #' @export
 am_sweep <- function(x, MARGIN, STATS, FUN = "+") {
@@ -2706,6 +2747,14 @@ am_sweep <- function(x, MARGIN, STATS, FUN = "+") {
 #'
 #' @param x A numeric matrix or \code{adgeMatrix}.
 #' @return An integer vector of indices.
+#'
+#' @examples
+#' x <- adgeMatrix(matrix(c(3, 1, 2, 9, 7, 8), 2, 3))
+#' am_rowargmax(x)
+#' am_rowargmin(x)
+#' am_colargmax(x)
+#' am_colargmin(x)
+#'
 #' @name am_argreduce
 #' @rdname am_argreduce
 #' @export
@@ -2732,6 +2781,13 @@ am_colargmin <- function(x) .am_argreduce(x, "colargmin")
 #' @param e1 A numeric matrix or \code{adgeMatrix}.
 #' @param e2 A numeric matrix, \code{adgeMatrix}, or \code{NULL} for unary ops.
 #' @return A matrix of the same dimensions as \code{e1}.
+#'
+#' @examples
+#' x <- adgeMatrix(matrix(1:6, 2, 3))
+#' ewise("+", x, 1)
+#' ewise("*", x, x)
+#' ewise("exp", x)
+#'
 #' @export
 ewise <- function(op, e1, e2 = NULL) {
   if (!inherits(e1, "aMatrix") && !inherits(e2, "aMatrix")) {
@@ -3060,7 +3116,9 @@ am_set_dimnames <- function(x, value) {
 #' @param Y Numeric matrix or \code{adgeMatrix}, shape [n, p], or \code{NULL}
 #'   to compute pairwise distances within \code{X} (returns [m, m] matrix).
 #' @param method One of \code{"euclidean"} (default), \code{"sqeuclidean"},
-#'   or \code{"cosine"}.
+#'   or \code{"cosine"} (cosine distance,
+#'   \eqn{1 - x^\top y / (\|x\| \|y\|)}; for the similarity itself use
+#'   \code{\link{kernel_matrix}(kernel = "cosine")}).
 #' @param tile_size Integer row-block size for tiled computation, or \code{NULL}
 #'   (default) to auto-tile when \code{nrow(X) > 50000} (self-distance only).
 #'   Set explicitly to process any size in row-blocks; useful when GPU memory
@@ -3093,8 +3151,17 @@ dist_matrix <- function(X, Y = NULL,
     return(.dist_matrix_tiled(X_mat, Y_mat, method, as.integer(tile_size), spec = spec))
   }
 
-  if (method == "cosine")
-    return(.am_kernel_gpu(X, Y, "cosine", 1.0, 2L, 0.0, spec = spec))
+  if (method == "cosine") {
+    # Cosine distance = 1 - cosine similarity (the similarity itself is
+    # kernel_matrix(kernel = "cosine")). Clamp rounding noise into [0, 2] and
+    # make self-distances exactly zero.
+    sim <- .am_kernel_gpu(X, Y, "cosine", 1.0, 2L, 0.0, spec = spec)
+    D <- 1 - as.matrix(sim)
+    D[] <- pmin(pmax(D, 0), 2)
+    if (is.null(Y_mat) && nrow(D) == ncol(D)) diag(D) <- 0
+    dimnames(D) <- dimnames(sim)
+    return(if (inherits(sim, "aMatrix")) .amatrix_rewrap_like(sim, D) else D)
+  }
 
   D_sq <- .dist_matrix_sq_gpu(X, Y, spec = spec)
   if (!is.null(Y_mat) && identical(X_mat, Y_mat)) diag(D_sq) <- 0
@@ -3129,6 +3196,15 @@ dist_matrix <- function(X, Y = NULL,
 #' @param zero_diag When \code{TRUE} and \code{Y} is \code{NULL}, set the
 #'   diagonal of the kernel matrix to zero.
 #' @return Numeric matrix [m, n] of kernel values.
+#'
+#' @examples
+#' set.seed(1)
+#' X <- matrix(rnorm(20), 5, 4)
+#' K <- kernel_matrix(X, kernel = "rbf", sigma = 1.5)
+#' dim(K)
+#' # Cross-kernel between two sets of rows
+#' kernel_matrix(X, X[1:2, ], kernel = "linear")
+#'
 #' @seealso \code{\link{dist_matrix}}
 #' @export
 kernel_matrix <- function(X, Y = NULL,
@@ -3281,6 +3357,12 @@ setMethod("norm", signature(x = "numeric", type = "character"), function(x, type
 #'
 #' @param A A list of square numeric matrices, or a 3-D array \code{[n, n, B]}.
 #' @return A list of \code{amChol} objects, one per input matrix.
+#'
+#' @examples
+#' mats <- lapply(1:3, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
+#' facs <- batch_chol(mats)
+#' length(facs)
+#'
 #' @seealso \code{\link{chol_factor}}, \code{\link{batch_solve}}
 #' @export
 batch_chol <- function(A) {
@@ -3300,6 +3382,14 @@ batch_chol <- function(A) {
 #' @param B A list of right-hand-side matrices/vectors, or a 3-D array
 #'   \code{[n, k, B]}.  Length / third dimension must match \code{Ls}.
 #' @return A list of solution matrices (or vectors when each rhs is a vector).
+#'
+#' @examples
+#' mats <- lapply(1:2, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
+#' facs <- batch_chol(mats)
+#' rhs <- lapply(1:2, function(i) rnorm(3))
+#' sols <- batch_solve(facs, rhs)
+#' all.equal(sols[[1]], solve(mats[[1]], rhs[[1]]))
+#'
 #' @seealso \code{\link{batch_chol}}, \code{\link{chol_solve}}
 #' @export
 batch_solve <- function(Ls, B) {
@@ -3332,6 +3422,12 @@ batch_solve <- function(Ls, B) {
 #'
 #' @param A,B Matrices or \code{aMatrix} objects.
 #' @return An \code{adgeMatrix} of dimension \code{(nrow(A)*nrow(B)) x (ncol(A)*ncol(B))}.
+#'
+#' @examples
+#' A <- matrix(1:4, 2, 2)
+#' B <- diag(2)
+#' kron(A, B)
+#'
 #' @seealso \code{\link{kron_matrix}}
 #' @export
 kron <- function(A, B) {
@@ -3346,6 +3442,12 @@ kron <- function(A, B) {
 #'
 #' @param A A list of numeric matrices, or a 3-D array \code{[n, p, B]}.
 #' @return A list of \code{p x p} crossproduct matrices.
+#'
+#' @examples
+#' mats <- lapply(1:3, function(i) matrix(rnorm(12), 4, 3))
+#' xtx <- batch_crossprod(mats)
+#' dim(xtx[[1]])
+#'
 #' @seealso \code{\link{batch_chol}}
 #' @export
 batch_crossprod <- function(A) {

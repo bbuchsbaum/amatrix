@@ -31,6 +31,11 @@
 #'       \code{\link{amatrix_backend_matrix}}.}
 #'   }
 #'
+#' @examples
+#' x <- adgeMatrix(matrix(rnorm(12), 3, 4))
+#' info <- amatrix_execution_info(x, ops = c("matmul", "crossprod"))
+#' names(info)
+#'
 #' @seealso \code{\link{amatrix_backend_plan}},
 #'   \code{\link{amatrix_backend_matrix}},
 #'   \code{\link{amatrix_explain}}
@@ -362,11 +367,34 @@ amatrix_backend_matrix <- function(
 #' @return The result of the backend method, or the result of
 #'   \code{fallback()} if the method is unavailable.
 #'
+#' @examples
+#' x <- adgeMatrix(matrix(1:6, 2, 3))
+#' # Dispatch rowSums through the planned backend, with a base-R fallback
+#' amatrix_dispatch_op(
+#'   x, op = "rowSums", method = "rowSums",
+#'   args = list(na.rm = FALSE, dims = 1L),
+#'   fallback = function() rowSums(as.matrix(x))
+#' )
+#'
 #' @seealso \code{\link{amatrix_backend_plan}},
 #'   \code{\link{amatrix_materialize_host}}
 #' @export
 amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fallback) {
   stopifnot(is.function(fallback))
+  # A failure in a backend's resident kernel is only evidence against the
+  # backend if the same request then succeeds some other way. Record it as
+  # pending and apply it after the dispatch returns normally; if the request
+  # itself is invalid the error propagates and the backend stays healthy.
+  health <- new.env(parent = emptyenv())
+  result <- .amatrix_dispatch_op_impl(x, op, method = method, y = y, args = args,
+                                      fallback = fallback, health = health)
+  if (!is.null(health$pending)) {
+    .amatrix_backend_health_mark(health$pending$backend, "unhealthy", health$pending$reason)
+  }
+  result
+}
+
+.amatrix_dispatch_op_impl <- function(x, op, method = op, y = NULL, args = list(), fallback, health) {
   choice <- .amatrix_backend_for(x, op, y = y)
   chosen_name <- choice$name
   backend_method <- choice$backend[[method]]
@@ -413,9 +441,9 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
               reason = sprintf("resident %s error: %s", method, conditionMessage(e)),
               from_backend = resident_backend_name
             )
-            .amatrix_backend_health_mark(
-              resident_backend_name, "unhealthy",
-              sprintf("resident %s error: %s", method, conditionMessage(e))
+            health$pending <- list(
+              backend = resident_backend_name,
+              reason = sprintf("resident %s error: %s", method, conditionMessage(e))
             )
             NULL
           }

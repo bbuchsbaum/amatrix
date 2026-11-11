@@ -23,3 +23,11 @@ addmm(A, B, C = NULL, alpha = 1, beta = 1)
 \description{
 Scaled matrix multiply with optional bias: alpha*(A\%*\%B) + beta*C
 }
+\examples{
+A <- adgeMatrix(matrix(1:6, 2, 3))
+B <- matrix(1:12, 3, 4)
+C <- matrix(1, 2, 4)
+# 2 * (A \%*\% B) + 0.5 * C
+addmm(A, B, C, alpha = 2, beta = 0.5)
+
+}

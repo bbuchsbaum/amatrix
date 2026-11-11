@@ -57,8 +57,18 @@
   as_dge <- function(v) {
     if (inherits(v, "adgeMatrix")) return(amatrix_materialize_dense(v))
     if (identical(class(v), structure("dgeMatrix", package = "Matrix"))) return(v)
+    # A plain double matrix costs one copy to wrap (its dim attribute has to
+    # go), which is still one fewer than converting the amatrix operand and
+    # then copying the result.
+    if (is.matrix(v) && is.double(v)) {
+      dn <- dimnames(v)
+      return(.amatrix_plain_dge(as.double(v), dim(v), if (is.null(dn)) list(NULL, NULL) else dn))
+    }
     NULL
   }
+  # At least one operand must already be an amatrix / dgeMatrix; two plain
+  # matrices are better served by base BLAS directly.
+  if (is.matrix(x) && (is.null(y) || is.matrix(y))) return(NULL)
   xh <- as_dge(x)
   if (is.null(xh) || length(xh@x) < 250000L) return(NULL)
   yh <- NULL

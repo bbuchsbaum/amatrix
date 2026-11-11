@@ -39,6 +39,14 @@
 #' Do \strong{not} pass \code{mult=} — it is deprecated in irlba and forces a
 #' non-standard dispatch path. Pass an \code{adgeMatrix} instead.
 #'
+#' @examples
+#' if (requireNamespace("irlba", quietly = TRUE)) {
+#'   set.seed(1)
+#'   A <- matrix(rnorm(200), 20, 10)
+#'   fit <- am_irlba(A, nv = 2)
+#'   fit$d
+#' }
+#'
 #' @seealso \code{\link{adgeMatrix}}, \code{\link{svd_factor}}
 #' @export
 am_irlba <- function(A,
@@ -133,6 +141,15 @@ am_irlba <- function(A,
 #'
 #' @return A list with components \code{d}, \code{u}, \code{v}, \code{iter},
 #'   \code{mprod}, compatible with \code{irlba::irlba()}.
+#'
+#' @examples
+#' if (requireNamespace("irlba", quietly = TRUE)) {
+#'   set.seed(1)
+#'   A <- matrix(rnorm(200), 20, 10)
+#'   # Falls back to am_irlba() when the ArrayFire backend is not available
+#'   fit <- suppressMessages(irlba_native(A, nv = 2L))
+#'   fit$d
+#' }
 #'
 #' @seealso \code{\link{am_irlba}}, \code{\link{adgeMatrix}}
 #' @export

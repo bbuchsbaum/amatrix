@@ -17,6 +17,12 @@ Factorize B symmetric positive-definite matrices in parallel.  Each matrix
 is dispatched through the same backend as \code{\link{chol_factor}}, so MLX
 GPU acceleration applies to every element when available.
 }
+\examples{
+mats <- lapply(1:3, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
+facs <- batch_chol(mats)
+length(facs)
+
+}
 \seealso{
 \code{\link{chol_factor}}, \code{\link{batch_solve}}
 }

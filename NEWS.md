@@ -102,6 +102,8 @@ Initial public release.
   stores a real LU factorization.
 * `amatrix_calibrate()` writes to the user cache directory only with
   `persist = TRUE`.
+* `dist_matrix(method = "cosine")` returns the cosine distance
+  (`1 - similarity`); the similarity is `kernel_matrix(kernel = "cosine")`.
 * Much lower per-operation overhead and fewer data copies on the CPU path.
 * Attaching the package no longer masks other packages' functions: the
   matrix trace is `mat_trace()` (was `trace`, which masked `base::trace`),

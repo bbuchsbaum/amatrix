@@ -52,6 +52,15 @@ Kernels:
   \item{laplacian}{\eqn{k(x,y) = \exp(-\|x - y\| / \sigma)}}
 }
 }
+\examples{
+set.seed(1)
+X <- matrix(rnorm(20), 5, 4)
+K <- kernel_matrix(X, kernel = "rbf", sigma = 1.5)
+dim(K)
+# Cross-kernel between two sets of rows
+kernel_matrix(X, X[1:2, ], kernel = "linear")
+
+}
 \seealso{
 \code{\link{dist_matrix}}
 }

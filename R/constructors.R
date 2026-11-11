@@ -611,6 +611,12 @@ as_adgeMatrix <- function(
 #'
 #' @return An \code{adgCMatrix}.
 #'
+#' @examples
+#' m <- Matrix::sparseMatrix(i = c(1, 2, 3), j = c(1, 3, 2), x = c(1, 2, 3))
+#' A <- as_adgCMatrix(m)
+#' class(A)
+#' A %*% c(1, 1, 1)
+#'
 #' @export
 as_adgCMatrix <- function(
   x,

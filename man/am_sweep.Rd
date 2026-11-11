@@ -22,6 +22,12 @@ A matrix of the same dimensions as \code{x}.
 Apply a function to each row or column of a matrix, dispatching to the
 preferred GPU backend when available.
 }
+\examples{
+x <- adgeMatrix(matrix(1:6, 2, 3))
+# Subtract the column means
+am_sweep(x, 2, colMeans(as.matrix(x)), FUN = "-")
+
+}
 \seealso{
 \code{\link{am_sweep_inplace}}
 }

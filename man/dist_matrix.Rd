@@ -18,7 +18,9 @@ dist_matrix(
 to compute pairwise distances within \code{X} (returns [m, m] matrix).}
 
 \item{method}{One of \code{"euclidean"} (default), \code{"sqeuclidean"},
-or \code{"cosine"}.}
+or \code{"cosine"} (cosine distance,
+\eqn{1 - x^\top y / (\|x\| \|y\|)}; for the similarity itself use
+\code{\link{kernel_matrix}(kernel = "cosine")}).}
 
 \item{tile_size}{Integer row-block size for tiled computation, or \code{NULL}
 (default) to auto-tile when \code{nrow(X) > 50000} (self-distance only).

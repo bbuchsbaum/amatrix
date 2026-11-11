@@ -20,6 +20,12 @@ A \code{K}-by-\code{ncol(x)} matrix of group means.
 Compute the mean of rows of \code{x} grouped by integer \code{labels},
 dispatching to GPU when available.
 }
+\examples{
+x <- matrix(1:12, 6, 2)
+labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
+segment_mean(x, labels, K = 3L)
+
+}
 \seealso{
 \code{\link{segment_sum}}, \code{\link{am_scatter_mean}}
 }

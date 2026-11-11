@@ -51,7 +51,10 @@ suppressPackageStartupMessages(library(amatrix))
     G <- tcrossprod(X, Y_eff)
     nx <- sqrt(rowSums(X^2))
     ny <- sqrt(rowSums(Y_eff^2))
-    return(G / pmax(outer(nx, ny), .Machine$double.eps))
+    D <- 1 - G / pmax(outer(nx, ny), .Machine$double.eps)
+    D[] <- pmin(pmax(D, 0), 2)
+    if (is.null(Y)) diag(D) <- 0
+    return(D)
   }
 
   G <- tcrossprod(X, Y_eff)

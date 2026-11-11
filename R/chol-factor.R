@@ -118,6 +118,13 @@ setMethod("show", "amChol", function(object) {
 #' @param ... Ignored.
 #' @return A base R numeric matrix containing the upper-triangular factor.
 #' @method as.matrix amChol
+#'
+#' @examples
+#' S <- crossprod(matrix(rnorm(20), 5, 4)) + diag(4)
+#' fac <- chol_factor(adgeMatrix(S))
+#' R <- as.matrix(fac)
+#' all.equal(crossprod(R), S, check.attributes = FALSE)
+#'
 #' @export
 as.matrix.amChol <- function(x, ...) .amatrix_amchol_factor_matrix(x)
 
@@ -531,6 +538,14 @@ chol_solve <- function(factor, B) {
 #' @param factor An \code{amChol} object from \code{\link{chol_factor}}.
 #' @param B A list of RHS vectors/matrices, or a 3-D array \code{[n, k, batch]}.
 #' @return A list of solution vectors/matrices.
+#'
+#' @examples
+#' S <- crossprod(matrix(rnorm(20), 5, 4)) + diag(4)
+#' fac <- chol_factor(adgeMatrix(S))
+#' rhs <- list(rnorm(4), matrix(rnorm(8), 4, 2))
+#' sols <- chol_solve_batches(fac, rhs)
+#' all.equal(sols[[1]], solve(S, rhs[[1]]))
+#'
 #' @export
 chol_solve_batches <- function(factor, B) {
   if (!inherits(factor, "amChol")) {

@@ -60,6 +60,13 @@ derives the minimum matrix element count at which each GPU backend
 reliably outperforms CPU. Results are stored in the current session
 and optionally persisted to disk for reuse in future sessions.
 }
+\examples{
+# Benchmarks every registered non-CPU backend. With only the CPU backend
+# registered there is nothing to measure and this returns immediately.
+cal <- amatrix_calibrate(quiet = TRUE)
+names(cal)
+
+}
 \seealso{
 \code{\link{amatrix_calibration_info}},
   \code{\link{amatrix_backend_plan}}

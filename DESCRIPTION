@@ -20,7 +20,9 @@ Depends:
     R (>= 4.3)
 Imports:
     methods,
-    Matrix
+    Matrix,
+    stats,
+    utils
 Suggests:
     testthat (>= 3.0.0),
     callr,

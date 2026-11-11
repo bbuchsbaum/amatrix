@@ -54,6 +54,16 @@ dispatch, this function:
   \item uploads A once and never re-uploads it across restarts
 }
 }
+\examples{
+if (requireNamespace("irlba", quietly = TRUE)) {
+  set.seed(1)
+  A <- matrix(rnorm(200), 20, 10)
+  # Falls back to am_irlba() when the ArrayFire backend is not available
+  fit <- suppressMessages(irlba_native(A, nv = 2L))
+  fit$d
+}
+
+}
 \seealso{
 \code{\link{am_irlba}}, \code{\link{adgeMatrix}}
 }

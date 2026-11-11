@@ -109,7 +109,9 @@ amatrix_warm <- function(
   for (op in ops) {
     tryCatch(
       switch(op,
-        matmul     = if ("matmul"    %in% caps) backend$matmul(X, X_host),
+        # Square operands: X %*% X_host is non-conformable unless nr == nc,
+        # and the swallowed error meant matmul was never actually warmed.
+        matmul     = if ("matmul"    %in% caps) backend$matmul(SPD, spd_host),
         crossprod  = if ("crossprod" %in% caps) backend$crossprod(X),
         tcrossprod = if ("tcrossprod" %in% caps) backend$tcrossprod(X),
         qr         = if ("qr"        %in% caps) backend$qr(X),
@@ -120,6 +122,12 @@ amatrix_warm <- function(
       error = function(e) NULL  # best-effort; never abort
     )
   }
+
+  # Recorded so amatrix_explain() stops suggesting a warm-up for this backend.
+  warm_done <- .amatrix_state$warm_done
+  if (is.null(warm_done)) warm_done <- list()
+  warm_done[[be_name]] <- TRUE
+  .amatrix_state$warm_done <- warm_done
 
   invisible(NULL)
 }

@@ -24,3 +24,10 @@ An \code{adgeMatrix} or \code{adgCMatrix} containing the
 Compute the solution to \eqn{a x = b} or the inverse of \code{a} when
 \code{b} is missing, for a sparse \code{adgCMatrix} coefficient matrix.
 }
+\examples{
+S <- Matrix::sparseMatrix(i = c(1, 2, 3, 1), j = c(1, 2, 3, 3),
+                          x = c(2, 3, 4, 1))
+A <- adgCMatrix(S)
+solve(A, c(1, 2, 3))
+
+}

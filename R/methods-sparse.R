@@ -270,6 +270,12 @@ setMethod("norm", signature(x = "adgCMatrix", type = "character"), function(x, t
 #' @return An \code{adgeMatrix} or \code{adgCMatrix} containing the
 #'   solution.
 #'
+#' @examples
+#' S <- Matrix::sparseMatrix(i = c(1, 2, 3, 1), j = c(1, 2, 3, 3),
+#'                           x = c(2, 3, 4, 1))
+#' A <- adgCMatrix(S)
+#' solve(A, c(1, 2, 3))
+#'
 #' @rdname solve-sparse-methods
 #' @aliases solve,adgCMatrix,missing-method
 setMethod("solve", signature(a = "adgCMatrix", b = "missing"), function(a, b, ...) am_solve(a, ...))
@@ -286,6 +292,11 @@ setMethod("solve", signature(a = "adgCMatrix", b = "ANY"), function(a, b, ...) a
 #' @param ... Further arguments passed to \code{Matrix::chol}.
 #'
 #' @return An \code{adgCMatrix} or sparse Cholesky factor object.
+#'
+#' @examples
+#' S <- Matrix::sparseMatrix(i = 1:3, j = 1:3, x = c(4, 9, 16))
+#' A <- adgCMatrix(S)
+#' chol(A)
 #'
 #' @rdname chol-sparse-methods
 #' @aliases chol,adgCMatrix-method
@@ -306,6 +317,12 @@ setMethod("qr", "adgCMatrix", function(x, ...) am_qr(x, ...))
 #'
 #' @return A list with components \code{d}, \code{u}, and \code{v}.
 #'
+#' @examples
+#' S <- Matrix::sparseMatrix(i = c(1, 2, 3, 1), j = c(1, 2, 3, 3),
+#'                           x = c(2, 3, 4, 1))
+#' A <- adgCMatrix(S)
+#' svd(A)$d
+#'
 #' @rdname svd-sparse-methods
 #' @aliases svd,adgCMatrix-method
 setMethod("svd", "adgCMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
@@ -324,6 +341,12 @@ setMethod("svd", "adgCMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), L
 #' @param EISPACK Ignored; retained for signature compatibility.
 #'
 #' @return A list with components \code{values} and \code{vectors}.
+#'
+#' @examples
+#' S <- Matrix::sparseMatrix(i = c(1, 2, 3, 1, 2), j = c(1, 2, 3, 2, 1),
+#'                           x = c(2, 3, 4, 1, 1))
+#' A <- adgCMatrix(S)
+#' eigen(A, symmetric = TRUE)$values
 #'
 #' @rdname eigen-sparse-methods
 #' @aliases eigen,adgCMatrix-method

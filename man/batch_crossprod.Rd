@@ -15,6 +15,12 @@ A list of \code{p x p} crossproduct matrices.
 \description{
 Compute \code{t(A_b) \%*\% A_b} for each matrix in a batch.
 }
+\examples{
+mats <- lapply(1:3, function(i) matrix(rnorm(12), 4, 3))
+xtx <- batch_crossprod(mats)
+dim(xtx[[1]])
+
+}
 \seealso{
 \code{\link{batch_chol}}
 }
