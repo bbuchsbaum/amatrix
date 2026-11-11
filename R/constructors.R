@@ -313,7 +313,8 @@ new_adgeMatrix <- function(
 #'   \code{list(NULL, NULL)}.
 #' @param preferred_backend Single string naming the preferred backend.
 #' @param policy Single string; backend dispatch policy.
-#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#' @param precision Single string; \code{"strict"} (double precision) or
+#'   \code{"fast"} (single precision permitted).
 #' @param src_id String recording the source object identifier.
 #'
 #' @return An \code{adgeMatrix} with \code{finalizer_env$host_deferred}
@@ -359,7 +360,8 @@ new_adgeMatrix_deferred <- function(
 #' @param preferred_backend Single string; the preferred compute
 #'   backend. Defaults to \code{"cpu"}.
 #' @param policy Single string; backend dispatch policy.
-#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#' @param precision Single string; \code{"strict"} (double precision) or
+#'   \code{"fast"} (single precision permitted).
 #'
 #' @return An \code{adgCMatrix} object.
 #'
@@ -473,13 +475,15 @@ new_adlgCMatrix <- function(
 #'
 #' @param x A base R \code{matrix}, \code{dgeMatrix}, or any
 #'   \code{denseMatrix} coercible to \code{dgeMatrix}.
-#' @param mode Single string shortcut accepted by
-#'   \code{.amatrix_resolve_mode()}; used to set \code{backend},
-#'   \code{policy}, and \code{precision} together. Pass \code{NULL}
-#'   to use the individual arguments instead. In particular,
-#'   \code{mode = "fast"} requests reduced precision and prefers an
-#'   available fast-capable accelerator automatically, with CPU
-#'   fallback when none is available.
+#' @param mode One of \code{"exact"}, \code{"fast"} or its explicit
+#'   alias \code{"float32"}; sets \code{backend}, \code{policy} and
+#'   \code{precision} together (\code{NULL} uses the individual arguments).
+#'   \code{"exact"} computes in double precision on the CPU.
+#'   \code{"fast"} / \code{"float32"} \strong{permits single-precision
+#'   (float32) arithmetic}, about 7 significant digits instead of 16, so
+#'   that an available accelerator can be used; results then differ from
+#'   base R at roughly the \code{1e-6} relative level. With no accelerator
+#'   available it falls back to the CPU in double precision.
 #' @param backend Alias for \code{preferred_backend}; ignored when
 #'   \code{preferred_backend} is non-\code{NULL}.
 #' @param preferred_backend Single string naming the preferred compute
@@ -521,10 +525,15 @@ adgeMatrix <- function(
 #'
 #' @param x A \code{dgCMatrix}, other \code{sparseMatrix}, or base R
 #'   \code{matrix}.
-#' @param mode Single string shortcut passed to
-#'   \code{.amatrix_resolve_mode()}. Pass \code{NULL} to use the
-#'   individual arguments. \code{mode = "fast"} prefers an available
-#'   fast-capable accelerator automatically, with CPU fallback.
+#' @param mode One of \code{"exact"}, \code{"fast"} or its explicit
+#'   alias \code{"float32"}; sets \code{backend}, \code{policy} and
+#'   \code{precision} together (\code{NULL} uses the individual arguments).
+#'   \code{"exact"} computes in double precision on the CPU.
+#'   \code{"fast"} / \code{"float32"} \strong{permits single-precision
+#'   (float32) arithmetic}, about 7 significant digits instead of 16, so
+#'   that an available accelerator can be used; results then differ from
+#'   base R at roughly the \code{1e-6} relative level. With no accelerator
+#'   available it falls back to the CPU in double precision.
 #' @param backend Alias for \code{preferred_backend}; ignored when
 #'   \code{preferred_backend} is non-\code{NULL}.
 #' @param preferred_backend Single string naming the preferred compute
@@ -532,7 +541,8 @@ adgeMatrix <- function(
 #' @param policy Single string; one of \code{"auto"}, \code{"cpu"},
 #'   \code{"mlx"}, \code{"metal"}, \code{"arrayfire"},
 #'   \code{"opencl"}.
-#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#' @param precision Single string; \code{"strict"} (double precision) or
+#'   \code{"fast"} (single precision permitted).
 #'
 #' @return An \code{adgCMatrix} with the data from \code{x} and the
 #'   requested backend metadata.
@@ -569,7 +579,8 @@ adgCMatrix <- function(
 #' @param backend Alias for \code{preferred_backend}.
 #' @param preferred_backend Single string; preferred compute backend.
 #' @param policy Single string dispatch policy.
-#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#' @param precision Single string; \code{"strict"} (double precision) or
+#'   \code{"fast"} (single precision permitted).
 #'
 #' @return An \code{adgeMatrix}.
 #'
@@ -607,7 +618,8 @@ as_adgeMatrix <- function(
 #' @param backend Alias for \code{preferred_backend}.
 #' @param preferred_backend Single string; preferred compute backend.
 #' @param policy Single string dispatch policy.
-#' @param precision Single string; \code{"strict"} or \code{"fast"}.
+#' @param precision Single string; \code{"strict"} (double precision) or
+#'   \code{"fast"} (single precision permitted).
 #'
 #' @return An \code{adgCMatrix}.
 #'

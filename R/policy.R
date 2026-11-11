@@ -1,6 +1,6 @@
 .amatrix_valid_policies   <- c("auto", "cpu", "mlx", "metal", "arrayfire", "opencl")
 .amatrix_valid_precisions <- c("strict", "fast")
-.amatrix_valid_modes      <- c("exact", "balanced", "fast")
+.amatrix_valid_modes      <- c("exact", "balanced", "fast", "float32")
 
 .amatrix_default_preferred_backend <- function(
   policy = amatrix_default_policy(),
@@ -83,6 +83,11 @@
 .amatrix_resolve_mode <- function(mode, backend, preferred_backend, policy, precision) {
   if (!is.null(mode)) {
     mode <- match.arg(mode, .amatrix_valid_modes)
+    if (identical(mode, "float32")) {
+      # Explicit spelling of what "fast" means: single-precision arithmetic
+      # is permitted so that an accelerator can be used.
+      mode <- "fast"
+    }
     if (identical(mode, "balanced")) {
       .amatrix_warn_balanced_deprecation_once()
       mode <- "exact"

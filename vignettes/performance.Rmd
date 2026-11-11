@@ -112,32 +112,70 @@ head(rep$calibration)
 
 ## When the GPU wins
 
-From smallest to largest, here's what actually happens when you call an op
-on an `adgeMatrix`:
+The table below is a recorded snapshot, not a promise. It shows the warm
+(steady-state) speed-up over the CPU backend for each harness operation, taken
+from `tools/benchmark-history.csv` in the source repository: the runs of
+2026-07-24 on one Apple Silicon machine (macOS, arm64), where the CPU
+reference is Apple's Accelerate BLAS. Values above 1 mean the backend was
+faster; bold marks a speed-up of at least 1.2x.
 
-1. **Small matrices (roughly < 1000 elements).** Upload latency alone dwarfs
-   the compute. The dispatcher routes to CPU. A 32×32 matmul on MLX is
-   slower than on base BLAS, every time.
+| Operation | Size | CPU (ms) | MLX | OpenCL |
+|---|---|---:|---:|---:|
+| `block_lanczos` | 1024 x 128 | 27.5 | **1.6x** | **1.3x** |
+| `block_lanczos` | 4096 x 128 | 107 | **2.3x** | **2.7x** |
+| `chol` | 1024 x 128 | 1.06 | 1.0x | 0.8x |
+| `chol` | 4096 x 1024 | 6.02 | 0.3x | 0.1x |
+| `covariance` | 1024 x 128 | 3.19 | **1.5x** | 0.8x |
+| `covariance` | 4096 x 1024 | 49.4 | **2.1x** | 1.1x |
+| `crossprod` | 1024 x 128 | 0.937 | 0.5x | 0.3x |
+| `crossprod` | 4096 x 1024 | 12.7 | **2.0x** | 0.8x |
+| `dist` | 1024 x 128 | 3.55 | 0.8x | 0.5x |
+| `dist` | 4096 x 1024 | 6.23 | 0.8x | 0.7x |
+| `eigen_sym` | 1024 x 128 | 1.56 | 1.2x | 1.0x |
+| `eigen_sym` | 4096 x 1024 | 127 | **1.9x** | 1.0x |
+| `many_lm` | 1024 x 128 | 1.28 | 0.7x | 1.0x |
+| `many_lm` | 4096 x 1024 | 17.5 | **1.5x** | 1.0x |
+| `matmul` | 1024 x 128 | 0.997 | 0.5x | 0.3x |
+| `matmul` | 4096 x 1024 | 21.5 | **1.5x** | 1.0x |
+| `rsvd` | 1024 x 128 | 2.62 | 0.2x | 0.3x |
+| `rsvd` | 4096 x 1024 | 19.1 | 0.5x | 0.7x |
+| `sinkhorn` | 1024 x 128 | 46 | **1.5x** | **4.8x** |
+| `sinkhorn` | 4096 x 1024 | 1090 | **13.2x** | **21.1x** |
+| `solve_rhs` | 1024 x 128 | 1.46 | **1.3x** | 0.6x |
+| `solve_rhs` | 4096 x 1024 | 12.1 | 0.9x | 0.3x |
+| `svd` | 1024 x 128 | 7.38 | 0.4x | 1.0x |
+| `svd` | 4096 x 1024 | 364 | 0.5x | 1.0x |
+| `svd_factor_subspace` | 1024 x 128 | 15.6 | 1.0x | 0.9x |
+| `svd_factor_subspace` | 4096 x 128 | 51.1 | **1.8x** | **1.6x** |
 
-2. **Medium matrices (10³–10⁵ elements).** Depends on the op. Dense matmul
-   and factorizations start winning on the GPU around 512×512. Per-row
-   reductions (`rowSums`, `colSums`) may still be CPU-bound because they're
-   memory-bound, not compute-bound.
+What this snapshot says:
 
-3. **Large matrices (> 10⁵ elements, dense).** The GPU wins decisively for
-   `%*%`, `crossprod`, `chol`, `svd`, `qr`. Factor caching (`am_chol_factor`,
-   `am_svd_factor`) amplifies this: the first call pays the upload + factorize
-   cost, subsequent calls reuse the cached factor at memory speed.
+- **Iterative, resident workloads gain the most.** Sinkhorn scaling reaches
+  13x (MLX) and 21x (OpenCL) at the largest size, and block Lanczos and the
+  subspace SVD gain 2x to 3x. These keep their data on the device across many
+  kernel launches.
+- **Single dense products only pay off at the largest size.** `matmul` and
+  `crossprod` are about half the CPU's speed at 1024 x 128 and 1.5x to 2x
+  faster at 4096 x 1024 on MLX.
+- **Dense factorizations were not faster.** `chol`, `svd`, `rsvd` and
+  `solve` were at or below CPU speed at every size measured. A tuned CPU
+  LAPACK is hard to beat at these dimensions.
+- **Small inputs lose.** Below about 1024 x 128 nearly every operation is
+  slower on a backend, which is why the dispatcher routes small work to the
+  CPU.
 
-4. **Very large matrices (memory-pressure regime, 4K×4K+).** The baseline
-   tracks these explicitly because cache effects dominate. The CPU's
-   speedup-vs-GPU ratio gets worse as n grows.
+Two limits on how far to read it: this is one machine with an unusually fast
+CPU BLAS, and the largest matrix is 4096 x 1024. On other hardware, and at
+larger sizes, the crossover points will differ. Measure your own:
 
-5. **Iterative algorithms** (`rsvd`, `am_block_lanczos`, `am_sinkhorn`,
-   `irlba`). These do many sequential kernel invocations on resident data.
-   If the input is already GPU-resident, they amortize the upload cost
-   across hundreds of kernel launches. If the input is cold every time,
-   you're paying for upload over and over.
+```{r eval = FALSE}
+# Thresholds used for routing on this machine
+amatrix_calibrate()
+amatrix_calibration_info()$thresholds
+
+# The full table, from a source checkout
+# Rscript tools/benchmark-regression.R --update
+```
 
 ## When the CPU wins (and you should let it)
 

@@ -80,18 +80,27 @@ For especially hot repeated paths, you can still bind resident storage explicitl
 
 If you maintain a package and want a complete worked example of this adoption path, see [`demopkg/amatrix.demo`](demopkg/amatrix.demo) in this repo: logistic regression via IRLS whose hot kernels are `amatrix` calls — the same function runs on plain matrices (CPU) and on `adgeMatrix` inputs (GPU), verified against `stats::glm.fit()` and benchmarked with `logit_demo_benchmark()`.
 
+## Which hardware is supported?
+
+- **CPU**: always available, and the reference for correctness.
+- **Apple Silicon** (`amatrix.mlx`): the supported accelerator. It is used automatically for `mode = "fast"` when installed.
+- **NVIDIA, AMD and Intel GPUs** (`amatrix.arrayfire`, `amatrix.opencl`): the backends exist and pass the conformance suite, but so far they have only been certified on Apple hardware. They are enabled on request with `amatrix_use_gpu()` and should be treated as experimental elsewhere.
+
+If you maintain a package, see the *Using amatrix in Your Own Package* article (`vignette("package-authors", package = "amatrix")`) for the adoption pattern, imports, precision choices and how to test without a GPU.
+
 ## When is it worth using?
 
 - one design matrix and many response columns
 - repeated fits where QR or other factors can be reused
 - workflows that need Matrix-compatible objects instead of a separate tensor API
+- iterative algorithms that keep their data on the device (the recorded benchmarks show the largest gains there; a single moderate-size dense product is often no faster than a tuned CPU BLAS)
 - Apple Silicon systems where MLX can accelerate the hot path
 
 ## Modes
 
 - `adgeMatrix(x)` uses the conservative default path and is safe on CPU-only machines.
 - `adgeMatrix(x, mode = "exact")` pins execution to strict CPU semantics.
-- `adgeMatrix(x, mode = "fast")` requests reduced-precision execution and prefers an available fast-capable accelerator automatically, with CPU fallback when none is available.
+- `adgeMatrix(x, mode = "fast")` (also spelled `mode = "float32"`) **permits single-precision arithmetic** so an accelerator can be used: about 7 significant digits instead of 16, so results differ from base R at roughly the `1e-6` relative level. With no accelerator available it falls back to the CPU in double precision. Use it when your algorithm tolerates float32; leave the default when it does not.
 
 ## Backend tiers
 

@@ -43,3 +43,33 @@ test_that("attaching amatrix masks nothing from base or the recommended packages
     expect_identical(clash, character(0), info = sprintf("masks %s::%s", pkg, paste(clash, collapse = ", ")))
   }
 })
+
+test_that("the downstream testing kit dispatches through a stand-in backend", {
+  backend <- amatrix_test_backend()
+  m <- matrix(c(1, 2, 3, 4, 5, 6), 2, 3)
+  out <- amatrix_with_test_backend({
+    x <- adgeMatrix(m, backend = "amatrix_test")
+    list(prod = as.matrix(x %*% t(m)), cp = as.matrix(crossprod(x)), rs = rowSums(x))
+  }, backend = backend)
+  expect_equal(out$prod, m %*% t(m), ignore_attr = TRUE)
+  expect_equal(out$cp, crossprod(m), ignore_attr = TRUE)
+  expect_equal(out$rs, rowSums(m))
+  expect_identical(backend$calls$matmul, 1L)
+  expect_identical(backend$calls$crossprod, 1L)
+  expect_identical(backend$calls$rowSums, 1L)
+  # Registration and health state are restored afterwards.
+  expect_false("amatrix_test" %in% amatrix_backend_names())
+  expect_error(amatrix_with_test_backend(stop("boom")), "boom")
+  expect_false("amatrix_test" %in% amatrix_backend_names())
+  expect_type(amatrix_has_accelerator(), "logical")
+})
+
+test_that("mode = 'float32' is an alias for mode = 'fast'", {
+  m <- matrix(1:6 + 0, 2, 3)
+  a <- adgeMatrix(m, mode = "float32")
+  b <- adgeMatrix(m, mode = "fast")
+  expect_identical(a@precision, "fast")
+  expect_identical(a@precision, b@precision)
+  expect_identical(a@preferred_backend, b@preferred_backend)
+  expect_identical(adgeMatrix(m, mode = "exact")@precision, "strict")
+})

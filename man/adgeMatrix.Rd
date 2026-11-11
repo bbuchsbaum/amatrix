@@ -17,13 +17,15 @@ adgeMatrix(
 \item{x}{A base R \code{matrix}, \code{dgeMatrix}, or any
 \code{denseMatrix} coercible to \code{dgeMatrix}.}
 
-\item{mode}{Single string shortcut accepted by
-\code{.amatrix_resolve_mode()}; used to set \code{backend},
-\code{policy}, and \code{precision} together. Pass \code{NULL}
-to use the individual arguments instead. In particular,
-\code{mode = "fast"} requests reduced precision and prefers an
-available fast-capable accelerator automatically, with CPU
-fallback when none is available.}
+\item{mode}{One of \code{"exact"}, \code{"fast"} or its explicit
+alias \code{"float32"}; sets \code{backend}, \code{policy} and
+\code{precision} together (\code{NULL} uses the individual arguments).
+\code{"exact"} computes in double precision on the CPU.
+\code{"fast"} / \code{"float32"} \strong{permits single-precision
+(float32) arithmetic}, about 7 significant digits instead of 16, so
+that an available accelerator can be used; results then differ from
+base R at roughly the \code{1e-6} relative level. With no accelerator
+available it falls back to the CPU in double precision.}
 
 \item{backend}{Alias for \code{preferred_backend}; ignored when
 \code{preferred_backend} is non-\code{NULL}.}

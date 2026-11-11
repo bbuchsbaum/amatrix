@@ -111,6 +111,10 @@ Initial public release.
   amatrix attached. `dim(x) <- value` returns a valid, freshly identified
   object.
 * Much lower per-operation overhead and fewer data copies on the CPU path.
+* For package authors: a new article, `vignette("package-authors")`; a
+  testing kit (`amatrix_test_backend()`, `amatrix_with_test_backend()`,
+  `amatrix_skip_if_no_accelerator()`, `amatrix_has_accelerator()`); and
+  `mode = "float32"` as an explicit spelling of `mode = "fast"`.
 * Naming: the exported API uses two prefixes. `amatrix_*` covers session,
   backend and diagnostic functions; `am_*` covers everything that computes
   (`am_matmul()`, `am_chol_factor()`, `am_svd_factor()`, `am_many_lm()`,

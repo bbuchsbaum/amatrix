@@ -25,7 +25,8 @@ as_adgCMatrix(
 
 \item{policy}{Single string dispatch policy.}
 
-\item{precision}{Single string; \code{"strict"} or \code{"fast"}.}
+\item{precision}{Single string; \code{"strict"} (double precision) or
+\code{"fast"} (single precision permitted).}
 }
 \value{
 An \code{adgCMatrix}.

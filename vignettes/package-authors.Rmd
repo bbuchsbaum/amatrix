@@ -1,0 +1,250 @@
+---
+title: "Using amatrix in Your Own Package"
+output:
+  rmarkdown::html_vignette:
+    toc: yes
+    toc_depth: 2
+    css: albers.css
+    includes:
+      in_header: albers-header.html
+params:
+  family: lapis
+  preset: homage
+resource_files:
+  - albers.css
+  - albers.js
+  - albers-header.html
+vignette: >
+  %\VignetteIndexEntry{Using amatrix in Your Own Package}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  message = FALSE,
+  warning = FALSE
+)
+library(amatrix)
+```
+
+```{r albers-classes, echo=FALSE, results='asis'}
+cat(sprintf(
+  paste0(
+    '<script>document.addEventListener("DOMContentLoaded",function(){',
+    'document.body.classList.remove("palette-red","palette-lapis","palette-ochre","palette-teal","palette-green","palette-violet","preset-homage","preset-study","preset-structural","preset-adobe","preset-midnight");',
+    'document.body.classList.add("palette-%s","preset-%s");',
+    '});</script>'
+  ),
+  params$family,
+  params$preset
+))
+```
+
+This article is for authors of packages that do matrix-heavy work and want
+their users to be able to run it on a GPU, without the package itself taking
+on any GPU code or system requirements.
+
+## What do you actually have to change?
+
+Usually three things: write the hot kernels with `amatrix` functions, depend
+on `amatrix`, and convert results back at the end. Here is a complete ridge
+regression that follows the pattern.
+
+```{r ridge-def}
+ridge_coef <- function(X, y, lambda) {
+  xtx <- am_crossprod_add_diag(X, lambda)   # X'X + lambda * I
+  xty <- crossprod(X, y)                    # X'y
+  as.numeric(as.matrix(solve(xtx, xty)))    # back to a plain vector
+}
+```
+
+There is no backend code in it, and it works on a plain matrix:
+
+```{r ridge-plain}
+set.seed(1)
+X <- matrix(rnorm(200 * 5), 200, 5)
+y <- rnorm(200)
+
+beta_plain <- ridge_coef(X, y, lambda = 0.5)
+beta_ref <- as.numeric(solve(crossprod(X) + 0.5 * diag(5), crossprod(X, y)))
+all.equal(beta_plain, beta_ref)
+```
+
+Acceleration is the *caller's* choice. They wrap the design matrix once and
+call the same function:
+
+```{r ridge-wrapped}
+X_am <- adgeMatrix(X)                      # double precision, CPU-safe
+all.equal(ridge_coef(X_am, y, 0.5), beta_ref)
+
+X_fast <- adgeMatrix(X, mode = "float32")  # may use an accelerator
+all.equal(ridge_coef(X_fast, y, 0.5), beta_ref, tolerance = 1e-4)
+```
+
+On a machine with no accelerator the last call simply runs on the CPU.
+
+## Which functions should you learn first?
+
+The exported API uses two prefixes: `amatrix_*` for session, backend and
+diagnostic functions, and `am_*` for everything that computes. A package
+author rarely needs more than these:
+
+| Need | Use |
+|---|---|
+| Wrap a matrix | `adgeMatrix()`, `adgCMatrix()`, `as_adgeMatrix()` |
+| Products | `%*%`, `crossprod()`, `tcrossprod()`, `am_gemm()` |
+| Weighted Gram matrices | `am_crossprod_weighted()`, `am_xty_weighted()`, `am_crossprod_add_diag()` |
+| Factor once, solve many times | `am_chol_factor()` + `am_chol_solve()`, `am_qr()`, `am_svd_factor()` |
+| Many regressions on one design | `am_many_lm()`, `am_lm_fit()`, `am_ridge_path()` |
+| Truncated SVD | `am_rsvd()`, `am_block_lanczos()`, `am_irlba()` |
+| Back to base R | `as.matrix()`, `as.numeric()` |
+| See what ran where | `amatrix_explain()`, `amatrix_backend_plan()`, `amatrix_fallback_log()` |
+
+## What goes in DESCRIPTION and NAMESPACE?
+
+```
+Imports:
+    amatrix
+```
+
+The optional backend packages do not belong in your `Imports`. Your users
+install the one that matches their hardware; your package works without any.
+
+Operators such as `%*%`, `+` and `[` dispatch on amatrix objects with no
+further setup. Ordinary functions are different: if your code calls one of
+the following on an object that may be an amatrix matrix, import the method
+so that R finds it from inside your namespace.
+
+```
+crossprod  tcrossprod  solve  chol  qr  svd  eigen  diag  t
+rowSums  colSums  rowMeans  colMeans  norm  sweep  mean  which
+isSymmetric  kronecker  as.matrix
+```
+
+With roxygen2 that is one line per function you use:
+
+```r
+#' @importMethodsFrom amatrix crossprod solve
+#' @importFrom amatrix am_crossprod_add_diag
+```
+
+## Who decides about precision?
+
+`mode = "float32"` (also spelled `mode = "fast"`) permits single-precision
+arithmetic so that an accelerator can be used. Results then carry about 7
+significant digits instead of 16.
+
+- **Prefer leaving the choice to the caller.** If your function accepts
+  whatever matrix it is given, as `ridge_coef()` does, a user who cannot
+  tolerate float32 simply does not ask for it.
+- **If your package wraps internally**, expose the choice as an argument
+  and default to double precision.
+- **Check that your algorithm tolerates it.** Forming `X'X` squares the
+  condition number, and iterative refinement or convergence tests with
+  tolerances below about `1e-6` will not behave the same way in float32.
+
+```{r precision}
+X_am@precision
+X_fast@precision
+```
+
+## When is wrapping worth it, and when does it hurt?
+
+Every amatrix operation carries some fixed dispatch cost, about 0.2 ms on a
+typical machine, where base R needs a few microseconds for a tiny matrix.
+
+- **Worth it:** large matrices, the same matrix used many times (factor
+  caching), and iterative algorithms that keep their data on the device.
+- **Not worth it:** loops over many small matrices. Leave those in base R.
+
+The *Performance* article has a recorded table of speed-ups by operation,
+size and backend. The short version is that the gains are largest for
+iterative, resident workloads and for the largest sizes, and that a single
+dense product of moderate size is often no faster than a tuned CPU BLAS.
+
+Inside a loop, avoid pulling results back to R on every iteration.
+`as.matrix()` and `as.numeric()` copy from the device; arithmetic between
+amatrix objects does not.
+
+```{r loop-pattern}
+A <- adgeMatrix(crossprod(X) + diag(5))
+fac <- am_chol_factor(A)          # factor once
+
+B <- matrix(rnorm(15), 5, 3)
+sol <- am_chol_solve(fac, B)      # reuse for every right-hand side
+dim(sol)
+```
+
+## How do you test without a GPU?
+
+Your continuous integration almost certainly has no accelerator. Three
+tools cover that.
+
+**1. Test numerical results on plain matrices.** They run everywhere, and
+amatrix's CPU path is the reference implementation.
+
+**2. Check that your code really dispatches through a backend.**
+`amatrix_test_backend()` builds a stand-in backend that computes on the CPU
+and counts calls; `amatrix_with_test_backend()` registers it for the
+duration of a block.
+
+```{r test-backend}
+backend <- amatrix_test_backend()
+
+beta <- amatrix_with_test_backend({
+  X_test <- adgeMatrix(X, backend = "amatrix_test")
+  ridge_coef(X_test, y, 0.5)
+}, backend = backend)
+
+all.equal(beta, beta_ref)
+backend$calls$crossprod      # the backend was used
+```
+
+**3. Guard expectations that need real hardware.**
+
+```r
+test_that("device path keeps the factor resident", {
+  amatrix_skip_if_no_accelerator()
+  # ...
+})
+```
+
+When you compare a float32 result with a double-precision reference, use a
+tolerance around `1e-4`, not the default.
+
+## How do you find out what happened?
+
+```{r explain}
+amatrix_backend_plan(X_am, "matmul")$chosen
+nrow(amatrix_fallback_log())
+```
+
+`amatrix_explain(x, op)` prints the candidates and the reason for the
+choice. A non-empty `amatrix_fallback_log()` means a backend was asked to do
+something and the CPU did it instead.
+
+## Which hardware can your users expect to work?
+
+Be specific with your own users. At the time of writing:
+
+- **CPU**: always available and the reference for correctness.
+- **Apple Silicon** (`amatrix.mlx`): the supported accelerator; used
+  automatically for `mode = "float32"` when installed.
+- **NVIDIA, AMD and Intel GPUs** (`amatrix.arrayfire`, `amatrix.opencl`):
+  the backends exist but have so far been certified only on Apple
+  hardware. They are enabled on request with `amatrix_use_gpu()`.
+
+`amatrix_gpu_status()` reports what is installed and usable on the current
+machine.
+
+## A short checklist
+
+1. Hot kernels use `am_*` functions or operators; no backend names in your code.
+2. `amatrix` is in `Imports`; backend packages are not.
+3. Methods for non-operator generics are imported.
+4. Results are converted with `as.matrix()` / `as.numeric()` at the boundary, not inside loops.
+5. Precision is the caller's choice, or an argument that defaults to double.
+6. Tests pass on plain matrices, and one test uses `amatrix_with_test_backend()`.
