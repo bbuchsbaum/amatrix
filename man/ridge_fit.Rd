@@ -28,7 +28,10 @@ shape \code{[n, q]}.}
 prepended to \code{X} before fitting.}
 
 \item{penalize_intercept}{Logical; when \code{FALSE} (default) the
-intercept coefficient is excluded from the penalty.}
+intercept coefficient is excluded from the penalty. This applies to the
+column added by \code{intercept = TRUE} and also to a first column of
+\code{X} that consists entirely of ones, which is treated as an
+explicit intercept. Set \code{TRUE} to penalize every column.}
 
 \item{include_fitted}{Logical; include fitted values in the result.}
 

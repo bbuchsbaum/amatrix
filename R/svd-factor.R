@@ -276,7 +276,10 @@ setMethod("show", "amSVD", function(object) {
 
 .amatrix_subspace_trim_q <- function(q, r, k, eps_rank) {
   diag_r <- if (length(r) > 0L) abs(base::diag(as.matrix(r))) else numeric(0L)
-  keep <- which(diag_r > eps_rank)
+  # Relative threshold: an absolute cut-off makes the discovered rank depend
+  # on the scale of the data (X * 1e-9 looked rank zero).
+  scale <- if (length(diag_r) > 0L) max(diag_r) else 0
+  keep <- if (is.finite(scale) && scale > 0) which(diag_r > eps_rank * scale) else integer(0L)
 
   if (length(keep) == 0L) {
     keep <- seq_len(min(k, ncol(q)))
@@ -305,7 +308,7 @@ setMethod("show", "amSVD", function(object) {
                                   n_oversamples = .amatrix_svd_factor_default_oversamples(k),
                                   n_iter = 2L,
                                   target_backend = NULL,
-                                  eps_rank = 1e-8) {
+                                  eps_rank = 1e-10) {
   work_x <- .amatrix_svd_factor_prepare_work_x(X, target_backend = target_backend)
   left_plan <- .amatrix_subspace_compile_operator(work_x, op = "matmul", target_backend = target_backend)
   right_plan <- .amatrix_subspace_compile_operator(work_x, op = "crossprod", target_backend = target_backend)
@@ -398,7 +401,9 @@ setMethod("show", "amSVD", function(object) {
     lam <- pmax(eig$values[ord], 0)
     u_core <- eig$vectors[, ord, drop = FALSE][, seq_len(k_eff), drop = FALSE]
     d <- sqrt(lam[seq_len(k_eff)])
-    d[d < 1e-12] <- 1e-12
+    # Guard the division below, relative to the largest singular value.
+    d_floor <- max(d, .Machine$double.xmin) * .Machine$double.eps
+    d[d < d_floor] <- d_floor
     u <- q_basis %*% u_core
     v <- t_mat %*% u_core
     v <- sweep(v, 2L, d, "/", check.margin = FALSE)
@@ -629,13 +634,20 @@ svd_factor <- function(X,
     am_svd(X, nu = k, nv = k)
   }
 
+  # An approximate engine can discover fewer than k directions (numerically
+  # rank-deficient input). The factor must hold exactly k triplets, so fall
+  # back to the exact decomposition instead of failing validity.
+  if (length(svd_result$d) < k || NCOL(svd_result$u) < k || NCOL(svd_result$v) < k) {
+    svd_result <- am_svd(X, nu = k, nv = k)
+  }
+
   d <- as.numeric(svd_result$d)
   if (length(d) > k) {
     d <- d[seq_len(k)]
   }
 
-  u <- as.matrix(svd_result$u)
-  v <- as.matrix(svd_result$v)
+  u <- as.matrix(svd_result$u)[, seq_len(k), drop = FALSE]
+  v <- as.matrix(svd_result$v)[, seq_len(k), drop = FALSE]
 
   engine <- .amatrix_svd_factor_engine(plan, svd_result)
   backend <- .amatrix_svd_factor_backend(X, plan, svd_result)
@@ -750,21 +762,28 @@ svd_reconstruct <- function(factor, Z) {
       nrow(Z_mat), factor@k
     ), call. = FALSE)
   }
+  # Pseudo-inverse scaling: singular values that are zero to working precision
+  # contribute nothing, instead of dividing by ~1e-16 and returning ~1e15.
+  d_tol <- if (length(d) > 0L) max(d) * max(nrow(factor@u), nrow(factor@v)) * .Machine$double.eps else 0
+  inv_d <- ifelse(d > d_tol, 1 / d, 0)
   v_am <- factor@v_am
   if (!is.null(v_am)) {
-    # GPU path: V %*% (Z / d) — scale Z columns by 1/d then matmul through backend
-    as.matrix(matmul(v_am, Z_mat / d))
+    # GPU path: V %*% (Z / d) — scale Z rows by 1/d then matmul through backend
+    as.matrix(matmul(v_am, Z_mat * inv_d))
   } else {
-    factor@v %*% (Z_mat / d)
+    factor@v %*% (Z_mat * inv_d)
   }
 }
 
-#' Project and reconstruct data using a truncated SVD
+#' Principal-component regression coefficients from a truncated SVD
 #'
 #' Convenience wrapper that calls \code{\link{svd_project}} followed
-#' by \code{\link{svd_reconstruct}}, yielding the rank-\code{k}
-#' least-squares approximation of \code{Y} in the column space of
-#' the original matrix.
+#' by \code{\link{svd_reconstruct}}, i.e. computes
+#' \eqn{V D^{-1} U^\top Y}: the minimum-norm least-squares coefficients
+#' of \code{Y} on the rank-\code{k} approximation of the original matrix
+#' \code{X}. Multiply \code{X} by the result to obtain fitted values.
+#' Singular values that are zero to working precision are dropped
+#' (pseudo-inverse).
 #'
 #' @param factor An \code{\linkS4class{amSVD}} object from
 #'   \code{\link{svd_factor}}.
@@ -772,14 +791,16 @@ svd_reconstruct <- function(factor, Z) {
 #'   Must have \code{nrow(Y)} equal to the number of rows of the
 #'   original source matrix.
 #'
-#' @return Numeric matrix with the same dimensions as \code{Y},
-#'   containing the rank-\code{k} approximation.
+#' @return Numeric matrix of dimensions \code{ncol(X) x ncol(Y)}: the
+#'   coefficient matrix.
 #'
 #' @examples
 #' m <- matrix(rnorm(30), nrow = 6)
 #' A <- adgeMatrix(m)
 #' fac <- svd_factor(A, k = 2L)
-#' approx <- pca_coef(fac, m)
+#' y <- rnorm(6)
+#' beta <- pca_coef(fac, y)
+#' fitted <- m %*% beta
 #'
 #' @export
 pca_coef <- function(factor, Y) {

@@ -43,6 +43,59 @@
   NULL
 }
 
+# Large dense products without operand copies.
+#
+# The ordinary path turns each adgeMatrix into a base matrix first, which
+# duplicates its data (setting `dim` on the shared @x vector), and the base
+# result is duplicated again when it is wrapped. For big matrices that is
+# 3-4x the memory of the operation itself. Matrix's own dgeMatrix methods
+# call BLAS on the @x slots in place and return a dgeMatrix whose @x can be
+# adopted as is, so use them once the data is large enough for the copies to
+# outweigh Matrix's fixed S4 overhead. Returns NULL when not applicable.
+.amatrix_cpu_large_dense_product <- function(kind, x, y = NULL, ...) {
+  if (...length() > 0L) return(NULL)
+  as_dge <- function(v) {
+    if (inherits(v, "adgeMatrix")) return(amatrix_materialize_dense(v))
+    if (identical(class(v), structure("dgeMatrix", package = "Matrix"))) return(v)
+    NULL
+  }
+  xh <- as_dge(x)
+  if (is.null(xh) || length(xh@x) < 250000L) return(NULL)
+  yh <- NULL
+  if (!is.null(y)) {
+    yh <- as_dge(y)
+    if (is.null(yh)) return(NULL)
+  }
+  res <- switch(kind,
+    matmul = if (is.null(yh)) NULL else xh %*% yh,
+    crossprod = if (is.null(yh)) Matrix::crossprod(xh) else Matrix::crossprod(xh, yh),
+    tcrossprod = if (is.null(yh)) Matrix::tcrossprod(xh) else Matrix::tcrossprod(xh, yh),
+    NULL
+  )
+  if (is.null(res)) return(NULL)
+  if (!identical(class(res), structure("dgeMatrix", package = "Matrix"))) {
+    # crossprod(x) comes back as a symmetric class; expand to general storage.
+    res <- methods::as(methods::as(res, "generalMatrix"), "unpackedMatrix")
+    if (!inherits(res, "dgeMatrix")) return(NULL)
+  }
+  res
+}
+
+# A Gram matrix of a sparse operand is returned dense (it usually is, and the
+# model code expects a dense p x p matrix) unless that would be both large and
+# mostly zeros, in which case densifying it is what runs out of memory.
+.amatrix_cpu_sparse_product_value <- function(result) {
+  if (inherits(result, "sparseMatrix")) {
+    cells <- as.double(nrow(result)) * as.double(ncol(result))
+    if (cells > 1e7 && Matrix::nnzero(result) < 0.25 * cells) {
+      return(new_adgCMatrix(
+        methods::as(methods::as(methods::as(result, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+      ))
+    }
+  }
+  as.matrix(result)
+}
+
 .amatrix_cpu_host_value <- function(x) {
   if (inherits(x, "adgCMatrix")) {
     return(amatrix_materialize_host(x))
@@ -74,6 +127,8 @@
       TRUE
     },
     matmul = function(x, y) {
+      big <- .amatrix_cpu_large_dense_product("matmul", x, y)
+      if (!is.null(big)) return(big)
       x <- .amatrix_cpu_host_value(x)
       y <- .amatrix_cpu_host_value(y)
       if (inherits(x, "sparseMatrix") && inherits(y, "sparseMatrix")) {
@@ -85,11 +140,13 @@
       .amatrix_cpu_dense_matrix(x) %*% .amatrix_cpu_dense_matrix(y)
     },
     crossprod = function(x, y = NULL, ...) {
+      big <- .amatrix_cpu_large_dense_product("crossprod", x, y, ...)
+      if (!is.null(big)) return(big)
       x <- .amatrix_cpu_host_value(x)
       y <- if (is.null(y)) NULL else .amatrix_cpu_host_value(y)
       if (inherits(x, "sparseMatrix")) {
         result <- if (is.null(y)) Matrix::crossprod(x) else Matrix::crossprod(x, y)
-        return(as.matrix(result))
+        return(.amatrix_cpu_sparse_product_value(result))
       }
       if (is.null(y)) {
         return(base::crossprod(.amatrix_cpu_dense_matrix(x), ...))
@@ -97,11 +154,13 @@
       base::crossprod(.amatrix_cpu_dense_matrix(x), y = .amatrix_cpu_dense_matrix(y), ...)
     },
     tcrossprod = function(x, y = NULL, ...) {
+      big <- .amatrix_cpu_large_dense_product("tcrossprod", x, y, ...)
+      if (!is.null(big)) return(big)
       x <- .amatrix_cpu_host_value(x)
       y <- if (is.null(y)) NULL else .amatrix_cpu_host_value(y)
       if (inherits(x, "sparseMatrix")) {
         result <- if (is.null(y)) Matrix::tcrossprod(x) else Matrix::tcrossprod(x, y)
-        return(as.matrix(result))
+        return(.amatrix_cpu_sparse_product_value(result))
       }
       if (is.null(y)) {
         return(base::tcrossprod(.amatrix_cpu_dense_matrix(x), ...))

@@ -48,8 +48,10 @@ An object of class \code{"am_many_lm_fit"}, a named list
     \item{coefficients}{\code{adgeMatrix} of shape \code{[p, q]}.}
     \item{fitted.values}{\code{adgeMatrix} \code{[n, q]} or \code{NULL}.}
     \item{residuals}{\code{adgeMatrix} \code{[n, q]} or \code{NULL}.}
-    \item{rss}{Numeric vector of length \code{q}: residual sums of squares.}
-    \item{sigma2}{Numeric vector of length \code{q}: residual variances.}
+    \item{rss}{Numeric vector of length \code{q}: residual sums of squares,
+      or \code{NULL} unless \code{include_residuals = TRUE}.}
+    \item{sigma2}{Numeric vector of length \code{q}: residual variances,
+      or \code{NULL} unless \code{include_residuals = TRUE}.}
     \item{rank}{Integer model rank.}
     \item{df.residual}{Residual degrees of freedom.}
   }

@@ -79,7 +79,8 @@ sinkhorn <- function(
 }
 
 .amatrix_sinkhorn_validate_count <- function(value, name) {
-  if (!is.numeric(value) || length(value) != 1L || is.na(value)) {
+  if (!is.numeric(value) || length(value) != 1L || is.na(value) ||
+      value > .Machine$integer.max) {
     stop(sprintf("%s must be a single positive integer", name), call. = FALSE)
   }
   value <- as.integer(value)

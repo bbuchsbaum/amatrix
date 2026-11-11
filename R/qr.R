@@ -315,14 +315,20 @@ setOldClass(c("amQR", "amDenseQR"))
   inherits(qr, "amQR") && !is.null(qr$state$factor)
 }
 
+# The payload is a list for dense/explicit QRs but an S4 sparseQR for sparse
+# inputs, which cannot be indexed with [[ ]].
+.amatrix_qr_payload_field <- function(payload, name) {
+  if (is.list(payload)) payload[[name, exact = TRUE]] else NULL
+}
+
 .amatrix_qr_q_materialized <- function(qr) {
   payload <- .amatrix_unwrap_qr(qr)
-  inherits(qr, "amQR") && (!is.null(qr$state$q) || !is.null(payload[["q", exact = TRUE]]))
+  inherits(qr, "amQR") && (!is.null(qr$state$q) || !is.null(.amatrix_qr_payload_field(payload, "q")))
 }
 
 .amatrix_qr_r_materialized <- function(qr) {
   payload <- .amatrix_unwrap_qr(qr)
-  inherits(qr, "amQR") && !is.null(payload[["r", exact = TRUE]])
+  inherits(qr, "amQR") && !is.null(.amatrix_qr_payload_field(payload, "r"))
 }
 
 .amatrix_qr_q_key <- function(qr) {
@@ -788,11 +794,18 @@ qr_info <- function(qr) {
     return(.amatrix_explicit_qr_solve(a, b = b, tol = tol))
   }
 
+  factor <- .amatrix_qr_factor(a)
+  if (inherits(factor, "sparseQR")) {
+    # base::qr.solve() cannot use a Matrix sparseQR; solve through qr.coef.
+    rhs <- if (is.null(b)) base::diag(nrow(factor@R)) else b
+    out <- Matrix::qr.coef(factor, rhs)
+    return(if (is.null(dim(b)) && !is.null(b)) as.numeric(out) else as.matrix(out))
+  }
   if (is.null(b)) {
-    return(qr.solve(.amatrix_qr_factor(a), tol = tol))
+    return(qr.solve(factor, tol = tol))
   }
 
-  qr.solve(.amatrix_qr_factor(a), b = b, tol = tol)
+  qr.solve(factor, b = b, tol = tol)
 }
 
 .amatrix_qr_coef_value <- function(qr, y) {

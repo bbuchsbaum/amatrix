@@ -165,6 +165,9 @@ setMethod("t", "KronMatrix", function(x) {
 
 # (A⊗B) y  where y is a numeric vector of length ncol(A)*ncol(B)
 .kron_matvec <- function(A, B, y) {
+  if (length(y) != ncol(A) * ncol(B)) {
+    stop("non-conformable arguments", call. = FALSE)
+  }
   X <- matrix(y, nrow = ncol(B), ncol = ncol(A))
   as.vector(B %*% X %*% t(A))
 }

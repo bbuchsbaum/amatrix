@@ -151,7 +151,12 @@ test_that("block_lanczos reuses a sparse lhs through compiled resident plans", {
       )
 
       set.seed(1008L)
-      fit <- block_lanczos(x_plan, nv = 4L, nu = 4L, block_size = 4L, n_steps = 5L)
+      # A deliberately short, fixed-step run: only residency is under test here
+      # and the accuracy bound below is loose, so non-convergence is expected.
+      fit <- suppressWarnings(
+        block_lanczos(x_plan, nv = 4L, nu = 4L, block_size = 4L, n_steps = 5L),
+        classes = "amatrix_not_converged"
+      )
 
       rel_sv_err <- max(abs(fit$d[seq_len(4L)] - diag_vals[seq_len(4L)]) / diag_vals[seq_len(4L)])
       expect_lt(rel_sv_err, 0.01)

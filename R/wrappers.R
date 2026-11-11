@@ -1333,7 +1333,12 @@ am_solve <- function(a, b = NULL, ...) {
   )
   # When b was a plain vector, base::solve() returns a named numeric vector.
   # Preserve that contract: don't wrap back to adgeMatrix.
-  if (b_was_vector) as.vector(result) else .amatrix_rewrap_value(a, result)
+  if (b_was_vector) {
+    out <- as.vector(result)
+    names(out) <- colnames(a)
+    return(out)
+  }
+  .amatrix_rewrap_value(a, result)
 }
 
 am_chol <- function(x, ...) {
@@ -1607,10 +1612,11 @@ crossprod_weighted <- function(X, w) {
   am_crossprod(.amatrix_rewrap_like(X_arg, x_scaled))
 }
 
-#' Weighted outer cross-product XWX'
+#' Row-weighted outer cross-product
 #'
-#' Computes \eqn{X \mathrm{diag}(w) X^T}, an \code{n x n} weighted
-#' outer cross-product. A GPU-resident fast path is used when available.
+#' Computes \eqn{W^{1/2} X X^T W^{1/2}} with
+#' \eqn{W = \mathrm{diag}(w)}: the \code{n x n} outer cross-product of
+#' the row-weighted matrix \eqn{W^{1/2} X}. A GPU-resident fast path is used when available.
 #'
 #' @param X Numeric matrix or \code{adgeMatrix} of shape \code{[n, p]}.
 #' @param w Positive numeric vector of length \code{n}; observation
@@ -2117,6 +2123,15 @@ dot <- function(x, y) {
 # resident adgeMatrix (no data downloaded). CPU path uses base::rowsum.
 
 .am_segment_sum_cpu <- function(X_mat, labels, K) {
+  # NA labels belong to no segment (the sparse C kernel skips them too).
+  if (anyNA(labels)) {
+    keep <- !is.na(labels)
+    X_mat <- X_mat[keep, , drop = FALSE]
+    labels <- labels[keep]
+  }
+  if (length(labels) == 0L) {
+    return(matrix(0, K, ncol(X_mat)))
+  }
   sums_raw <- rowsum(X_mat, labels, reorder = FALSE)
   out <- matrix(0, K, ncol(X_mat))
   idx <- as.integer(rownames(sums_raw))
@@ -2126,6 +2141,14 @@ dot <- function(x, y) {
 }
 
 .am_segment_mean_cpu <- function(X_mat, labels, K) {
+  if (anyNA(labels)) {
+    keep <- !is.na(labels)
+    X_mat <- X_mat[keep, , drop = FALSE]
+    labels <- labels[keep]
+  }
+  if (length(labels) == 0L) {
+    return(matrix(NA_real_, K, ncol(X_mat)))
+  }
   sums_raw <- rowsum(X_mat, labels, reorder = FALSE)
   idx    <- as.integer(rownames(sums_raw))
   counts <- tabulate(labels, nbins = K)
@@ -2247,8 +2270,12 @@ segment_mean <- function(x, labels, K) {
 
 #' @export
 rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
-  if (isTRUE(na.rm)) {
-    return(base::rowsum(as.matrix(amatrix_materialize_host(x)), group, reorder = reorder, na.rm = TRUE, ...))
+  # na.rm = TRUE and missing group values follow base::rowsum exactly
+  # (including its NA row and warning), so defer to it on the host matrix.
+  if (isTRUE(na.rm) || anyNA(group)) {
+    host <- as.matrix(amatrix_materialize_host(x))
+    dimnames(host) <- dimnames(x)
+    return(base::rowsum(host, group, reorder = reorder, na.rm = na.rm, ...))
   }
   if (is.factor(group)) {
     # reorder=TRUE: honour factor's own level ordering (user-defined, preserves
@@ -2270,7 +2297,7 @@ rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
   labels <- as.integer(grp)
   K      <- nlevels(grp)
   result <- segment_sum(x, labels, K)
-  if (is.matrix(result)) rownames(result) <- lvls
+  if (is.matrix(result)) dimnames(result) <- list(lvls, colnames(x))
   result
 }
 
@@ -2288,12 +2315,16 @@ rowsum.adgCMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
 
   # Match base::rowsum behavior: unique groups in first-occurrence order
   ugrp <- unique(group)
-  if (isTRUE(reorder)) ugrp <- sort(ugrp)
+  if (anyNA(ugrp)) {
+    # As base::rowsum: missing group values form their own (last) group.
+    warning("missing values for 'group'", call. = FALSE)
+  }
+  if (isTRUE(reorder)) ugrp <- sort(ugrp, na.last = TRUE)
   K <- length(ugrp)
   # Map each row to 1-based group index
   labels <- match(group, ugrp)
 
-  result <- .Call("am_sparse_segment_sum_c",
+  result <- .Call("am_sparse_segment_sum_c", PACKAGE = "amatrix",
                   as.double(host@x), as.integer(host@p), as.integer(host@i),
                   as.integer(host@Dim), as.integer(labels), as.integer(K))
   rownames(result) <- as.character(ugrp)
@@ -2496,6 +2527,11 @@ pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
   }
   if (is.null(c_norms)) c_norms <- colSums(Ct_mat^2)
   else c_norms <- as.double(c_norms)
+  # A wrong-length norm vector would otherwise be recycled silently.
+  if (length(x_norms) != nrow(X))
+    stop(sprintf("x_norms must have length nrow(X) = %d, not %d", nrow(X), length(x_norms)), call. = FALSE)
+  if (length(c_norms) != ncol(Ct_mat))
+    stop(sprintf("c_norms must have length ncol(Ct) = %d, not %d", ncol(Ct_mat), length(c_norms)), call. = FALSE)
 
   if (!inherits(X, "adgeMatrix")) {
     X_mat <- if (is.null(X_mat)) as.matrix(X) else X_mat

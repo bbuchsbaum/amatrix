@@ -2,7 +2,7 @@
 % Please edit documentation in R/svd-factor.R
 \name{pca_coef}
 \alias{pca_coef}
-\title{Project and reconstruct data using a truncated SVD}
+\title{Principal-component regression coefficients from a truncated SVD}
 \usage{
 pca_coef(factor, Y)
 }
@@ -15,19 +15,24 @@ Must have \code{nrow(Y)} equal to the number of rows of the
 original source matrix.}
 }
 \value{
-Numeric matrix with the same dimensions as \code{Y},
-  containing the rank-\code{k} approximation.
+Numeric matrix of dimensions \code{ncol(X) x ncol(Y)}: the
+  coefficient matrix.
 }
 \description{
 Convenience wrapper that calls \code{\link{svd_project}} followed
-by \code{\link{svd_reconstruct}}, yielding the rank-\code{k}
-least-squares approximation of \code{Y} in the column space of
-the original matrix.
+by \code{\link{svd_reconstruct}}, i.e. computes
+\eqn{V D^{-1} U^\top Y}: the minimum-norm least-squares coefficients
+of \code{Y} on the rank-\code{k} approximation of the original matrix
+\code{X}. Multiply \code{X} by the result to obtain fitted values.
+Singular values that are zero to working precision are dropped
+(pseudo-inverse).
 }
 \examples{
 m <- matrix(rnorm(30), nrow = 6)
 A <- adgeMatrix(m)
 fac <- svd_factor(A, k = 2L)
-approx <- pca_coef(fac, m)
+y <- rnorm(6)
+beta <- pca_coef(fac, y)
+fitted <- m \%*\% beta
 
 }

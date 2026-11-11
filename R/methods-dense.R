@@ -599,7 +599,20 @@ setMethod("[", signature(x = "adgeMatrix", i = "index", j = "missing", drop = "m
 #' @aliases [[,adgeMatrix-method
 #' @keywords internal
 setMethod("[[", signature(x = "adgeMatrix"), function(x, i, j, ...) {
-  m <- as.matrix(amatrix_materialize_host(x))
+  host <- amatrix_materialize_host(x)
+  # Plain positive scalar subscripts read one element straight from the data
+  # slot; converting to a base matrix first copied the whole matrix per call.
+  scalar_index <- function(v) is.numeric(v) && length(v) == 1L && !is.na(v) && v >= 1 && v == trunc(v)
+  if (...length() == 0L && inherits(host, "dgeMatrix")) {
+    nr <- host@Dim[1L]
+    nc <- host@Dim[2L]
+    if (missing(j)) {
+      if (scalar_index(i) && i <= length(host@x)) return(host@x[[i]])
+    } else if (scalar_index(i) && scalar_index(j) && i <= nr && j <= nc) {
+      return(host@x[[(j - 1) * nr + i]])
+    }
+  }
+  m <- as.matrix(host)
   if (missing(j)) m[[i, ...]] else m[[i, j, ...]]
 })
 

@@ -37,9 +37,11 @@
 #' @param margin Non-negative numeric less than 1. Fraction by which
 #'   GPU median time must beat CPU to count as a GPU win (default
 #'   \code{0.10} means GPU must be at least 10\% faster).
-#' @param persist Logical. If \code{TRUE} (default), save calibration
-#'   to the user cache directory so future sessions load it
-#'   automatically.
+#' @param persist Logical. If \code{TRUE}, save the calibration to the
+#'   user cache directory (\code{tools::R_user_dir("amatrix", "cache")}) so
+#'   future sessions load it automatically. The default \code{FALSE} keeps
+#'   it in the current session only; nothing is written to disk unless you
+#'   ask for it.
 #' @param quiet Logical. Suppress progress messages.
 #'
 #' @return Invisibly, a list with elements \code{version},
@@ -57,7 +59,7 @@ amatrix_calibrate <- function(
   sparse_densities = c(0.01, 0.05, 0.20),
   n_reps   = 10L,
   margin   = 0.10,
-  persist  = TRUE,
+  persist  = FALSE,
   quiet    = FALSE
 ) {
   stopifnot(

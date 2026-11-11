@@ -128,8 +128,17 @@ woodbury_logdet <- function(A_factor, U, V = NULL, C_inv = NULL) {
   M <- C_inv + V %*% Ainv_U
 
   # log|C^{-1}| = -log|C|; use determinant() on the small k x k matrices
-  logdet_Cinv  <- as.numeric(determinant(C_inv, logarithm = TRUE)$modulus)
-  logdet_M     <- as.numeric(determinant(M,     logarithm = TRUE)$modulus)
+  det_Cinv <- determinant(C_inv, logarithm = TRUE)
+  det_M    <- determinant(M,     logarithm = TRUE)
+  logdet_Cinv  <- as.numeric(det_Cinv$modulus)
+  logdet_M     <- as.numeric(det_M$modulus)
+  # det(A) > 0 (Cholesky), so the sign of det(A + UCV) is sign(C^{-1}) * sign(M).
+  # A negative determinant has no real logarithm; returning log|det| would
+  # silently hide that the updated matrix is not positive definite.
+  if (as.numeric(det_Cinv$sign) * as.numeric(det_M$sign) < 0) {
+    warning("woodbury_logdet: det(A + U C V) is negative; returning NaN", call. = FALSE)
+    return(NaN)
+  }
 
   # Matrix determinant lemma:
   #   det(A + UCV) = det(A) * det(C) * det(C^{-1} + V A^{-1} U)

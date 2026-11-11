@@ -631,9 +631,11 @@ chol_logdet <- function(factor) {
 
 #' Solve a triangular linear system
 #'
-#' Solves \code{R \%*\% x = B} (or \code{t(R) \%*\% x = B} when
-#' \code{lower = TRUE}) for \code{x}, where \code{R} is a triangular
-#' matrix. Dispatches to a GPU backend when \code{R} is an
+#' Solves \code{R \%*\% x = B} for \code{x}, where \code{R} is a
+#' triangular matrix: by back substitution when \code{R} is upper
+#' triangular (the default) or forward substitution when
+#' \code{lower = TRUE}. Only the corresponding triangle of \code{R} is
+#' referenced. Dispatches to a GPU backend when \code{R} is an
 #' \code{\linkS4class{amChol}} or \code{adgeMatrix} with a live
 #' resident key and a capable backend.
 #'
@@ -646,7 +648,7 @@ chol_logdet <- function(factor) {
 #'   triangular.
 #'
 #' @return Numeric vector or matrix \code{x} satisfying
-#'   \code{R \%*\% x == B} (or its transpose variant).
+#'   \code{R \%*\% x == B}.
 #'   Returns a vector when \code{B} is a vector or single-column
 #'   matrix.
 #'
