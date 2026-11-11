@@ -5,17 +5,18 @@
 \alias{amLU-class}
 \title{LU factorization result for general square matrices}
 \description{
-Stores the original square matrix for use with LAPACK's
-\code{DGESV} routine. Unlike \code{\linkS4class{amChol}}, which
-caches the explicit triangular factor, \code{amLU} retains
-\code{A} and delegates factorization to \code{base::solve} at
-solve time.
+Stores a square matrix together with its pivoted LU factorization
+(LAPACK \code{DGETRF}), computed once by \code{\link{lu_factor}} and
+reused by every \code{\link{lu_solve}} call (LAPACK \code{DGETRS}).
 }
 \section{Slots}{
 
 \describe{
 \item{\code{A}}{Numeric square matrix; the original matrix passed to
 \code{\link{lu_factor}}.}
+
+\item{\code{lu}}{The \pkg{Matrix} \code{denseLU} factorization of \code{A}, or
+\code{NULL} for an empty object.}
 
 \item{\code{source_id}}{Character string; the \code{object_id} of the
 source \code{adgeMatrix}, or \code{NA} for base matrices.}

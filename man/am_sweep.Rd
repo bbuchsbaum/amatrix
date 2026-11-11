@@ -4,7 +4,7 @@
 \alias{am_sweep}
 \title{Backend-dispatched sweep}
 \usage{
-am_sweep(x, MARGIN, STATS, FUN = "+")
+am_sweep(x, MARGIN, STATS, FUN = "-")
 }
 \arguments{
 \item{x}{A numeric matrix or \code{adgeMatrix}.}
@@ -13,7 +13,8 @@ am_sweep(x, MARGIN, STATS, FUN = "+")
 
 \item{STATS}{Numeric vector of statistics to apply.}
 
-\item{FUN}{Operation: \code{"+"}, \code{"-"}, \code{"*"}, or \code{"/"}.}
+\item{FUN}{Operation: \code{"+"}, \code{"-"} (the default, as for
+\code{\link[base]{sweep}}), \code{"*"}, or \code{"/"}.}
 }
 \value{
 A matrix of the same dimensions as \code{x}.
@@ -21,6 +22,12 @@ A matrix of the same dimensions as \code{x}.
 \description{
 Apply a function to each row or column of a matrix, dispatching to the
 preferred GPU backend when available.
+}
+\examples{
+x <- adgeMatrix(matrix(1:6, 2, 3))
+# Subtract the column means
+am_sweep(x, 2, colMeans(as.matrix(x)), FUN = "-")
+
 }
 \seealso{
 \code{\link{am_sweep_inplace}}

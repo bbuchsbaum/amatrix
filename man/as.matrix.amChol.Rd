@@ -19,3 +19,10 @@ Returns the factor as a base R matrix regardless of where it currently
 lives: the host copy when present, otherwise the resident/deferred factor
 object is downloaded and cached.
 }
+\examples{
+S <- crossprod(matrix(rnorm(20), 5, 4)) + diag(4)
+fac <- chol_factor(adgeMatrix(S))
+R <- as.matrix(fac)
+all.equal(crossprod(R), S, check.attributes = FALSE)
+
+}

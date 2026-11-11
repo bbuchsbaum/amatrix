@@ -12,7 +12,8 @@ block_lanczos(
   block_size = NULL,
   n_steps = NULL,
   mode = "fast",
-  backend = NULL
+  backend = NULL,
+  tol = 1e-05
 )
 
 block_svd(
@@ -21,7 +22,8 @@ block_svd(
   block_size = NULL,
   n_steps = NULL,
   mode = "fast",
-  backend = NULL
+  backend = NULL,
+  tol = 1e-05
 )
 }
 \arguments{
@@ -37,8 +39,9 @@ matrices are coerced to \code{adgeMatrix} using \code{mode} and
 \code{NULL} (default), a size is chosen automatically based on \code{nv}
 and \code{nu}.}
 
-\item{n_steps}{Number of Krylov steps. When \code{NULL} (default), chosen
-automatically.}
+\item{n_steps}{Number of Krylov steps. When \code{NULL} (default), a
+starting value is chosen automatically and doubled until the residuals
+meet \code{tol}. An explicit value is used as given.}
 
 \item{mode}{Execution mode passed to \code{adgeMatrix()} when coercing
 plain matrices.}
@@ -46,17 +49,24 @@ plain matrices.}
 \item{backend}{Backend name passed to \code{adgeMatrix()} when coercing
 plain matrices. Ignored when \code{A} is already an \code{aMatrix}.}
 
+\item{tol}{Convergence tolerance on the residuals
+\eqn{\|A v_i - \sigma_i u_i\| / \sigma_1}. A warning of class
+\code{amatrix_not_converged} is raised when it is not met.}
+
 \item{k}{Number of singular values/vectors. Alias for \code{nv = nu = k}.}
 }
 \value{
 A named list with components:
   \describe{
     \item{u}{Numeric matrix \code{[m, nu]}: left singular vectors.}
-    \item{d}{Numeric vector of length \code{min(nu, nv)}: singular values
+    \item{d}{Numeric vector of length \code{max(nu, nv)}: singular values
       in decreasing order.}
     \item{v}{Numeric matrix \code{[n, nv]}: right singular vectors.}
     \item{iter}{Integer: number of Krylov steps performed.}
     \item{mprod}{Integer: total matrix-vector products issued.}
+    \item{residuals}{Numeric vector: relative residual of each returned
+      triplet.}
+    \item{converged}{Logical: whether all residuals met \code{tol}.}
   }
 }
 \description{

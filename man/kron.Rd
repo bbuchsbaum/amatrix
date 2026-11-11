@@ -18,6 +18,12 @@ Accepts plain matrices or any \code{aMatrix} subclass.
 For a lazy variant that avoids forming the full product see
 \code{\link{kron_matrix}}.
 }
+\examples{
+A <- matrix(1:4, 2, 2)
+B <- diag(2)
+kron(A, B)
+
+}
 \seealso{
 \code{\link{kron_matrix}}
 }

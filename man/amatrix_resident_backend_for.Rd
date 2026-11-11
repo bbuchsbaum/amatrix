@@ -23,3 +23,9 @@ for the requested operation. This is intended for package authors who want
 repeated work to stay on the fastest available accelerator without hardcoding
 backend names such as \code{"metal"} or \code{"mlx"}.
 }
+\examples{
+x <- adgeMatrix(matrix(rnorm(12), 3, 4))
+# NULL when no residency-capable accelerator is registered
+amatrix_resident_backend_for(x, op = "matmul")
+
+}

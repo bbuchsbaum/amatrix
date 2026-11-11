@@ -12,7 +12,7 @@ amatrix_calibrate(
   sparse_densities = c(0.01, 0.05, 0.2),
   n_reps = 10L,
   margin = 0.1,
-  persist = TRUE,
+  persist = FALSE,
   quiet = FALSE
 )
 }
@@ -40,9 +40,11 @@ benchmark cell, after 2 warm-up repetitions.}
 GPU median time must beat CPU to count as a GPU win (default
 \code{0.10} means GPU must be at least 10\% faster).}
 
-\item{persist}{Logical. If \code{TRUE} (default), save calibration
-to the user cache directory so future sessions load it
-automatically.}
+\item{persist}{Logical. If \code{TRUE}, save the calibration to the
+user cache directory (\code{tools::R_user_dir("amatrix", "cache")}) so
+future sessions load it automatically. The default \code{FALSE} keeps
+it in the current session only; nothing is written to disk unless you
+ask for it.}
 
 \item{quiet}{Logical. Suppress progress messages.}
 }
@@ -57,6 +59,13 @@ Runs micro-benchmarks for each (op, backend, size) combination and
 derives the minimum matrix element count at which each GPU backend
 reliably outperforms CPU. Results are stored in the current session
 and optionally persisted to disk for reuse in future sessions.
+}
+\examples{
+# Benchmarks every registered non-CPU backend. With only the CPU backend
+# registered there is nothing to measure and this returns immediately.
+cal <- amatrix_calibrate(quiet = TRUE)
+names(cal)
+
 }
 \seealso{
 \code{\link{amatrix_calibration_info}},

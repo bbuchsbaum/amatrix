@@ -2,7 +2,7 @@
 % Please edit documentation in R/wrappers.R
 \name{tcrossprod_weighted}
 \alias{tcrossprod_weighted}
-\title{Weighted outer cross-product XWX'}
+\title{Row-weighted outer cross-product}
 \usage{
 tcrossprod_weighted(X, w)
 }
@@ -16,8 +16,9 @@ weights.}
 An \code{adgeMatrix} of shape \code{[n, n]}.
 }
 \description{
-Computes \eqn{X \mathrm{diag}(w) X^T}, an \code{n x n} weighted
-outer cross-product. A GPU-resident fast path is used when available.
+Computes \eqn{W^{1/2} X X^T W^{1/2}} with
+\eqn{W = \mathrm{diag}(w)}: the \code{n x n} outer cross-product of
+the row-weighted matrix \eqn{W^{1/2} X}. A GPU-resident fast path is used when available.
 }
 \examples{
 X <- matrix(rnorm(20), nrow = 5)

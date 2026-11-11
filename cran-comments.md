@@ -3,11 +3,16 @@
 ## Test environments
 
 * macOS 14 (arm64), R 4.5.x (local)
+* Ubuntu 24.04 (x86_64), R 4.3.3 with Matrix 1.6-5 (the declared minimum R)
 * GitHub Actions: ubuntu-latest, macOS-latest, windows-latest (R-release, R-devel)
 
 ## R CMD check results
 
-0 errors, 0 warnings, 1 note (`R CMD check --as-cran`, 2026-07-24).
+0 errors, 0 warnings, 1 note.
+
+The R 4.3.3 run was repeated on 2026-11-11 after the pre-submission review
+fixes. The R-release / R-devel results date from 2026-07-24 and must be
+refreshed (re-run the R-CMD-check workflow) before submission.
 
 ### Note on CRAN incoming feasibility
 

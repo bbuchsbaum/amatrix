@@ -20,3 +20,10 @@ A matrix of the same dimensions as \code{e1}.
 Apply an element-wise arithmetic operation to one or two matrices,
 dispatching to the preferred GPU backend when available.
 }
+\examples{
+x <- adgeMatrix(matrix(1:6, 2, 3))
+ewise("+", x, 1)
+ewise("*", x, x)
+ewise("exp", x)
+
+}

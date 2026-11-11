@@ -2,7 +2,7 @@
 % Please edit documentation in R/chol-factor.R
 \name{lu_factor}
 \alias{lu_factor}
-\title{Store a general square matrix for LU-based solving}
+\title{LU-factor a general square matrix}
 \usage{
 lu_factor(A)
 }
@@ -13,10 +13,10 @@ lu_factor(A)
 An \code{\linkS4class{amLU}} object.
 }
 \description{
-Wraps a square numeric matrix or \code{adgeMatrix} in an
-\code{\linkS4class{amLU}} object. The actual LU decomposition is
-performed by \code{base::solve} at solve time via LAPACK's
-\code{DGESV}.
+Computes the pivoted LU factorization of a square numeric matrix or
+\code{adgeMatrix} (LAPACK \code{DGETRF}) and returns it in an
+\code{\linkS4class{amLU}} object for repeated use by
+\code{\link{lu_solve}}.
 }
 \examples{
 m <- matrix(c(2, 1, 5, 3), nrow = 2)

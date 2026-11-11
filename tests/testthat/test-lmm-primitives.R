@@ -272,18 +272,18 @@ test_that("colMeans S4 dispatch works on adgeMatrix", {
 test_that("trace matches sum(diag(A)) for square matrix", {
   set.seed(23)
   A <- matrix(rnorm(25), 5, 5)
-  expect_equal(trace(adgeMatrix(A)), sum(diag(A)), tolerance = 1e-12)
+  expect_equal(mat_trace(adgeMatrix(A)), sum(diag(A)), tolerance = 1e-12)
 })
 
 test_that("trace of identity matrix equals n", {
-  expect_equal(trace(adgeMatrix(diag(7))), 7, tolerance = 1e-12)
+  expect_equal(mat_trace(adgeMatrix(diag(7))), 7, tolerance = 1e-12)
 })
 
 test_that("trace of SPD matrix equals sum of eigenvalues", {
   set.seed(24)
   A <- matrix(rnorm(25), 5, 5)
   K <- A %*% t(A) + diag(5)
-  expect_equal(trace(adgeMatrix(K)), sum(eigen(K, only.values = TRUE)$values),
+  expect_equal(mat_trace(adgeMatrix(K)), sum(eigen(K, only.values = TRUE)$values),
                tolerance = 1e-8)
 })
 
@@ -433,7 +433,7 @@ test_that("trace_estim converges to true trace with large k", {
   K <- crossprod(A) + 5 * diag(5)
   K_am <- adgeMatrix(K)
   est <- trace_estim(K_am, k = 500, seed = 42)
-  expect_equal(est, trace(K_am), tolerance = 1.0)  # stochastic, generous tol
+  expect_equal(est, mat_trace(K_am), tolerance = 1.0)  # stochastic, generous tol
 })
 
 test_that("trace_estim via solve_fn estimates tr(K^{-1})", {

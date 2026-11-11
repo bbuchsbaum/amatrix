@@ -82,10 +82,74 @@
 #'   dimnames<-,adgCMatrix,ANY-method
 #'   dimnames<-,adgeMatrix,ANY-method
 #'   eigen,matrix-method
-#'   norm,adgCMatrix,ANY-method
-#'   norm,adgeMatrix,ANY-method
-#'   norm,matrix,ANY-method
-#'   norm,numeric,ANY-method
+#'   %*%,adgCMatrix,vector-method
+#'   %*%,adgeMatrix,vector-method
+#'   %*%,numeric,aTransposeView-method
+#'   [<-,adgCMatrix,Matrix,missing,replValue-method
+#'   [<-,adgCMatrix,index,index,replValue-method
+#'   [<-,adgCMatrix,index,missing,replValue-method
+#'   [<-,adgCMatrix,matrix,missing,replValue-method
+#'   [<-,adgCMatrix,missing,index,replValue-method
+#'   [<-,adgeMatrix,Matrix,missing,replValue-method
+#'   [<-,adgeMatrix,index,index,replValue-method
+#'   [<-,adgeMatrix,index,missing,replValue-method
+#'   [<-,adgeMatrix,matrix,missing,replValue-method
+#'   [<-,adgeMatrix,missing,index,replValue-method
+#'   as.numeric,aTransposeView-method
+#'   colMeans,aTransposeView-method
+#'   colSums,aTransposeView-method
+#'   crossprod,aTransposeView,ANY-method
+#'   crossprod,aTransposeView,missing-method
+#'   crossprod,adgCMatrix,vector-method
+#'   crossprod,adgeMatrix,CsparseMatrix-method
+#'   crossprod,adgeMatrix,denseMatrix-method
+#'   crossprod,adgeMatrix,matrix-method
+#'   crossprod,adgeMatrix,vector-method
+#'   diag,aTransposeView-method
+#'   kronecker,CsparseMatrix,adgCMatrix-method
+#'   kronecker,CsparseMatrix,adgeMatrix-method
+#'   kronecker,adgCMatrix,CsparseMatrix-method
+#'   kronecker,adgCMatrix,denseMatrix-method
+#'   kronecker,adgeMatrix,CsparseMatrix-method
+#'   kronecker,adgeMatrix,denseMatrix-method
+#'   kronecker,denseMatrix,adgCMatrix-method
+#'   kronecker,denseMatrix,adgeMatrix-method
+#'   length,aTransposeView-method
+#'   log,aTransposeView-method
+#'   norm,aTransposeView,character-method
+#'   norm,aTransposeView,missing-method
+#'   rowMeans,aTransposeView-method
+#'   rowSums,aTransposeView-method
+#'   solve,aTransposeView,ANY-method
+#'   solve,aTransposeView,missing-method
+#'   tcrossprod,aTransposeView,ANY-method
+#'   tcrossprod,aTransposeView,missing-method
+#'   tcrossprod,adgCMatrix,vector-method
+#'   tcrossprod,adgeMatrix,CsparseMatrix-method
+#'   tcrossprod,adgeMatrix,denseMatrix-method
+#'   tcrossprod,adgeMatrix,matrix-method
+#'   tcrossprod,adgeMatrix,vector-method
+#'   dim<-,adgCMatrix-method
+#'   dim<-,adgeMatrix-method
+#'   isSymmetric,adgCMatrix-method
+#'   isSymmetric,adgeMatrix-method
+#'   mean,aTransposeView-method
+#'   mean,adgCMatrix-method
+#'   mean,adgeMatrix-method
+#'   mean,adlgCMatrix-method
+#'   mean,adlgeMatrix-method
+#'   sweep,adgCMatrix-method
+#'   sweep,adgeMatrix-method
+#'   which,adlgCMatrix-method
+#'   which,adlgeMatrix-method
+#'   log,adgCMatrix-method
+#'   log,adgeMatrix-method
+#'   norm,adgCMatrix,character-method
+#'   norm,adgCMatrix,missing-method
+#'   norm,adgeMatrix,character-method
+#'   norm,adgeMatrix,missing-method
+#'   norm,numeric,character-method
+#'   norm,numeric,missing-method
 #'   qr,adgCMatrix-method
 #'   qr,adgeMatrix-method
 #'   qr.Q,amQR-method
@@ -100,7 +164,6 @@
 #'   solve,KronMatrix,matrix-method
 #'   solve,KronMatrix,missing-method
 #'   solve,KronMatrix,numeric-method
-#'   svd,matrix-method
 #'   t,KronMatrix-method
 #'   t,aTransposeView-method
 #'   t,adgCMatrix-method
@@ -198,3 +261,80 @@ setMethod("zapsmall", signature(x = "adgeMatrix"), .amatrix_zapsmall_method)
 
 #' @noRd
 setMethod("zapsmall", signature(x = "adgCMatrix"), .amatrix_zapsmall_method)
+
+# ── Base generics that must work with only amatrix attached ──────────────────
+#
+# mean(), which() and isSymmetric() dispatch on amatrix classes through S4
+# generics that Matrix creates. Matrix is imported, not attached, so unless
+# amatrix exports those generics itself a user who only called
+# library(amatrix) got base behaviour: mean(A) returned NA with a warning and
+# which(A > 2) / isSymmetric(A) failed.
+
+#' @noRd
+setMethod("mean", "adgeMatrix", function(x, ...) {
+  base::mean(amatrix_materialize_dense(x)@x, ...)
+})
+
+#' @noRd
+setMethod("mean", "adgCMatrix", function(x, ...) {
+  Matrix::mean(amatrix_materialize_host(x), ...)
+})
+
+for (.cls in c("adlgeMatrix", "adlgCMatrix")) {
+  setMethod("mean", .cls, function(x, ...) Matrix::mean(.amatrix_logical_host_arg(x), ...))
+  setMethod("which", .cls, function(x, arr.ind = FALSE, useNames = TRUE) {
+    Matrix::which(.amatrix_logical_host_arg(x), arr.ind = arr.ind, useNames = useNames)
+  })
+}
+rm(.cls)
+
+#' @noRd
+setMethod("isSymmetric", "adgCMatrix", function(object, ...) {
+  Matrix::isSymmetric(amatrix_materialize_host(object), ...)
+})
+
+# ── dim<- ─────────────────────────────────────────────────────────────────────
+#
+# Reshaping changes what the object is, so it gets a fresh identity (cached
+# factors of the old shape must not be found again) and, as for a base matrix,
+# its dimnames are dropped. Matrix's inherited method kept both, which left an
+# invalid object whenever dimnames were present.
+
+.amatrix_check_new_dim <- function(x, value) {
+  if (!is.numeric(value) || length(value) != 2L || anyNA(value) || any(value < 0)) {
+    stop("dim(x) must be a non-negative numeric vector of length 2", call. = FALSE)
+  }
+  if (prod(as.double(value)) != prod(as.double(dim(x)))) {
+    stop(sprintf("dims [product %.0f] do not match the length of object [%.0f]",
+                 prod(as.double(value)), prod(as.double(dim(x)))), call. = FALSE)
+  }
+  as.integer(value)
+}
+
+#' @noRd
+setMethod("dim<-", "adgeMatrix", function(x, value) {
+  value <- .amatrix_check_new_dim(x, value)
+  .amatrix_cache_invalidate_object(x@object_id)
+  .amatrix_new_dense(
+    data = amatrix_materialize_dense(x)@x,
+    dim = value,
+    preferred_backend = x@preferred_backend,
+    policy = x@policy,
+    precision = x@precision
+  )
+})
+
+#' @noRd
+setMethod("dim<-", "adgCMatrix", function(x, value) {
+  value <- .amatrix_check_new_dim(x, value)
+  host <- amatrix_materialize_host(x)
+  dimnames(host) <- list(NULL, NULL)
+  dim(host) <- value
+  .amatrix_cache_invalidate_object(x@object_id)
+  new_adgCMatrix(
+    methods::as(methods::as(methods::as(host, "dMatrix"), "generalMatrix"), "CsparseMatrix"),
+    preferred_backend = x@preferred_backend,
+    policy = x@policy,
+    precision = x@precision
+  )
+})

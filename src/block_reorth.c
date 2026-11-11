@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/BLAS.h>
@@ -60,6 +61,16 @@ static SEXP amatrix_block_reorth_impl(SEXP z, SEXP basis, int k_used, int do_ret
     return z_out;
   }
 
+  if ((double) m * (double) b > (double) INT_MAX) {
+    error("block is too large for BLAS integer indexing");
+  }
+  /* Norm of the input block, taken BEFORE the projection below. When z is
+   * updated in place (z_out == z) the original values are gone afterwards,
+   * and comparing the updated block with itself would never trigger the
+   * second reorthogonalization pass. */
+  len_z = m * b;
+  z_norm = F77_CALL(dnrm2)(&len_z, REAL(z), &inc);
+
   coeff = PROTECT(allocMatrix(REALSXP, k, b));
   memset(REAL(coeff), 0, (size_t) k * (size_t) b * sizeof(double));
 
@@ -85,8 +96,6 @@ static SEXP amatrix_block_reorth_impl(SEXP z, SEXP basis, int k_used, int do_ret
     FCONE FCONE
   );
 
-  len_z = m * b;
-  z_norm = F77_CALL(dnrm2)(&len_z, REAL(z), &inc);
   z_reorth_norm = F77_CALL(dnrm2)(&len_z, REAL(z_out), &inc);
 
   if (R_FINITE(z_norm) && z_norm > 0.0 && z_reorth_norm <= reorth_ratio * z_norm) {

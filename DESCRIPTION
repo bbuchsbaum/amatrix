@@ -3,8 +3,15 @@ Type: Package
 Title: Backend-Agnostic Matrix Extensions
 Version: 0.1.0
 Authors@R: person("Bradley", "Buchsbaum", email = "brad.buchsbaum@gmail.com", role = c("aut", "cre"))
-Description: Matrix-compatible S4 classes with backend-dispatch hooks for
-    accelerated execution and predictable CPU fallback.
+Description: Dense and sparse matrix classes that extend the 'Matrix'
+    package and dispatch linear-algebra operations to interchangeable
+    computational backends. A reference CPU backend is included; optional GPU
+    backends ('MLX', 'OpenCL', 'Metal', 'ArrayFire') are provided by separate
+    packages and are used only when installed, with automatic fallback to the
+    CPU. Also provides cached Cholesky, QR and singular value
+    factorizations, least-squares and ridge regression fitters, and
+    randomized and block Krylov methods for truncated singular value
+    decompositions.
 URL: https://bbuchsbaum.github.io/amatrix/, https://github.com/bbuchsbaum/amatrix
 BugReports: https://github.com/bbuchsbaum/amatrix/issues
 License: MIT + file LICENSE
@@ -13,7 +20,9 @@ Depends:
     R (>= 4.3)
 Imports:
     methods,
-    Matrix
+    Matrix,
+    stats,
+    utils
 Suggests:
     testthat (>= 3.0.0),
     callr,

@@ -20,8 +20,9 @@ Numeric vector or matrix \code{x} satisfying
 }
 \description{
 Solves \code{A \%*\% x = B} where \code{A} is the square matrix
-stored in \code{factor}, delegating to \code{base::solve} (LAPACK
-\code{DGESV}).
+stored in \code{factor}, reusing the LU factorization computed by
+\code{\link{lu_factor}} (LAPACK \code{DGETRS}); repeated solves do not
+refactor \code{A}.
 }
 \examples{
 m <- matrix(c(2, 1, 5, 3), nrow = 2)

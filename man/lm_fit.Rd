@@ -34,7 +34,12 @@ included in the returned object.}
 factorization is cached for reuse across calls sharing the same \code{X}.}
 
 \item{method}{Solver method: \code{"normal"} (normal equations, default)
-or \code{"qr"} (QR decomposition).}
+or \code{"qr"} (QR decomposition). The normal equations are the fastest
+route and reuse a cached \eqn{X^\top X}, but they square the condition
+number of \code{X}: a warning of class \code{amatrix_ill_conditioned} is
+raised when \eqn{X^\top X} is close to singular, in which case
+\code{"qr"} should be used. A rank-deficient \code{X} is an error of
+class \code{amatrix_rank_deficient}.}
 }
 \value{
 An object of class \code{"lm_fit"}, a named list containing:

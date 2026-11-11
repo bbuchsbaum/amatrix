@@ -41,6 +41,12 @@ Returns a snapshot of the dispatch state for an \code{aMatrix},
 including residency, preferred backend, policy, precision, and the
 per-operation dispatch matrix for a set of operations.
 }
+\examples{
+x <- adgeMatrix(matrix(rnorm(12), 3, 4))
+info <- amatrix_execution_info(x, ops = c("matmul", "crossprod"))
+names(info)
+
+}
 \seealso{
 \code{\link{amatrix_backend_plan}},
   \code{\link{amatrix_backend_matrix}},

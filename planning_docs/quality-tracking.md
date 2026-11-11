@@ -271,7 +271,7 @@ matching these patterns are exempt by the coverage-table test:
 | `rowscale` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `colscale` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `sym` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `trace` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `mat_trace` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `trace_estim` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `ewise` | ✓ | ✓ | — | — | ✓ | C✓ M? A? O? X— |
 | `am_ewise_inplace` | ○ | — | — | — | — | C✓ M? A? O? X— |
@@ -317,7 +317,7 @@ matching these patterns are exempt by the coverage-table test:
 | `svd_reconstruct` | ✓ | — | — | — | — | C✓ M? A? O? X— |
 | `eigh` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
 | `rsvd` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
-| `irlba` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_irlba` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `irlba_native` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `block_lanczos` | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
 | `block_svd` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |

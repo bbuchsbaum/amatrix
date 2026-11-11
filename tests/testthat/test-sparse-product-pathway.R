@@ -179,7 +179,7 @@ test_that("dense-left sparse-right crossprod lowers through sparse crossprod", {
       out <- crossprod(A, S)
 
       expect_true(inherits(out, "adgeMatrix"))
-      expect_equal(as.matrix(out), as.matrix(base::crossprod(A_host, S_host)), tolerance = 1e-10)
+      expect_equal(as.matrix(out), as.matrix(Matrix::crossprod(A_host, S_host)), tolerance = 1e-10)
       expect_identical(counter$crossprod, 1L)
       expect_false(exists("matmul", envir = counter, inherits = FALSE))
     }
@@ -211,7 +211,7 @@ test_that("dense-left sparse-right tcrossprod lowers through sparse tcrossprod",
       out <- tcrossprod(A, S)
 
       expect_true(inherits(out, "adgeMatrix"))
-      expect_equal(as.matrix(out), as.matrix(base::tcrossprod(A_host, S_host)), tolerance = 1e-10)
+      expect_equal(as.matrix(out), as.matrix(Matrix::tcrossprod(A_host, S_host)), tolerance = 1e-10)
       expect_identical(counter$tcrossprod, 1L)
       expect_false(exists("matmul", envir = counter, inherits = FALSE))
     }

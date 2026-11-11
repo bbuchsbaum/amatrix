@@ -32,6 +32,12 @@
 #' @param y Optional rhs object used when checking resident-op support.
 #' @return A backend name, or \code{NULL} when no residency-capable accelerator
 #'   is available for the requested operation.
+#'
+#' @examples
+#' x <- adgeMatrix(matrix(rnorm(12), 3, 4))
+#' # NULL when no residency-capable accelerator is registered
+#' amatrix_resident_backend_for(x, op = "matmul")
+#'
 #' @export
 amatrix_resident_backend_for <- function(x, op = NULL, y = NULL) {
   stopifnot(inherits(x, "aMatrix"))

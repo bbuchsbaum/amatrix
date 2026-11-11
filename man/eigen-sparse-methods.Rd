@@ -23,3 +23,10 @@ A list with components \code{values} and \code{vectors}.
 Compute eigenvalues and eigenvectors of a sparse \code{adgCMatrix},
 dispatching through the amatrix backend.
 }
+\examples{
+S <- Matrix::sparseMatrix(i = c(1, 2, 3, 1, 2), j = c(1, 2, 3, 2, 1),
+                          x = c(2, 3, 4, 1, 1))
+A <- adgCMatrix(S)
+eigen(A, symmetric = TRUE)$values
+
+}

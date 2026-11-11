@@ -81,6 +81,42 @@ Initial public release.
   (routed to CPU under the hood) and now maps to `"exact"` with a
   one-time-per-session deprecation warning. Use `"exact"` or `"fast"`.
 
+## Pre-release review fixes
+
+* Drop-in semantics: `x[i]` / `x[i] <- v` index elements as in base R;
+  `log(x, base)` honours `base`; `norm()` matches `base::norm()` for every
+  type and no longer alters `norm()` for plain matrices; `t()` views support
+  the usual matrix operations; results keep their amatrix class across
+  sub-assignment, products with vectors and plain matrices, and `kronecker()`.
+* Identity-keyed caches can no longer return a factor of different data
+  (after `-x`, `round()`, `signif()`, `zapsmall()`, or re-used weights), and
+  cache entries are released when their source matrix is collected.
+* Loading the package, probing a backend and `trace_estim(seed = )` no longer
+  touch the user's random-number stream.
+* `block_lanczos()` / `block_svd()` check residuals against a new `tol`
+  argument, extend the iteration automatically and warn
+  (`amatrix_not_converged`) when the tolerance is not met.
+* `lm_fit()` / `wls_fit()` raise `amatrix_rank_deficient` for a singular
+  design and warn (`amatrix_ill_conditioned`) when the normal equations are
+  unreliable; `lm_loo_cv()` uses the exact leverage identity; `lu_factor()`
+  stores a real LU factorization.
+* `amatrix_calibrate()` writes to the user cache directory only with
+  `persist = TRUE`.
+* `dist_matrix(method = "cosine")` returns the cosine distance
+  (`1 - similarity`); the similarity is `kernel_matrix(kernel = "cosine")`.
+* `sweep()` now dispatches on amatrix objects (it is exported as a standard
+  generic with `base::sweep` as default); `am_sweep()` defaults to `FUN = "-"`
+  like base; `rowscale()`, `colscale()` and multiplicative sweeps keep sparse
+  input sparse. `mean()`, `which()` and `isSymmetric()` work with only
+  amatrix attached. `dim(x) <- value` returns a valid, freshly identified
+  object.
+* Much lower per-operation overhead and fewer data copies on the CPU path.
+* Attaching the package no longer masks other packages' functions: the
+  matrix trace is `mat_trace()` (was `trace`, which masked `base::trace`),
+  the truncated-SVD wrapper is `am_irlba()` (was `irlba`, which masked
+  `irlba::irlba`), and `svd` is a standard generic with `base::svd` as its
+  default.
+
 ## Error handling and diagnostics
 
 * User-facing errors in wrapper functions now emit classed conditions

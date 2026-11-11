@@ -24,3 +24,10 @@ A list with components \code{d}, \code{u}, and \code{v}.
 Compute the singular value decomposition of a sparse
 \code{adgCMatrix}, dispatching through the amatrix backend.
 }
+\examples{
+S <- Matrix::sparseMatrix(i = c(1, 2, 3, 1), j = c(1, 2, 3, 3),
+                          x = c(2, 3, 4, 1))
+A <- adgCMatrix(S)
+svd(A)$d
+
+}

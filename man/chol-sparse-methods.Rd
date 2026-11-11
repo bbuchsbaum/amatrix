@@ -18,3 +18,9 @@ An \code{adgCMatrix} or sparse Cholesky factor object.
 Compute the Cholesky factorization of a sparse symmetric
 positive-definite \code{adgCMatrix}.
 }
+\examples{
+S <- Matrix::sparseMatrix(i = 1:3, j = 1:3, x = c(4, 9, 16))
+A <- adgCMatrix(S)
+chol(A)
+
+}

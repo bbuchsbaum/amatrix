@@ -26,6 +26,18 @@ arrayfire_regression_context <- function() {
   )
 }
 
+# The subprocess tests below need the amatrix.arrayfire package to load. On a
+# host with only the vendored source tree and no native ArrayFire library
+# (e.g. the nightly runner) building it fails; that is an environment limit,
+# not the crash regression these tests guard against.
+skip_if_arrayfire_backend_unloadable <- function(output) {
+  build_failed <- any(grepl("load_all('backends/amatrix.arrayfire') failed", output, fixed = TRUE))
+  testthat::skip_if(
+    build_failed && !nzchar(system.file(package = "amatrix.arrayfire")),
+    "amatrix.arrayfire cannot be built or loaded on this host (no native ArrayFire library)"
+  )
+}
+
 test_that("amatrix-vmc: ArrayFire defaults to the cpu runtime on Apple Silicon", {
   testthat::skip_if_not(
     identical(Sys.info()[["sysname"]], "Darwin") &&
@@ -57,6 +69,7 @@ test_that("amatrix-vmc: ArrayFire defaults to the cpu runtime on Apple Silicon",
     )
   )
 
+  skip_if_arrayfire_backend_unloadable(launch$output)
   expect_equal(launch$status, 0L, info = paste(launch$output, collapse = "\n"))
   # "defaults to the cpu runtime (active backend 1)" presupposes a *functional*
   # ArrayFire native runtime. On a host that only has the vendored source tree
@@ -130,6 +143,7 @@ test_that("amatrix-vmc: ArrayFire benchmark worker no longer crashes on Apple Si
     )
   )
 
+  skip_if_arrayfire_backend_unloadable(launch$output)
   expect_equal(launch$status, 0L, info = paste(launch$output, collapse = "\n"))
   expect_true(file.exists(out_path), info = paste(launch$output, collapse = "\n"))
 
@@ -200,6 +214,7 @@ test_that("amatrix-vmc: explicit cpu,arrayfire discovery avoids unrelated backen
     )
   )
 
+  skip_if_arrayfire_backend_unloadable(launch$output)
   expect_equal(launch$status, 0L, info = paste(launch$output, collapse = "\n"))
   expect_true(any(grepl("^DISCOVERED=cpu,arrayfire$", launch$output)), info = paste(launch$output, collapse = "\n"))
 })

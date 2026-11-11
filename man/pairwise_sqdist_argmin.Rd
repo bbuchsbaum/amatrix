@@ -28,3 +28,11 @@ Computes \eqn{D[i,k] = \|x_i\|^2 - 2 x_i^\top c_k + \|c_k\|^2} and
 returns \eqn{\arg\min_k D[i,k]} for each row \eqn{i}, 1-indexed.
 GPU path avoids host round-trips by chaining resident operations.
 }
+\examples{
+set.seed(1)
+X <- matrix(rnorm(40), 10, 4)
+centroids <- X[c(1, 5, 9), ]
+# Centroids go in COLUMNS: pass t(centroids)
+pairwise_sqdist_argmin(X, t(centroids))
+
+}

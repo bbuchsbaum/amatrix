@@ -113,9 +113,10 @@
     }
   }
 
-  old_defer <- getOption("amatrix.defer_host", FALSE)
-  options(amatrix.defer_host = FALSE)
-  on.exit(options(amatrix.defer_host = old_defer), add = TRUE)
+  # options() returns the previous setting (including "unset"), so restoring
+  # it puts the option back exactly as the caller had it.
+  old_defer <- options(amatrix.defer_host = FALSE)
+  on.exit(options(old_defer), add = TRUE)
 
   resident <- switch(
     op,
@@ -163,6 +164,14 @@
 #' @return A callable \code{am_product_plan}. Calling the plan with
 #'   \code{materialize = "matrix"} returns a base matrix directly, which is
 #'   useful for internal algorithms that immediately need host matrix data.
+#'
+#' @examples
+#' x <- adgeMatrix(matrix(rnorm(20), 5, 4))
+#' plan <- amatrix_compile_product(x, op = "matmul")
+#' # Reuse the plan for several right-hand sides
+#' plan(matrix(rnorm(8), 4, 2))
+#' plan(matrix(rnorm(4), 4, 1))
+#'
 #' @export
 amatrix_compile_product <- function(
   x,

@@ -237,6 +237,58 @@
   paste("qr", backend, X_arg@precision, sep = ":")
 }
 
+# Numerical rank of X from its Gram matrix X'X (p x p) via pivoted Cholesky.
+# The normal-equation path already has X'X, so this costs O(p^3) instead of
+# the O(n p^2) Householder QR of X that used to be run purely to report rank
+# (and which made method = "normal" slower than method = "qr"). The tolerance
+# is the square of base::qr()'s default 1e-7, since X'X squares the scale.
+.amatrix_xtx_rank <- function(xtx) {
+  m <- as.matrix(amatrix_materialize_host(xtx))
+  p <- ncol(m)
+  if (p == 0L) return(0L)
+  d <- diag(m)
+  if (anyNA(m) || !all(is.finite(d)) || max(d) <= 0) {
+    return(base::qr(m)$rank)
+  }
+  r <- tryCatch(
+    suppressWarnings(base::chol(m, pivot = TRUE, tol = 1e-14 * max(d))),
+    error = function(e) NULL
+  )
+  if (is.null(r)) {
+    return(base::qr(m)$rank)
+  }
+  as.integer(attr(r, "rank"))
+}
+
+# Guard for the normal-equation solve. X'X squares the condition number of X,
+# so this path loses accuracy long before a QR does and fails with a raw
+# LAPACK message when X is rank deficient. Turn both into explicit, classed
+# conditions that say what happened and what to do.
+.amatrix_check_normal_equations <- function(xtx, rank, what = "X") {
+  p <- ncol(xtx)
+  if (!is.null(rank) && is.finite(rank) && rank < p) {
+    stop(errorCondition(
+      sprintf(paste0(
+        "%s is rank deficient (rank %d < %d columns), so the least-squares ",
+        "coefficients are not unique; remove collinear columns or use ridge_fit()"
+      ), what, as.integer(rank), as.integer(p)),
+      class = c("amatrix_rank_deficient", "amatrix_bad_arg"), call = NULL
+    ))
+  }
+  m <- as.matrix(amatrix_materialize_host(xtx))
+  rc <- tryCatch(base::rcond(m), error = function(e) NA_real_)
+  if (is.finite(rc) && rc < 1e-10) {
+    warning(warningCondition(
+      sprintf(paste0(
+        "the normal equations are ill-conditioned (reciprocal condition number of X'X ",
+        "is %.1e); coefficients may be inaccurate. Use method = \"qr\" for this design"
+      ), rc),
+      class = "amatrix_ill_conditioned", call = NULL
+    ))
+  }
+  invisible(NULL)
+}
+
 .amatrix_lm_cache_get <- function(cache_key) {
   .amatrix_cache_get(cache_key)
 }
@@ -325,6 +377,8 @@
   if (is.null(cached$rank)) {
     if (!is.null(cached$qr)) {
       cached$rank <- .amatrix_qr_rank(cached$qr)
+    } else if (!is.null(cached$xtx)) {
+      cached$rank <- .amatrix_xtx_rank(cached$xtx)
     } else {
       qr_x <- base::qr(as.matrix(amatrix_materialize_host(X_arg)))
       cached$rank <- qr_x$rank
@@ -490,6 +544,7 @@
     # Sparse "normal" path: bypass cache (which requires adgeMatrix)
     Y_arg <- .amatrix_model_response_arg(Y, template = X_arg)
     XtX <- am_crossprod(X_arg)
+    .amatrix_check_normal_equations(XtX, .amatrix_xtx_rank(XtX))
     XtY <- am_crossprod(X_arg, Y_arg)
     coefficients <- am_solve(XtX, XtY)
     outputs <- .amatrix_model_outputs(
@@ -502,13 +557,15 @@
     fitted_values <- outputs$fitted_values
     residuals <- outputs$residuals
     qr_meta <- .amatrix_qr_fit_metadata(NULL)
-    rank_qr <- base::qr(as.matrix(amatrix_materialize_host(X_arg)))
-    cache_value <- list(rank = rank_qr$rank, cache_key = NA_character_,
+    # Rank from the p x p Gram matrix; a QR of X here would densify the
+    # sparse design (n x p dense) just to report a rank.
+    cache_value <- list(rank = .amatrix_xtx_rank(XtX), cache_key = NA_character_,
                         cache_reused = FALSE)
   } else {
     Y_arg <- .amatrix_model_response_arg(Y, template = X_arg)
     cache_value <- .amatrix_lm_cache_value(X_arg, cache = cache, need_xtx = TRUE, need_qr = FALSE)
     XtX <- cache_value$xtx
+    .amatrix_check_normal_equations(XtX, cache_value$rank)
     XtY <- am_crossprod(X_arg, Y_arg)
     coefficients <- .amatrix_spd_solve_rewrap(XtX, XtY, template = X_arg)
     outputs <- .amatrix_model_outputs(
@@ -652,8 +709,8 @@
     return(NULL)
   }
 
-  if (!is.numeric(weights) || anyNA(weights) || any(weights < 0)) {
-    stop("weights must be a numeric vector of non-missing non-negative values")
+  if (!is.numeric(weights) || anyNA(weights) || any(!is.finite(weights)) || any(weights < 0)) {
+    stop("weights must be a numeric vector of finite, non-missing, non-negative values")
   }
 
   if (length(weights) != n_obs) {
@@ -795,7 +852,21 @@ covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_si
     XtX <- as.matrix(Matrix::crossprod(X))   # p x p dense result
     if (isTRUE(center)) {
       mu  <- Matrix::colMeans(X)             # length-p vector
+      raw_diag <- diag(XtX)
       XtX <- XtX - n * tcrossprod(mu)
+      # X'X - n mu mu' subtracts two nearly equal numbers when a column's mean
+      # is large relative to its spread; the variance can then be mostly
+      # rounding error (even negative). Say so rather than return it silently.
+      lost <- raw_diag > 0 & diag(XtX) < raw_diag * 1e-9
+      if (any(lost)) {
+        warning(warningCondition(
+          sprintf(paste0(
+            "covariance(): %d column(s) have a mean that is large relative to their spread; ",
+            "the sparse formula loses precision there. Convert X to dense for an accurate result"
+          ), sum(lost)),
+          class = "amatrix_precision_loss", call = NULL
+        ))
+      }
     }
     return(as_adgeMatrix(XtX / denom))
   }
@@ -910,7 +981,12 @@ correlation <- function(X, center = TRUE, weights = NULL, block_size = NULL) {
 #' @param cache Logical. When \code{TRUE}, the \eqn{X^T X} or QR
 #'   factorization is cached for reuse across calls sharing the same \code{X}.
 #' @param method Solver method: \code{"normal"} (normal equations, default)
-#'   or \code{"qr"} (QR decomposition).
+#'   or \code{"qr"} (QR decomposition). The normal equations are the fastest
+#'   route and reuse a cached \eqn{X^\top X}, but they square the condition
+#'   number of \code{X}: a warning of class \code{amatrix_ill_conditioned} is
+#'   raised when \eqn{X^\top X} is close to singular, in which case
+#'   \code{"qr"} should be used. A rank-deficient \code{X} is an error of
+#'   class \code{amatrix_rank_deficient}.
 #'
 #' @return An object of class \code{"lm_fit"}, a named list containing:
 #'   \describe{
@@ -977,7 +1053,10 @@ lm_fit <- function(
 #' @param intercept Logical; when \code{TRUE} a column of ones is
 #'   prepended to \code{X} before fitting.
 #' @param penalize_intercept Logical; when \code{FALSE} (default) the
-#'   intercept coefficient is excluded from the penalty.
+#'   intercept coefficient is excluded from the penalty. This applies to the
+#'   column added by \code{intercept = TRUE} and also to a first column of
+#'   \code{X} that consists entirely of ones, which is treated as an
+#'   explicit intercept. Set \code{TRUE} to penalize every column.
 #' @param include_fitted Logical; include fitted values in the result.
 #' @param include_residuals Logical; include residuals in the result.
 #' @param cache Logical; cache \eqn{X^T X} for reuse across calls
@@ -1161,9 +1240,10 @@ wls_fit <- function(
       object_id = X_arg@object_id
     )
     xtx <- crossprod_weighted(X_arg, weights)
+    .amatrix_check_normal_equations(xtx, .amatrix_xtx_rank(xtx), what = "The weighted design")
     xty <- xty_weighted(X_arg, weights, Y_arg)
     coefficients <- .amatrix_spd_solve_rewrap(xtx, xty, template = X_arg)
-    cache_value <- list(rank = ncol(X_arg), cache_key = cache_key,
+    cache_value <- list(rank = .amatrix_xtx_rank(xtx), cache_key = cache_key,
                         cache_reused = FALSE)
     qr_meta <- .amatrix_qr_fit_metadata(NULL)
   }
@@ -1186,7 +1266,8 @@ wls_fit <- function(
       weights = as.double(weights),
       method = method,
       rank = rank,
-      df.residual = nrow(X_arg) - rank,
+      # Observations with zero weight carry no information (as in lm.wfit).
+      df.residual = sum(weights > 0) - rank,
       intercept = isTRUE(intercept),
       cache = isTRUE(cache),
       cache_key = cache_value$cache_key,
@@ -1251,8 +1332,10 @@ wls_fit <- function(
 #'     \item{coefficients}{\code{adgeMatrix} of shape \code{[p, q]}.}
 #'     \item{fitted.values}{\code{adgeMatrix} \code{[n, q]} or \code{NULL}.}
 #'     \item{residuals}{\code{adgeMatrix} \code{[n, q]} or \code{NULL}.}
-#'     \item{rss}{Numeric vector of length \code{q}: residual sums of squares.}
-#'     \item{sigma2}{Numeric vector of length \code{q}: residual variances.}
+#'     \item{rss}{Numeric vector of length \code{q}: residual sums of squares,
+#'       or \code{NULL} unless \code{include_residuals = TRUE}.}
+#'     \item{sigma2}{Numeric vector of length \code{q}: residual variances,
+#'       or \code{NULL} unless \code{include_residuals = TRUE}.}
 #'     \item{rank}{Integer model rank.}
 #'     \item{df.residual}{Residual degrees of freedom.}
 #'   }

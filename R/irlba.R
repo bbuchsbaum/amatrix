@@ -39,9 +39,17 @@
 #' Do \strong{not} pass \code{mult=} — it is deprecated in irlba and forces a
 #' non-standard dispatch path. Pass an \code{adgeMatrix} instead.
 #'
+#' @examples
+#' if (requireNamespace("irlba", quietly = TRUE)) {
+#'   set.seed(1)
+#'   A <- matrix(rnorm(200), 20, 10)
+#'   fit <- am_irlba(A, nv = 2)
+#'   fit$d
+#' }
+#'
 #' @seealso \code{\link{adgeMatrix}}, \code{\link{svd_factor}}
 #' @export
-irlba <- function(A,
+am_irlba <- function(A,
                      nv = 5,
                      nu = nv,
                      ...,
@@ -56,7 +64,7 @@ irlba <- function(A,
     dots <- list(...)
     if (length(dots) > 0L) {
       warning(
-        "irlba(..., implementation = 'block') ignores irlba-specific arguments in ...; ",
+        "am_irlba(..., implementation = 'block') ignores irlba-specific arguments in ...; ",
         "use block_lanczos() for the block implementation surface.",
         call. = FALSE
       )
@@ -76,9 +84,33 @@ irlba <- function(A,
     stop("Package 'irlba' is required: install.packages('irlba')")
   }
   if (!inherits(A, c("adgeMatrix", "adgCMatrix"))) {
-    A <- adgeMatrix(A, mode = mode, backend = backend)
+    A <- if (inherits(A, "sparseMatrix")) {
+      as_adgCMatrix(
+        methods::as(methods::as(methods::as(A, "dMatrix"), "generalMatrix"), "CsparseMatrix"),
+        mode = mode, backend = backend
+      )
+    } else {
+      adgeMatrix(A, mode = mode, backend = backend)
+    }
   }
-  irlba::irlba(A, nv = nv, nu = nu, ..., fastpath = FALSE)
+
+  dots <- list(...)
+  planned <- tryCatch(amatrix_backend_plan(A, "matmul")$chosen, error = function(e) "cpu")
+  if (identical(planned, "cpu")) {
+    # Nothing to accelerate: hand irlba the plain host matrix so it can use
+    # its compiled fast path, instead of routing every Lanczos matvec through
+    # S4 dispatch (5-8x slower with identical results).
+    host <- amatrix_materialize_host(A)
+    if (!inherits(host, "sparseMatrix")) {
+      host <- as.matrix(host)
+    }
+    return(do.call(irlba::irlba, c(list(host, nv = nv, nu = nu), dots)))
+  }
+
+  # Backend path: the matvecs must go through amatrix's %*% methods, which
+  # irlba's C fast path would bypass.
+  dots$fastpath <- FALSE
+  do.call(irlba::irlba, c(list(A, nv = nv, nu = nu), dots))
 }
 
 #' GPU-native truncated SVD via Lanczos bidiagonalization
@@ -110,7 +142,16 @@ irlba <- function(A,
 #' @return A list with components \code{d}, \code{u}, \code{v}, \code{iter},
 #'   \code{mprod}, compatible with \code{irlba::irlba()}.
 #'
-#' @seealso \code{\link{irlba}}, \code{\link{adgeMatrix}}
+#' @examples
+#' if (requireNamespace("irlba", quietly = TRUE)) {
+#'   set.seed(1)
+#'   A <- matrix(rnorm(200), 20, 10)
+#'   # Falls back to am_irlba() when the ArrayFire backend is not available
+#'   fit <- suppressMessages(irlba_native(A, nv = 2L))
+#'   fit$d
+#' }
+#'
+#' @seealso \code{\link{am_irlba}}, \code{\link{adgeMatrix}}
 #' @export
 irlba_native <- function(A,
                              nv    = 5L,
@@ -132,8 +173,18 @@ irlba_native <- function(A,
   }, error = function(e) FALSE)
 
   if (!af_ok) {
-    message("irlba_native: ArrayFire unavailable, falling back to irlba")
-    return(irlba(A, nv = nv, nu = nu, tol = tol, maxit = maxit))
+    if (!isTRUE(.amatrix_state$irlba_native_fallback_noted)) {
+      .amatrix_state$irlba_native_fallback_noted <- TRUE
+      message("irlba_native: ArrayFire unavailable, falling back to am_irlba (noted once per session)")
+    }
+    fallback_args <- list(A, nv = nv, nu = nu, tol = tol, maxit = maxit)
+    if (!missing(work)) {
+      fallback_args$work <- max(as.integer(work), as.integer(nv) + 1L)
+    }
+    if (!is.null(v0)) {
+      fallback_args$v <- v0
+    }
+    return(do.call(am_irlba, fallback_args))
   }
 
   A_mat <- amatrix_materialize_host(A)
@@ -293,7 +344,7 @@ irlba_native <- function(A,
 
   compiled <- tryCatch(
     .Call(
-      "amatrix_block_reorth_bridge",
+      "amatrix_block_reorth_bridge", PACKAGE = "amatrix",
       z_mat,
       basis_mat,
       as.logical(return_projection)
@@ -356,7 +407,7 @@ irlba_native <- function(A,
 
   compiled <- tryCatch(
     .Call(
-      "amatrix_block_reorth_prefix_bridge",
+      "amatrix_block_reorth_prefix_bridge", PACKAGE = "amatrix",
       z_mat,
       basis_mat,
       basis_cols,
@@ -394,7 +445,7 @@ irlba_native <- function(A,
   }
 
   compiled <- tryCatch(
-    .Call("amatrix_block_thin_qr_bridge", z_mat),
+    .Call("amatrix_block_thin_qr_bridge", z_mat, PACKAGE = "amatrix"),
     error = function(e) NULL
   )
   if (!is.null(compiled)) {
@@ -731,21 +782,28 @@ irlba_native <- function(A,
 #' @param block_size Integer block width for the Krylov iteration. When
 #'   \code{NULL} (default), a size is chosen automatically based on \code{nv}
 #'   and \code{nu}.
-#' @param n_steps Number of Krylov steps. When \code{NULL} (default), chosen
-#'   automatically.
+#' @param n_steps Number of Krylov steps. When \code{NULL} (default), a
+#'   starting value is chosen automatically and doubled until the residuals
+#'   meet \code{tol}. An explicit value is used as given.
 #' @param mode Execution mode passed to \code{adgeMatrix()} when coercing
 #'   plain matrices.
 #' @param backend Backend name passed to \code{adgeMatrix()} when coercing
 #'   plain matrices. Ignored when \code{A} is already an \code{aMatrix}.
+#' @param tol Convergence tolerance on the residuals
+#'   \eqn{\|A v_i - \sigma_i u_i\| / \sigma_1}. A warning of class
+#'   \code{amatrix_not_converged} is raised when it is not met.
 #'
 #' @return A named list with components:
 #'   \describe{
 #'     \item{u}{Numeric matrix \code{[m, nu]}: left singular vectors.}
-#'     \item{d}{Numeric vector of length \code{min(nu, nv)}: singular values
+#'     \item{d}{Numeric vector of length \code{max(nu, nv)}: singular values
 #'       in decreasing order.}
 #'     \item{v}{Numeric matrix \code{[n, nv]}: right singular vectors.}
 #'     \item{iter}{Integer: number of Krylov steps performed.}
 #'     \item{mprod}{Integer: total matrix-vector products issued.}
+#'     \item{residuals}{Numeric vector: relative residual of each returned
+#'       triplet.}
+#'     \item{converged}{Logical: whether all residuals met \code{tol}.}
 #'   }
 #'
 #' @examples
@@ -761,9 +819,17 @@ block_lanczos <- function(A,
                              block_size = NULL,
                              n_steps = NULL,
                              mode = "fast",
-                             backend = NULL) {
+                             backend = NULL,
+                             tol = 1e-5) {
   if (!inherits(A, c("adgeMatrix", "adgCMatrix"))) {
     A <- adgeMatrix(A, mode = mode, backend = backend)
+  }
+
+  if (!isTRUE(A@finalizer_env$host_deferred) && any(!is.finite(A@x))) {
+    stop("A must not contain NA, NaN or infinite values", call. = FALSE)
+  }
+  if (!is.numeric(tol) || length(tol) != 1L || is.na(tol) || tol < 0) {
+    stop("tol must be a single non-negative number", call. = FALSE)
   }
 
   nv <- as.integer(nv)
@@ -793,7 +859,6 @@ block_lanczos <- function(A,
     stop("n_steps must be a positive integer", call. = FALSE)
   }
 
-  # Block Krylov iteration: GEMM-per-block instead of sequential GEMVs
   m <- NROW(A)
   n <- NCOL(A)
   A_left <- .amatrix_block_lanczos_source_operator(A)
@@ -804,6 +869,44 @@ block_lanczos <- function(A,
   A_right <- .amatrix_block_lanczos_right_operator(A, source_operator = A_left)
   on.exit(.amatrix_block_lanczos_drop_right_operator(A_right), add = TRUE)
 
+
+  # A fixed number of block steps gives no accuracy guarantee: with the
+  # default 4 steps a slowly decaying spectrum is resolved to only a few
+  # percent. When n_steps is left at its default, double it until the residuals
+  # meet `tol` (or the Krylov basis would exceed the matrix dimension). An
+  # explicit n_steps is honoured as given. Either way, warn if the result did
+  # not converge rather than returning inaccurate values silently.
+  auto_steps <- is.null(n_steps)
+  max_J <- max(J, floor(min(m, n) / b))
+  repeat {
+    res <- .amatrix_block_lanczos_run(A, A_left, A_right, nv, nu, k, b, J)
+    worst <- if (length(res$residuals) > 0L) max(res$residuals) else 0
+    if (!is.finite(worst) || worst <= tol || !auto_steps || J >= max_J) break
+    J <- min(max_J, 2L * J)
+  }
+  res$converged <- is.finite(worst) && worst <= tol
+  if (!res$converged) {
+    warning(warningCondition(
+      sprintf(paste0(
+        "block_lanczos did not converge: largest relative residual %.2e exceeds ",
+        "tol = %.1e after %d block steps; increase n_steps or block_size"
+      ), worst, tol, as.integer(J)),
+      class = "amatrix_not_converged", call = NULL
+    ))
+  }
+  if (length(res$d) < k) {
+    warning(warningCondition(
+      sprintf("block_lanczos returned %d singular triplets, fewer than the %d requested; increase n_steps or block_size",
+              length(res$d), k),
+      class = "amatrix_not_converged", call = NULL
+    ))
+  }
+  res
+}
+
+.amatrix_block_lanczos_run <- function(A, A_left, A_right, nv, nu, k, b, J) {
+  m <- NROW(A)
+  n <- NCOL(A)
   Q_left_basis <- matrix(0, nrow = m, ncol = J * b)
   Q_right_basis <- matrix(0, nrow = n, ncol = J * b)
   B_proj <- matrix(0, nrow = J * b, ncol = J * b)
@@ -889,12 +992,21 @@ block_lanczos <- function(A,
   U <- Q_L %*% svd_B$u[, seq_len(k_out), drop = FALSE]  # m × k_out
   V <- Q_R %*% svd_B$v[, seq_len(k_out), drop = FALSE]  # n × k_out
 
+  # Residuals ||A v_i - sigma_i u_i|| relative to the largest singular value:
+  # the only reliable evidence that a fixed number of block steps resolved the
+  # requested triplets. Costs one extra product with the k_out columns of V.
+  d_out <- svd_B$d[seq_len(k_out)]
+  AV <- .amatrix_block_lanczos_left_product(A, V, operator = A_left)
+  scale <- if (length(d_out) > 0L && d_out[[1L]] > 0) d_out[[1L]] else 1
+  residuals <- sqrt(colSums((as.matrix(AV) - U * rep(d_out, each = nrow(U)))^2)) / scale
+
   list(
     u     = U[, seq_len(min(nu, k_out)), drop = FALSE],
-    d     = svd_B$d[seq_len(k_out)],
+    d     = d_out,
     v     = V[, seq_len(min(nv, k_out)), drop = FALSE],
     iter  = J,
-    mprod = 2L * J * as.integer(b)
+    mprod = 2L * J * as.integer(b) + k_out,
+    residuals = residuals
   )
 }
 
@@ -906,7 +1018,8 @@ block_svd <- function(A,
                          block_size = NULL,
                          n_steps = NULL,
                          mode = "fast",
-                         backend = NULL) {
+                         backend = NULL,
+                         tol = 1e-5) {
   block_lanczos(
     A,
     nv = as.integer(k),
@@ -914,6 +1027,7 @@ block_svd <- function(A,
     block_size = block_size,
     n_steps = n_steps,
     mode = mode,
-    backend = backend
+    backend = backend,
+    tol = tol
   )
 }

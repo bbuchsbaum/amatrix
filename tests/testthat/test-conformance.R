@@ -78,8 +78,12 @@ test_that("wrapper path honors a registered non-cpu backend when supported", {
     x_host <- matrix(1:4, nrow = 2)
     x <- adgeMatrix(x_host, preferred_backend = "recording")
 
-    expect_s4_class(x %*% diag(2), "adgeMatrix")
-    expect_s4_class(x + 1, "adgeMatrix")
+    # Evaluate each op exactly once: the call counters below must not depend
+    # on how many times an expectation evaluates its argument.
+    prod_result <- x %*% diag(2)
+    sum_result <- x + 1
+    expect_s4_class(prod_result, "adgeMatrix")
+    expect_s4_class(sum_result, "adgeMatrix")
     expect_equal(rowSums(x), rowSums(x_host))
     expect_equal(colSums(x), colSums(x_host))
 

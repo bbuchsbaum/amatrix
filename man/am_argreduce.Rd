@@ -25,3 +25,11 @@ An integer vector of indices.
 \description{
 Return the index of the maximum or minimum value in each row or column.
 }
+\examples{
+x <- adgeMatrix(matrix(c(3, 1, 2, 9, 7, 8), 2, 3))
+am_rowargmax(x)
+am_rowargmin(x)
+am_colargmax(x)
+am_colargmin(x)
+
+}

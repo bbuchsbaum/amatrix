@@ -39,3 +39,4 @@
 ^\.Ruserdata$
 ^cran-comments\.md$
 ^\.github$
+^tests/fuzz$

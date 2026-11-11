@@ -143,114 +143,119 @@ setMethod("colMeans", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) colmea
 
 #' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
-  am_subset(x, i, j, ..., drop = drop)
+  am_subset(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
-  am_subset(x, i, j, ..., drop = drop)
+  am_subset(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
-  am_subset(x, i, j, ..., drop = TRUE)
+  am_subset(x, i, j, ..., drop = TRUE, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
-  am_subset(x, i, j, ..., drop = drop)
+  am_subset(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", drop = "missing"), function(x, i, j, ..., drop) {
-  am_subset(x, i, j, ..., drop = TRUE)
+  am_subset(x, i, j, ..., drop = TRUE, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", drop = "logical"), function(x, i, j, ..., drop = TRUE) {
-  am_subset(x, i, j, ..., drop = drop)
+  am_subset(x, i, j, ..., drop = drop, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 #' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", drop = "missing"), function(x, i, j, ..., drop) {
-  am_subset(x, i, j, ..., drop = TRUE)
+  am_subset(x, i, j, ..., drop = TRUE, .linear = missing(j) && (nargs() - !missing(drop)) <= 2L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "ANY", j = "ANY", value = "ANY"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", value = "numeric"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", value = "integer"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", value = "logical"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", value = "matrix"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "index", value = "Matrix"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "ANY"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "ANY"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "numeric"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "integer"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "logical"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "matrix"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "missing", j = "index", value = "Matrix"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "numeric"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "integer"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "logical"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "matrix"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 setReplaceMethod("[", signature(x = "adgCMatrix", i = "index", j = "missing", value = "Matrix"), function(x, i, j, ..., value) {
-  am_subassign(x, i, j, ..., value = value)
+  am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
 })
 
 #' @noRd
-setMethod("norm", "adgCMatrix", function(x, type = "1", ...) {
-  Matrix::norm(amatrix_materialize_host(x), type = type)
+setMethod("norm", signature(x = "adgCMatrix", type = "missing"), function(x, type, ...) {
+  Matrix::norm(amatrix_materialize_host(x), type = "O")
+})
+
+#' @noRd
+setMethod("norm", signature(x = "adgCMatrix", type = "character"), function(x, type, ...) {
+  Matrix::norm(amatrix_materialize_host(x), type = .norm_type(type))
 })
 
 #' Solve a linear system for adgCMatrix
@@ -264,6 +269,12 @@ setMethod("norm", "adgCMatrix", function(x, type = "1", ...) {
 #'
 #' @return An \code{adgeMatrix} or \code{adgCMatrix} containing the
 #'   solution.
+#'
+#' @examples
+#' S <- Matrix::sparseMatrix(i = c(1, 2, 3, 1), j = c(1, 2, 3, 3),
+#'                           x = c(2, 3, 4, 1))
+#' A <- adgCMatrix(S)
+#' solve(A, c(1, 2, 3))
 #'
 #' @rdname solve-sparse-methods
 #' @aliases solve,adgCMatrix,missing-method
@@ -281,6 +292,11 @@ setMethod("solve", signature(a = "adgCMatrix", b = "ANY"), function(a, b, ...) a
 #' @param ... Further arguments passed to \code{Matrix::chol}.
 #'
 #' @return An \code{adgCMatrix} or sparse Cholesky factor object.
+#'
+#' @examples
+#' S <- Matrix::sparseMatrix(i = 1:3, j = 1:3, x = c(4, 9, 16))
+#' A <- adgCMatrix(S)
+#' chol(A)
 #'
 #' @rdname chol-sparse-methods
 #' @aliases chol,adgCMatrix-method
@@ -301,6 +317,12 @@ setMethod("qr", "adgCMatrix", function(x, ...) am_qr(x, ...))
 #'
 #' @return A list with components \code{d}, \code{u}, and \code{v}.
 #'
+#' @examples
+#' S <- Matrix::sparseMatrix(i = c(1, 2, 3, 1), j = c(1, 2, 3, 3),
+#'                           x = c(2, 3, 4, 1))
+#' A <- adgCMatrix(S)
+#' svd(A)$d
+#'
 #' @rdname svd-sparse-methods
 #' @aliases svd,adgCMatrix-method
 setMethod("svd", "adgCMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), LINPACK = FALSE, ...) {
@@ -320,6 +342,12 @@ setMethod("svd", "adgCMatrix", function(x, nu = min(dim(x)), nv = min(dim(x)), L
 #'
 #' @return A list with components \code{values} and \code{vectors}.
 #'
+#' @examples
+#' S <- Matrix::sparseMatrix(i = c(1, 2, 3, 1, 2), j = c(1, 2, 3, 2, 1),
+#'                           x = c(2, 3, 4, 1, 1))
+#' A <- adgCMatrix(S)
+#' eigen(A, symmetric = TRUE)$values
+#'
 #' @rdname eigen-sparse-methods
 #' @aliases eigen,adgCMatrix-method
 setMethod("eigen", "adgCMatrix", function(x, symmetric, only.values = FALSE, EISPACK = FALSE) {
@@ -337,6 +365,11 @@ setMethod("diag", "adgCMatrix", function(x = 1, nrow, ncol, names = TRUE) {
 #' @noRd
 setMethod("Math", "adgCMatrix", function(x) {
   .amatrix_rewrap_value(x, callGeneric(amatrix_materialize_host(x)))
+})
+
+#' @noRd
+setMethod("log", "adgCMatrix", function(x, ...) {
+  .amatrix_rewrap_value(x, log(amatrix_materialize_host(x), ...))
 })
 
 #' @noRd

@@ -1,3 +1,13 @@
+# TRUE when `value` is a logical matrix. Deliberately inspects only the class:
+# calling as.matrix() here would allocate a dense n x p copy of every sparse
+# result just to look at its type.
+.amatrix_value_is_logical <- function(value) {
+  if (inherits(value, "Matrix")) {
+    return(inherits(value, c("lMatrix", "nMatrix")))
+  }
+  is.matrix(value) && is.logical(value)
+}
+
 .amatrix_rewrap_like <- function(template, value) {
   if (inherits(template, "adlgeMatrix")) {
     if (inherits(value, "sparseMatrix") && inherits(value, "lsparseMatrix")) {
@@ -8,7 +18,7 @@
         precision = template@precision
       ))
     }
-    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+    if (.amatrix_value_is_logical(value)) {
       return(new_adlgeMatrix(
         value,
         preferred_backend = template@preferred_backend,
@@ -33,7 +43,7 @@
         precision = template@precision
       ))
     }
-    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+    if (.amatrix_value_is_logical(value)) {
       return(new_adlgeMatrix(
         value,
         preferred_backend = template@preferred_backend,
@@ -58,7 +68,12 @@
   }
 
   if (inherits(template, "adgeMatrix")) {
-    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+    # Matrix may hand back a sparse or diagonal result for a dense operand
+    # (e.g. A * <mostly-zero matrix>). The template is dense, so densify.
+    if (inherits(value, "Matrix") && !inherits(value, "denseMatrix")) {
+      value <- as.matrix(value)
+    }
+    if (.amatrix_value_is_logical(value)) {
       return(new_adlgeMatrix(
         value,
         preferred_backend = template@preferred_backend,
@@ -83,7 +98,7 @@
         precision = template@precision
       ))
     }
-    if ((inherits(value, "Matrix") || is.matrix(value)) && is.logical(as.matrix(value))) {
+    if (.amatrix_value_is_logical(value)) {
       return(new_adlgeMatrix(
         value,
         preferred_backend = template@preferred_backend,
@@ -108,6 +123,26 @@
   }
 
   value
+}
+
+# Promote a plain base matrix / Matrix operand to the matching amatrix class so
+# the exported wrappers accept the inputs their documentation promises.
+# amatrix objects and everything else (vectors, NULL, ...) pass through.
+.amatrix_promote_arg <- function(x) {
+  if (inherits(x, c("aMatrix", "aTransposeView"))) {
+    return(x)
+  }
+  if (is.matrix(x) && (is.numeric(x) || is.logical(x))) {
+    storage.mode(x) <- "double"
+    return(as_adgeMatrix(x))
+  }
+  if (inherits(x, "sparseMatrix")) {
+    return(as_adgCMatrix(methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")))
+  }
+  if (inherits(x, "denseMatrix")) {
+    return(as_adgeMatrix(methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "unpackedMatrix")))
+  }
+  x
 }
 
 .amatrix_host_arg <- function(value) {
@@ -197,12 +232,23 @@
   NULL
 }
 
+# Host operand for cbind2/rbind2. Logical amatrix classes must be stripped to
+# their plain Matrix parents explicitly: amatrix_materialize_host() returns
+# them unchanged, which made cbind2(aMatrix, aMatrix) re-dispatch to itself
+# until the C stack overflowed.
+.amatrix_bind_host_arg <- function(value) {
+  if (inherits(value, c("adlgeMatrix", "adlgCMatrix"))) {
+    return(.amatrix_logical_host_arg(value))
+  }
+  .amatrix_host_arg(value)
+}
+
 .amatrix_bind2 <- function(kind, x, y) {
   template <- .amatrix_template(x, y)
   value <- switch(
     kind,
-    cbind2 = methods::cbind2(.amatrix_host_arg(x), .amatrix_host_arg(y)),
-    rbind2 = methods::rbind2(.amatrix_host_arg(x), .amatrix_host_arg(y)),
+    cbind2 = methods::cbind2(.amatrix_bind_host_arg(x), .amatrix_bind_host_arg(y)),
+    rbind2 = methods::rbind2(.amatrix_bind_host_arg(x), .amatrix_bind_host_arg(y)),
     stop(sprintf("unsupported bind kind '%s'", kind), call. = FALSE)
   )
 
@@ -953,6 +999,7 @@
 #'
 #' @export
 matmul <- function(x, y) {
+  x <- .amatrix_promote_arg(x)
   if (.amatrix_sparse_rhs_lowerable(x, y)) {
     return(.amatrix_lower_sparse_rhs_matmul(x, y))
   }
@@ -1106,6 +1153,8 @@ am_tcrossprod <- function(x, y = NULL, ...) {
 #' @export
 gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
                     transA = FALSE, transB = FALSE) {
+  A <- .amatrix_promote_arg(A)
+  if (!is.null(C)) C <- .amatrix_promote_arg(C)
   AB <- if (transA && transB) {
     # t(A) %*% t(B) = t(B %*% A): use identity to avoid materialising t(B) to host.
     am_transpose(matmul(B, A))
@@ -1148,6 +1197,7 @@ gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
 #'
 #' @export
 rowsums <- function(x, na.rm = FALSE, dims = 1L) {
+  x <- .amatrix_promote_arg(x)
   choice <- .amatrix_backend_for(x, "rowSums")
   resident <- .amatrix_try_resident_rowSums(x, na.rm, dims, choice$name)
   if (!is.null(resident)) return(resident)
@@ -1163,6 +1213,7 @@ rowsums <- function(x, na.rm = FALSE, dims = 1L) {
 #' @rdname rowsums
 #' @export
 colsums <- function(x, na.rm = FALSE, dims = 1L) {
+  x <- .amatrix_promote_arg(x)
   choice <- .amatrix_backend_for(x, "colSums")
   resident <- .amatrix_try_resident_colSums(x, na.rm, dims, choice$name)
   if (!is.null(resident)) return(resident)
@@ -1187,14 +1238,17 @@ am_transpose <- function(x) {
   .amatrix_rewrap_like(x, t(as.matrix(amatrix_materialize_host(x))))
 }
 
-am_subset <- function(x, i, j, ..., drop = TRUE) {
+# `.linear` is TRUE for the one-subscript form `x[i]` (no comma), which the
+# calling S4 method detects with nargs(). It selects elements in column-major
+# order, exactly as for a base matrix, rather than rows.
+am_subset <- function(x, i, j, ..., drop = TRUE, .linear = FALSE) {
   host_x <- amatrix_materialize_host(x)
   i_arg <- if (!missing(i)) .amatrix_subscript_arg(i) else NULL
   j_arg <- if (!missing(j)) .amatrix_subscript_arg(j) else NULL
   value <- if (missing(i) && missing(j)) {
     host_x[..., drop = drop]
   } else if (missing(j)) {
-    if (.amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
+    if (isTRUE(.linear) || .amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
       host_x[i_arg]
     } else {
       host_x[i_arg, , ..., drop = drop]
@@ -1207,7 +1261,7 @@ am_subset <- function(x, i, j, ..., drop = TRUE) {
   .amatrix_rewrap_value(x, value)
 }
 
-am_subassign <- function(x, i, j, ..., value) {
+am_subassign <- function(x, i, j, ..., value, .linear = FALSE) {
   host_x <- amatrix_materialize_host(x)
   host_value <- .amatrix_host_arg(value)
   i_arg <- if (!missing(i)) .amatrix_subscript_arg(i) else NULL
@@ -1215,7 +1269,7 @@ am_subassign <- function(x, i, j, ..., value) {
   if (missing(i) && missing(j)) {
     host_x[...] <- host_value
   } else if (missing(j)) {
-    if (.amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
+    if (isTRUE(.linear) || .amatrix_is_logical_matrix_subscript(i_arg, host_x)) {
       host_x[i_arg] <- host_value
     } else {
       host_x[i_arg, , ...] <- host_value
@@ -1279,7 +1333,12 @@ am_solve <- function(a, b = NULL, ...) {
   )
   # When b was a plain vector, base::solve() returns a named numeric vector.
   # Preserve that contract: don't wrap back to adgeMatrix.
-  if (b_was_vector) as.vector(result) else .amatrix_rewrap_value(a, result)
+  if (b_was_vector) {
+    out <- as.vector(result)
+    names(out) <- colnames(a)
+    return(out)
+  }
+  .amatrix_rewrap_value(a, result)
 }
 
 am_chol <- function(x, ...) {
@@ -1468,7 +1527,7 @@ am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) 
 #'   object accepted by \code{\link[base]{eigen}}.
 #'
 #' @return A list with components \code{values} (numeric vector of eigenvalues
-#'   in ascending order) and \code{vectors} (numeric matrix whose columns are
+#'   in decreasing order, as for \code{\link[base]{eigen}}) and \code{vectors} (numeric matrix whose columns are
 #'   the corresponding eigenvectors).
 #'
 #' @examples
@@ -1479,7 +1538,7 @@ am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) 
 #' @seealso \code{\link{rsvd}}
 #' @export
 eigh <- function(x) {
-  am_eigen(x, symmetric = TRUE)
+  am_eigen(.amatrix_promote_arg(x), symmetric = TRUE)
 }
 
 # ── Weighted am_crossprod helpers ─────────────────────────────────────────────
@@ -1553,10 +1612,11 @@ crossprod_weighted <- function(X, w) {
   am_crossprod(.amatrix_rewrap_like(X_arg, x_scaled))
 }
 
-#' Weighted outer cross-product XWX'
+#' Row-weighted outer cross-product
 #'
-#' Computes \eqn{X \mathrm{diag}(w) X^T}, an \code{n x n} weighted
-#' outer cross-product. A GPU-resident fast path is used when available.
+#' Computes \eqn{W^{1/2} X X^T W^{1/2}} with
+#' \eqn{W = \mathrm{diag}(w)}: the \code{n x n} outer cross-product of
+#' the row-weighted matrix \eqn{W^{1/2} X}. A GPU-resident fast path is used when available.
 #'
 #' @param X Numeric matrix or \code{adgeMatrix} of shape \code{[n, p]}.
 #' @param w Positive numeric vector of length \code{n}; observation
@@ -1742,6 +1802,10 @@ xty_weighted <- function(X, w, y) {
 #'
 #' @export
 rowscale <- function(X, d) {
+  if (inherits(X, c("adgCMatrix", "sparseMatrix"))) {
+    if (length(d) != nrow(X)) stop("length(d) must equal nrow(X)", call. = FALSE)
+    return(.amatrix_sparse_scale(X, 1, d, "*"))   # stays sparse
+  }
   X_arg <- .amatrix_model_dense_arg(X)
   d <- as.double(d)
   if (length(d) != nrow(X_arg)) {
@@ -1754,6 +1818,10 @@ rowscale <- function(X, d) {
 #' @rdname rowscale
 #' @export
 colscale <- function(X, d) {
+  if (inherits(X, c("adgCMatrix", "sparseMatrix"))) {
+    if (length(d) != ncol(X)) stop("length(d) must equal ncol(X)", call. = FALSE)
+    return(.amatrix_sparse_scale(X, 2, d, "*"))   # stays sparse
+  }
   X_arg <- .amatrix_model_dense_arg(X)
   d <- as.double(d)
   if (length(d) != ncol(X_arg)) {
@@ -1768,7 +1836,12 @@ am_diag <- function(x, nrow, ncol, names = TRUE) {
   extract_mode <- (missing(nrow) && missing(ncol)) &&
                   (is.matrix(x) || inherits(x, "aMatrix"))
   if (extract_mode) {
-    x_host <- as.matrix(amatrix_materialize_host(x))
+    # Read the diagonal straight from the host representation; as.matrix()
+    # would copy a dense matrix and fully densify a sparse one.
+    x_host <- amatrix_materialize_host(x)
+    if (inherits(x_host, "Matrix")) {
+      return(Matrix::diag(x_host, names = names))
+    }
     return(base::diag(x_host, names = names))
   }
   # Create mode: diag(d) → diagonal adgeMatrix; nrow/ncol set the size
@@ -1834,9 +1907,13 @@ crossprod_add_diag <- function(X, lambda) {
   if (isTRUE(check_positive) && any(lam <= 0))
     warning("matrix has non-positive eigenvalues; result may be complex or NaN",
             call. = FALSE)
-  Q     <- res$vectors
+  Q     <- as.matrix(res$vectors)
   new_lam <- f(lam)
-  .amatrix_rewrap_like(X_arg, Q %*% diag(new_lam) %*% t(Q))
+  # Scale the columns of Q by the transformed eigenvalues. (diag(new_lam) is
+  # avoided: for a 1 x 1 input diag(<scalar>) builds an identity of that size.)
+  result <- (Q * rep(new_lam, each = nrow(Q))) %*% t(Q)
+  dimnames(result) <- dimnames(X_arg)
+  .amatrix_rewrap_like(X_arg, result)
 }
 
 #' Matrix functions via symmetric eigendecomposition
@@ -1899,7 +1976,19 @@ mat_log  <- function(X) .mat_fun(X, log)
 #' @export
 trace_estim <- function(A = NULL, k = 30L, seed = NULL,
                         solve_fn = NULL, n = NULL) {
-  if (!is.null(seed)) set.seed(seed)
+  if (!is.null(seed)) {
+    # Seed only this call: restore the caller's RNG state on exit.
+    had_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+    old_seed <- if (had_seed) get(".Random.seed", envir = globalenv(), inherits = FALSE) else NULL
+    on.exit({
+      if (had_seed) {
+        assign(".Random.seed", old_seed, envir = globalenv())
+      } else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+        rm(".Random.seed", envir = globalenv())
+      }
+    }, add = TRUE)
+    set.seed(seed)
+  }
 
   if (!is.null(solve_fn)) {
     if (is.null(n)) stop("n must be supplied when using solve_fn", call. = FALSE)
@@ -1976,10 +2065,10 @@ colmeans <- function(x, na.rm = FALSE) {
 #' @return A single numeric scalar equal to the sum of diagonal elements.
 #'
 #' @examples
-#' trace(diag(1:4))
+#' mat_trace(diag(1:4))
 #'
 #' @export
-trace <- function(x) {
+mat_trace <- function(x) {
   host <- amatrix_materialize_host(x)
   if (inherits(host, "sparseMatrix")) return(sum(Matrix::diag(host)))
   sum(base::diag(as.matrix(host)))
@@ -2042,6 +2131,15 @@ dot <- function(x, y) {
 # resident adgeMatrix (no data downloaded). CPU path uses base::rowsum.
 
 .am_segment_sum_cpu <- function(X_mat, labels, K) {
+  # NA labels belong to no segment (the sparse C kernel skips them too).
+  if (anyNA(labels)) {
+    keep <- !is.na(labels)
+    X_mat <- X_mat[keep, , drop = FALSE]
+    labels <- labels[keep]
+  }
+  if (length(labels) == 0L) {
+    return(matrix(0, K, ncol(X_mat)))
+  }
   sums_raw <- rowsum(X_mat, labels, reorder = FALSE)
   out <- matrix(0, K, ncol(X_mat))
   idx <- as.integer(rownames(sums_raw))
@@ -2051,6 +2149,14 @@ dot <- function(x, y) {
 }
 
 .am_segment_mean_cpu <- function(X_mat, labels, K) {
+  if (anyNA(labels)) {
+    keep <- !is.na(labels)
+    X_mat <- X_mat[keep, , drop = FALSE]
+    labels <- labels[keep]
+  }
+  if (length(labels) == 0L) {
+    return(matrix(NA_real_, K, ncol(X_mat)))
+  }
   sums_raw <- rowsum(X_mat, labels, reorder = FALSE)
   idx    <- as.integer(rownames(sums_raw))
   counts <- tabulate(labels, nbins = K)
@@ -2097,6 +2203,12 @@ dot <- function(x, y) {
 #' @param labels Integer vector of group labels (1-based).
 #' @param K Number of groups.
 #' @return A \code{K}-by-\code{ncol(x)} matrix of group sums.
+#'
+#' @examples
+#' x <- matrix(1:12, 6, 2)
+#' labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
+#' segment_sum(x, labels, K = 3L)
+#'
 #' @seealso \code{\link{segment_mean}}, \code{\link{am_scatter_mean}}
 #' @export
 segment_sum <- function(x, labels, K) {
@@ -2133,6 +2245,12 @@ segment_sum <- function(x, labels, K) {
 #' @param labels Integer vector of group labels (1-based).
 #' @param K Number of groups.
 #' @return A \code{K}-by-\code{ncol(x)} matrix of group means.
+#'
+#' @examples
+#' x <- matrix(1:12, 6, 2)
+#' labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
+#' segment_mean(x, labels, K = 3L)
+#'
 #' @seealso \code{\link{segment_sum}}, \code{\link{am_scatter_mean}}
 #' @export
 segment_mean <- function(x, labels, K) {
@@ -2172,8 +2290,12 @@ segment_mean <- function(x, labels, K) {
 
 #' @export
 rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
-  if (isTRUE(na.rm)) {
-    return(base::rowsum(as.matrix(amatrix_materialize_host(x)), group, reorder = reorder, na.rm = TRUE, ...))
+  # na.rm = TRUE and missing group values follow base::rowsum exactly
+  # (including its NA row and warning), so defer to it on the host matrix.
+  if (isTRUE(na.rm) || anyNA(group)) {
+    host <- as.matrix(amatrix_materialize_host(x))
+    dimnames(host) <- dimnames(x)
+    return(base::rowsum(host, group, reorder = reorder, na.rm = na.rm, ...))
   }
   if (is.factor(group)) {
     # reorder=TRUE: honour factor's own level ordering (user-defined, preserves
@@ -2195,7 +2317,7 @@ rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
   labels <- as.integer(grp)
   K      <- nlevels(grp)
   result <- segment_sum(x, labels, K)
-  if (is.matrix(result)) rownames(result) <- lvls
+  if (is.matrix(result)) dimnames(result) <- list(lvls, colnames(x))
   result
 }
 
@@ -2213,12 +2335,16 @@ rowsum.adgCMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
 
   # Match base::rowsum behavior: unique groups in first-occurrence order
   ugrp <- unique(group)
-  if (isTRUE(reorder)) ugrp <- sort(ugrp)
+  if (anyNA(ugrp)) {
+    # As base::rowsum: missing group values form their own (last) group.
+    warning("missing values for 'group'", call. = FALSE)
+  }
+  if (isTRUE(reorder)) ugrp <- sort(ugrp, na.last = TRUE)
   K <- length(ugrp)
   # Map each row to 1-based group index
   labels <- match(group, ugrp)
 
-  result <- .Call("am_sparse_segment_sum_c",
+  result <- .Call("am_sparse_segment_sum_c", PACKAGE = "amatrix",
                   as.double(host@x), as.integer(host@p), as.integer(host@i),
                   as.integer(host@Dim), as.integer(labels), as.integer(K))
   rownames(result) <- as.character(ugrp)
@@ -2227,57 +2353,66 @@ rowsum.adgCMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
   result
 }
 
-# ── sweep / max.col S3 dispatch for adgeMatrix ────────────────────────────────
-# Lets idiomatic R code (sweep, max.col) route to GPU kernels automatically.
+# ── sweep() for amatrix objects ───────────────────────────────────────────────
+# base::sweep() is an ordinary function, not a generic, so S3-style methods
+# (the former sweep.adgeMatrix / sweep.adgCMatrix) were never called. sweep is
+# declared as a standard S4 generic instead, with base::sweep as its default,
+# so idiomatic sweep(x, MARGIN, STATS, FUN) reaches the backend kernels for
+# dense input and the O(nnz) path for sparse input.
 
-sweep.adgeMatrix <- function(x, MARGIN, STATS, FUN = "-",
-                             check.margin = TRUE, ...) {
+# Scale the rows (MARGIN = 1) or columns (MARGIN = 2) of a sparse matrix by
+# multiplying or dividing its stored values: O(nnz) and sparsity preserving.
+# Returns NULL when the request is not of that form.
+.amatrix_sparse_scale <- function(x, MARGIN, STATS, FUN) {
+  if (!is.character(FUN) || length(FUN) != 1L || !FUN %in% c("*", "/")) return(NULL)
+  if (!is.numeric(MARGIN) || length(MARGIN) != 1L || !MARGIN %in% c(1, 2)) return(NULL)
+  if (!is.numeric(STATS) || !is.null(dim(STATS))) return(NULL)
+  host <- if (inherits(x, "adgCMatrix")) {
+    amatrix_materialize_host(x)
+  } else {
+    methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+  }
+  if (length(STATS) != dim(host)[MARGIN]) return(NULL)
+  STATS <- as.double(STATS)
+  factor <- if (MARGIN == 1) {
+    STATS[host@i + 1L]                 # @i holds 0-based row indices
+  } else {
+    rep.int(STATS, diff(host@p))       # one entry per stored value, by column
+  }
+  host@x <- if (identical(FUN, "*")) host@x * factor else host@x / factor
+  host@factors <- list()
+  if (inherits(x, "adgCMatrix")) {
+    new_adgCMatrix(host, preferred_backend = x@preferred_backend,
+                   precision = x@precision, policy = x@policy)
+  } else {
+    new_adgCMatrix(host)
+  }
+}
+
+#' @noRd
+setGeneric("sweep")
+
+#' @noRd
+setMethod("sweep", "adgeMatrix", function(x, MARGIN, STATS, FUN = "-", check.margin = TRUE, ...) {
+  if (...length() > 0L) {
+    return(.amatrix_rewrap_value(
+      x, base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, check.margin, ...)
+    ))
+  }
   am_sweep(x, MARGIN, STATS, FUN)
-}
+})
 
-sweep.adgCMatrix <- function(x, MARGIN, STATS, FUN = "-",
-                             check.margin = TRUE, ...) {
-  if (identical(as.integer(MARGIN), 2L) && is.character(FUN) &&
-      FUN %in% c("*", "/") && length(STATS) == ncol(x)) {
-    # Column-scale/divide: multiply/divide @x values by the appropriate STATS entry
-    host <- amatrix_materialize_host(x)   # dgCMatrix
-    new_x <- host@x
-    nc <- ncol(host)
-    for (j in seq_len(nc)) {
-      start <- host@p[j] + 1L
-      end   <- host@p[j + 1L]
-      if (end >= start) {
-        idx <- start:end
-        if (identical(FUN, "*")) {
-          new_x[idx] <- new_x[idx] * STATS[j]
-        } else {
-          new_x[idx] <- new_x[idx] / STATS[j]
-        }
-      }
-    }
-    result <- new("dgCMatrix", i = host@i, p = host@p, Dim = host@Dim,
-                  Dimnames = host@Dimnames, x = new_x, factors = list())
-    return(new_adgCMatrix(result, preferred_backend = x@preferred_backend,
-                          precision = x@precision, policy = x@policy))
+#' @noRd
+setMethod("sweep", "adgCMatrix", function(x, MARGIN, STATS, FUN = "-", check.margin = TRUE, ...) {
+  if (...length() == 0L) {
+    scaled <- .amatrix_sparse_scale(x, MARGIN, STATS, FUN)
+    if (!is.null(scaled)) return(scaled)
   }
-  # MARGIN=1 with * or /: row-scale preserving sparsity — O(nnz)
-  if (identical(as.integer(MARGIN), 1L) && is.character(FUN) &&
-      FUN %in% c("*", "/") && length(STATS) == nrow(x)) {
-    host <- amatrix_materialize_host(x)
-    xi <- host@i  # 0-based row indices
-    if (identical(FUN, "*")) {
-      new_x <- host@x * STATS[xi + 1L]
-    } else {
-      new_x <- host@x / STATS[xi + 1L]
-    }
-    result <- new("dgCMatrix", i = host@i, p = host@p, Dim = host@Dim,
-                  Dimnames = host@Dimnames, x = new_x, factors = list())
-    return(new_adgCMatrix(result, preferred_backend = x@preferred_backend,
-                          precision = x@precision, policy = x@policy))
-  }
-  # Fallback: densify for other margins/ops (e.g., +/- which destroy sparsity)
-  base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, ...)
-}
+  # Other operations (e.g. "+" / "-") fill in the zeros, so the result is dense.
+  .amatrix_rewrap_value(
+    x, base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, check.margin, ...)
+  )
+})
 
 # ── addmm (amatrix-uaj) ─────────────────────────────────────────────────
 # alpha*(A%*%B) + beta*C  — BLAS-3 fused scaled matmul with optional bias.
@@ -2310,6 +2445,14 @@ sweep.adgCMatrix <- function(x, MARGIN, STATS, FUN = "-",
 #' @param alpha Scalar multiplier for \code{A\%*\%B} (default 1).
 #' @param beta  Scalar multiplier for \code{C} (default 1).
 #' @return \code{adgeMatrix} if A is resident, otherwise plain matrix.
+#'
+#' @examples
+#' A <- adgeMatrix(matrix(1:6, 2, 3))
+#' B <- matrix(1:12, 3, 4)
+#' C <- matrix(1, 2, 4)
+#' # 2 * (A %*% B) + 0.5 * C
+#' addmm(A, B, C, alpha = 2, beta = 0.5)
+#'
 #' @export
 addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
   B_mat <- as.matrix(B); storage.mode(B_mat) <- "double"
@@ -2403,6 +2546,14 @@ addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
 #' @param x_norms Optional n-vector of precomputed \eqn{\|x_i\|^2}. Computed if \code{NULL}.
 #' @param c_norms Optional K-vector of precomputed \eqn{\|c_k\|^2}. Computed if \code{NULL}.
 #' @return Integer vector of length n, 1-indexed nearest centroid per row.
+#'
+#' @examples
+#' set.seed(1)
+#' X <- matrix(rnorm(40), 10, 4)
+#' centroids <- X[c(1, 5, 9), ]
+#' # Centroids go in COLUMNS: pass t(centroids)
+#' pairwise_sqdist_argmin(X, t(centroids))
+#'
 #' @export
 pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
   Ct_mat  <- as.matrix(Ct);  storage.mode(Ct_mat) <- "double"
@@ -2421,6 +2572,11 @@ pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
   }
   if (is.null(c_norms)) c_norms <- colSums(Ct_mat^2)
   else c_norms <- as.double(c_norms)
+  # A wrong-length norm vector would otherwise be recycled silently.
+  if (length(x_norms) != nrow(X))
+    stop(sprintf("x_norms must have length nrow(X) = %d, not %d", nrow(X), length(x_norms)), call. = FALSE)
+  if (length(c_norms) != ncol(Ct_mat))
+    stop(sprintf("c_norms must have length ncol(Ct) = %d, not %d", ncol(Ct_mat), length(c_norms)), call. = FALSE)
 
   if (!inherits(X, "adgeMatrix")) {
     X_mat <- if (is.null(X_mat)) as.matrix(X) else X_mat
@@ -2439,13 +2595,21 @@ pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
 }
 
 .am_scatter_mean_cpu <- function(X_mat, labels, K) {
-  p <- ncol(X_mat)
-  centroids <- matrix(NA_real_, K, p)
-  for (k in seq_len(K)) {
-    idx <- which(labels == k)
-    if (length(idx) > 0L)
-      centroids[k, ] <- colMeans(X_mat[idx, , drop = FALSE])
+  # One grouped pass (rowsum) instead of a scan of `labels` per cluster, which
+  # was O(n * K). Labels that are NA or outside 1..K are ignored; empty
+  # clusters are NA rows.
+  centroids <- matrix(NA_real_, K, ncol(X_mat))
+  valid <- !is.na(labels) & labels >= 1L & labels <= K
+  if (!any(valid)) {
+    return(centroids)
   }
+  if (!all(valid)) {
+    X_mat <- X_mat[valid, , drop = FALSE]
+    labels <- labels[valid]
+  }
+  sums <- rowsum(X_mat, labels, reorder = FALSE)
+  idx <- as.integer(rownames(sums))
+  centroids[idx, ] <- sums / tabulate(labels, nbins = K)[idx]
   centroids
 }
 
@@ -2467,10 +2631,20 @@ pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
 #' @param labels Integer vector of group labels (1-based).
 #' @param K Number of groups.
 #' @return A \code{K}-by-\code{ncol(x)} matrix of group means.
+#'
+#' @examples
+#' x <- matrix(1:12, 6, 2)
+#' labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
+#' # One row of column means per cluster
+#' am_scatter_mean(x, labels, K = 3L)
+#'
 #' @export
 am_scatter_mean <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
+  if (length(labels) != nrow(x)) {
+    stop("length(labels) must equal nrow(x)", call. = FALSE)
+  }
   counts <- tabulate(labels, nbins = K)   # O(n), always on CPU
 
   if (!inherits(x, "adgeMatrix")) {
@@ -2514,11 +2688,22 @@ am_scatter_mean <- function(x, labels, K) {
 #' @param x A numeric matrix or \code{adgeMatrix}.
 #' @param MARGIN 1 for rows, 2 for columns.
 #' @param STATS Numeric vector of statistics to apply.
-#' @param FUN Operation: \code{"+"}, \code{"-"}, \code{"*"}, or \code{"/"}.
+#' @param FUN Operation: \code{"+"}, \code{"-"} (the default, as for
+#'   \code{\link[base]{sweep}}), \code{"*"}, or \code{"/"}.
 #' @return A matrix of the same dimensions as \code{x}.
+#'
+#' @examples
+#' x <- adgeMatrix(matrix(1:6, 2, 3))
+#' # Subtract the column means
+#' am_sweep(x, 2, colMeans(as.matrix(x)), FUN = "-")
+#'
 #' @seealso \code{\link{am_sweep_inplace}}
 #' @export
-am_sweep <- function(x, MARGIN, STATS, FUN = "+") {
+am_sweep <- function(x, MARGIN, STATS, FUN = "-") {
+  if (inherits(x, c("adgCMatrix", "sparseMatrix"))) {
+    scaled <- .amatrix_sparse_scale(x, MARGIN, STATS, FUN)
+    if (!is.null(scaled)) return(scaled)
+  }
   if (!inherits(x, "adgeMatrix")) {
     return(base::sweep(as.matrix(x), MARGIN = MARGIN, STATS = STATS, FUN = FUN))
   }
@@ -2584,6 +2769,14 @@ am_sweep <- function(x, MARGIN, STATS, FUN = "+") {
 #'
 #' @param x A numeric matrix or \code{adgeMatrix}.
 #' @return An integer vector of indices.
+#'
+#' @examples
+#' x <- adgeMatrix(matrix(c(3, 1, 2, 9, 7, 8), 2, 3))
+#' am_rowargmax(x)
+#' am_rowargmin(x)
+#' am_colargmax(x)
+#' am_colargmin(x)
+#'
 #' @name am_argreduce
 #' @rdname am_argreduce
 #' @export
@@ -2610,8 +2803,18 @@ am_colargmin <- function(x) .am_argreduce(x, "colargmin")
 #' @param e1 A numeric matrix or \code{adgeMatrix}.
 #' @param e2 A numeric matrix, \code{adgeMatrix}, or \code{NULL} for unary ops.
 #' @return A matrix of the same dimensions as \code{e1}.
+#'
+#' @examples
+#' x <- adgeMatrix(matrix(1:6, 2, 3))
+#' ewise("+", x, 1)
+#' ewise("*", x, x)
+#' ewise("exp", x)
+#'
 #' @export
 ewise <- function(op, e1, e2 = NULL) {
+  if (!inherits(e1, "aMatrix") && !inherits(e2, "aMatrix")) {
+    e1 <- .amatrix_promote_arg(e1)
+  }
   template <- .amatrix_template(e1, e2)
 
   # Try GPU resident path FIRST — no host materialization needed
@@ -2935,7 +3138,9 @@ am_set_dimnames <- function(x, value) {
 #' @param Y Numeric matrix or \code{adgeMatrix}, shape [n, p], or \code{NULL}
 #'   to compute pairwise distances within \code{X} (returns [m, m] matrix).
 #' @param method One of \code{"euclidean"} (default), \code{"sqeuclidean"},
-#'   or \code{"cosine"}.
+#'   or \code{"cosine"} (cosine distance,
+#'   \eqn{1 - x^\top y / (\|x\| \|y\|)}; for the similarity itself use
+#'   \code{\link{kernel_matrix}(kernel = "cosine")}).
 #' @param tile_size Integer row-block size for tiled computation, or \code{NULL}
 #'   (default) to auto-tile when \code{nrow(X) > 50000} (self-distance only).
 #'   Set explicitly to process any size in row-blocks; useful when GPU memory
@@ -2968,8 +3173,17 @@ dist_matrix <- function(X, Y = NULL,
     return(.dist_matrix_tiled(X_mat, Y_mat, method, as.integer(tile_size), spec = spec))
   }
 
-  if (method == "cosine")
-    return(.am_kernel_gpu(X, Y, "cosine", 1.0, 2L, 0.0, spec = spec))
+  if (method == "cosine") {
+    # Cosine distance = 1 - cosine similarity (the similarity itself is
+    # kernel_matrix(kernel = "cosine")). Clamp rounding noise into [0, 2] and
+    # make self-distances exactly zero.
+    sim <- .am_kernel_gpu(X, Y, "cosine", 1.0, 2L, 0.0, spec = spec)
+    D <- 1 - as.matrix(sim)
+    D[] <- pmin(pmax(D, 0), 2)
+    if (is.null(Y_mat) && nrow(D) == ncol(D)) diag(D) <- 0
+    dimnames(D) <- dimnames(sim)
+    return(if (inherits(sim, "aMatrix")) .amatrix_rewrap_like(sim, D) else D)
+  }
 
   D_sq <- .dist_matrix_sq_gpu(X, Y, spec = spec)
   if (!is.null(Y_mat) && identical(X_mat, Y_mat)) diag(D_sq) <- 0
@@ -3004,6 +3218,15 @@ dist_matrix <- function(X, Y = NULL,
 #' @param zero_diag When \code{TRUE} and \code{Y} is \code{NULL}, set the
 #'   diagonal of the kernel matrix to zero.
 #' @return Numeric matrix [m, n] of kernel values.
+#'
+#' @examples
+#' set.seed(1)
+#' X <- matrix(rnorm(20), 5, 4)
+#' K <- kernel_matrix(X, kernel = "rbf", sigma = 1.5)
+#' dim(K)
+#' # Cross-kernel between two sets of rows
+#' kernel_matrix(X, X[1:2, ], kernel = "linear")
+#'
 #' @seealso \code{\link{dist_matrix}}
 #' @export
 kernel_matrix <- function(X, Y = NULL,
@@ -3060,55 +3283,65 @@ kernel_matrix <- function(X, Y = NULL,
 
 # norm: matrix and vector norms.
 #
-# Supported types (matching base::norm):
-#   "1" - max absolute column sum (1-norm)
-#   "I" - max absolute row sum (infinity-norm)
-#   "F" - Frobenius norm  (default for matrices; Euclidean for vectors)
-#   "M" - max absolute entry
-#   "2" - spectral norm (largest singular value); uses rsvd for large matrices
+# Matrix types follow base::norm exactly, including its default ("O"):
+#   "O"/"1" - max absolute column sum (one norm)
+#   "I"     - max absolute row sum (infinity norm)
+#   "F"/"E" - Frobenius norm
+#   "M"     - max absolute entry
+#   "2"     - spectral norm (largest singular value), computed exactly
 #
-# For numeric vector inputs, "2" and "F" return Euclidean norm,
-# "1" returns sum(|x|), "I"/"M" return max(|x|).
+# For numeric vector inputs (which base::norm rejects), "2"/"F"/"E" return the
+# Euclidean norm (the default), "O"/"1" return sum(|x|), "I"/"M" max(|x|).
 #
-# Implementation uses S4 methods to override Matrix package's ANY dispatch.
+# norm() is an S4 generic that dispatches on (x, type), and S4 ignores default
+# values in method definitions, so each class needs an explicit
+# type = "missing" method. No method is registered for plain base matrices:
+# doing so would change norm() for every matrix in the session.
 
 .norm_type <- function(type) {
-  toupper(match.arg(type, c("1", "I", "F", "f", "M", "m", "2")))
+  if (!is.character(type) || length(type) != 1L || is.na(type)) {
+    stop("'type' must be a single character string", call. = FALSE)
+  }
+  key <- toupper(substr(type, 1L, 1L))
+  if (!nzchar(key) || !key %in% c("O", "1", "I", "F", "E", "M", "2")) {
+    stop(sprintf("invalid 'type' for norm(): \"%s\"", type), call. = FALSE)
+  }
+  switch(key, "1" = "O", "E" = "F", key)
 }
 
-# S4 method for adgeMatrix (primary dispatch)
-#' @noRd
-setMethod("norm", "adgeMatrix", function(x, type = "F", ...) {
-  type <- .norm_type(type)
-  if (type == "2") {
-    sv <- rsvd(x, k = 1L)
-    return(sv$d[[1L]])
-  }
-  base::norm(.am_as_double_matrix(x), type = type)
-})
+.amatrix_dense_norm <- function(x, type) {
+  base::norm(.am_as_double_matrix(x), type = .norm_type(type))
+}
 
-# S4 method for plain base R matrix
-#' @noRd
-setMethod("norm", "matrix", function(x, type = "F", ...) {
-  type <- .norm_type(type)
-  if (type == "2") {
-    sv <- rsvd(as_adgeMatrix(x), k = 1L)
-    return(sv$d[[1L]])
-  }
-  base::norm(x, type = type)
-})
-
-# S4 method for numeric vector: vector norms
-#' @noRd
-setMethod("norm", "numeric", function(x, type = "F", ...) {
-  type <- .norm_type(type)
-  switch(type,
+.amatrix_vector_norm <- function(x, type) {
+  switch(.norm_type(type),
     "2" = ,
     "F" = sqrt(sum(x^2)),
-    "1" = sum(abs(x)),
+    "O" = sum(abs(x)),
     "I" = ,
     "M" = max(abs(x))
   )
+}
+
+#' @noRd
+setMethod("norm", signature(x = "adgeMatrix", type = "missing"), function(x, type, ...) {
+  .amatrix_dense_norm(x, "O")
+})
+
+#' @noRd
+setMethod("norm", signature(x = "adgeMatrix", type = "character"), function(x, type, ...) {
+  .amatrix_dense_norm(x, type)
+})
+
+# Vector norms (base::norm errors on a bare numeric vector).
+#' @noRd
+setMethod("norm", signature(x = "numeric", type = "missing"), function(x, type, ...) {
+  .amatrix_vector_norm(x, "2")
+})
+
+#' @noRd
+setMethod("norm", signature(x = "numeric", type = "character"), function(x, type, ...) {
+  .amatrix_vector_norm(x, type)
 })
 
 # ---------------------------------------------------------------------------
@@ -3146,6 +3379,12 @@ setMethod("norm", "numeric", function(x, type = "F", ...) {
 #'
 #' @param A A list of square numeric matrices, or a 3-D array \code{[n, n, B]}.
 #' @return A list of \code{amChol} objects, one per input matrix.
+#'
+#' @examples
+#' mats <- lapply(1:3, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
+#' facs <- batch_chol(mats)
+#' length(facs)
+#'
 #' @seealso \code{\link{chol_factor}}, \code{\link{batch_solve}}
 #' @export
 batch_chol <- function(A) {
@@ -3165,6 +3404,14 @@ batch_chol <- function(A) {
 #' @param B A list of right-hand-side matrices/vectors, or a 3-D array
 #'   \code{[n, k, B]}.  Length / third dimension must match \code{Ls}.
 #' @return A list of solution matrices (or vectors when each rhs is a vector).
+#'
+#' @examples
+#' mats <- lapply(1:2, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
+#' facs <- batch_chol(mats)
+#' rhs <- lapply(1:2, function(i) rnorm(3))
+#' sols <- batch_solve(facs, rhs)
+#' all.equal(sols[[1]], solve(mats[[1]], rhs[[1]]))
+#'
 #' @seealso \code{\link{batch_chol}}, \code{\link{chol_solve}}
 #' @export
 batch_solve <- function(Ls, B) {
@@ -3197,6 +3444,12 @@ batch_solve <- function(Ls, B) {
 #'
 #' @param A,B Matrices or \code{aMatrix} objects.
 #' @return An \code{adgeMatrix} of dimension \code{(nrow(A)*nrow(B)) x (ncol(A)*ncol(B))}.
+#'
+#' @examples
+#' A <- matrix(1:4, 2, 2)
+#' B <- diag(2)
+#' kron(A, B)
+#'
 #' @seealso \code{\link{kron_matrix}}
 #' @export
 kron <- function(A, B) {
@@ -3211,6 +3464,12 @@ kron <- function(A, B) {
 #'
 #' @param A A list of numeric matrices, or a 3-D array \code{[n, p, B]}.
 #' @return A list of \code{p x p} crossproduct matrices.
+#'
+#' @examples
+#' mats <- lapply(1:3, function(i) matrix(rnorm(12), 4, 3))
+#' xtx <- batch_crossprod(mats)
+#' dim(xtx[[1]])
+#'
 #' @seealso \code{\link{batch_chol}}
 #' @export
 batch_crossprod <- function(A) {
