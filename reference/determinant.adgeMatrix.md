@@ -37,5 +37,5 @@ A `"det"` object with `modulus` and `sign`.
 ``` r
 A <- adgeMatrix(crossprod(matrix(rnorm(9), 3, 3)) + 3 * diag(3))
 det(A)
-#> [1] 209.3798
+#> [1] 350.1215
 ```

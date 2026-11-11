@@ -3,7 +3,7 @@
 positive definite matrix and reconstruct the result:
 \(f(X) = Q \, \mathrm{diag}(f(\lambda)) \, Q^T\)."><meta property="og:description" content="Apply an elementwise function to the eigenvalues of a symmetric
 positive definite matrix and reconstruct the result:
-\(f(X) = Q \, \mathrm{diag}(f(\lambda)) \, Q^T\)."></head><body>
+\(f(X) = Q \, \mathrm{diag}(f(\lambda)) \, Q^T\)."><link href="../albers.css" rel="stylesheet"><script>window.albersdownDefaults = window.albersdownDefaults || { family: "red", preset: "homage", style: "minimal" };</script><script src="../albers.js"></script></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -83,27 +83,27 @@ positive definite matrix and reconstruct the result:
 <span class="r-in"><span><span class="fu">mat_sqrt</span><span class="op">(</span><span class="va">S</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 4 x 4 Matrix of class "adgeMatrix"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>            [,1]        [,2]        [,3]       [,4]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  2.1941853 -0.13485827 -0.11525719  0.6386226</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] -0.1348583  1.18257693 -0.02940746 -0.4459531</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.1152572 -0.02940746  1.08597129 -0.1713995</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]  0.6386226 -0.44595306 -0.17139950  2.8304459</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]         [,2]       [,3]         [,4]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  2.29537050  0.400923037 -0.5592246 -0.021803150</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.40092304  1.174122387 -0.2950168 -0.004055295</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.55922458 -0.295016753  3.1322639  0.385857389</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] -0.02180315 -0.004055295  0.3858574  1.132102003</span>
 <span class="r-in"><span><span class="fu">mat_log</span><span class="op">(</span><span class="va">S</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 4 x 4 Matrix of class "adgeMatrix"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]        [,2]        [,3]       [,4]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  1.49384166 -0.09758931 -0.12197059  0.5114231</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] -0.09758931  0.25252423 -0.08830011 -0.4749923</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.12197059 -0.08830011  0.14603552 -0.1830043</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]  0.51142312 -0.47499235 -0.18300425  1.9709234</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]        [,2]       [,3]       [,4]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  1.57127632  0.46007852 -0.4034181 0.02223645</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.46007852  0.22574621 -0.2560563 0.03101484</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.40341811 -0.25605632  2.2030453 0.40402871</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]  0.02223645  0.03101484  0.4040287 0.19011614</span>
 <span class="r-in"><span><span class="fu">mat_pow</span><span class="op">(</span><span class="va">S</span>, <span class="op">-</span><span class="fl">1</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> An amatrix dense matrix [cpu|policy=auto|precision=strict]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 4 x 4 Matrix of class "adgeMatrix"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]       [,2]       [,3]        [,4]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.25222387 0.01030074 0.04577453 -0.08982148</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]  0.01030074 0.83620345 0.09764327  0.18523976</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]  0.04577453 0.09764327 0.88065489  0.07823660</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] -0.08982148 0.18523976 0.07823660  0.19649329</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]        [,2]        [,3]        [,4]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]  0.25602453 -0.19738959  0.05424844 -0.02881547</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,] -0.19738959  0.86630872  0.07187720 -0.04374878</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]  0.05424844  0.07187720  0.14812557 -0.15400348</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,] -0.02881547 -0.04374878 -0.15400348  0.86739827</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

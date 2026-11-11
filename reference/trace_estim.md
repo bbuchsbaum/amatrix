@@ -42,5 +42,5 @@ A single numeric scalar estimate of the trace.
 ``` r
 A <- crossprod(matrix(rnorm(25), 5, 5)) + 5 * diag(5)
 trace_estim(A, k = 50L, seed = 1L)
-#> [1] 48.0001
+#> [1] 39.17293
 ```
