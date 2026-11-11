@@ -200,3 +200,80 @@ setMethod("tcrossprod", signature(x = "dgeMatrix", y = "adgeMatrix"), function(x
 setMethod("tcrossprod", signature(x = "dgCMatrix", y = "adgeMatrix"), function(x, y, ...) {
   am_tcrossprod(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y, ...)
 })
+
+# ── Signatures that Matrix otherwise wins ────────────────────────────────────
+#
+# S4 picks the method with the smallest total class distance. Matrix defines
+# methods on (denseMatrix, vector), (denseMatrix, matrix),
+# (denseMatrix, index, missing, replValue), ... and those beat amatrix's
+# (adgeMatrix, ANY) fallbacks because "ANY" is further away than the
+# two-step adgeMatrix -> denseMatrix inheritance. The inherited method then
+# returns a plain dgeMatrix / dgCMatrix: values are right, but the amatrix
+# class, its metadata and backend dispatch are silently lost. Which Matrix
+# signatures exist differs between Matrix releases, so the pairs below are
+# declared explicitly: each is exact on the amatrix argument and matches
+# Matrix's class on the other, which makes the amatrix method strictly closer.
+
+for (.cls in c("adgeMatrix", "adgCMatrix")) {
+  setMethod("%*%", signature(x = .cls, y = "vector"), function(x, y) matmul(x, y))
+  setMethod("crossprod", signature(x = .cls, y = "vector"),
+            function(x, y = NULL, ...) am_crossprod(x, y = y, ...))
+  setMethod("tcrossprod", signature(x = .cls, y = "vector"),
+            function(x, y = NULL, ...) am_tcrossprod(x, y = y, ...))
+}
+
+for (.ycls in c("matrix", "denseMatrix", "CsparseMatrix")) {
+  setMethod("crossprod", signature(x = "adgeMatrix", y = .ycls),
+            function(x, y = NULL, ...) am_crossprod(x, y = y, ...))
+  setMethod("tcrossprod", signature(x = "adgeMatrix", y = .ycls),
+            function(x, y = NULL, ...) am_tcrossprod(x, y = y, ...))
+}
+
+for (.pair in list(c("adgeMatrix", "denseMatrix"), c("denseMatrix", "adgeMatrix"),
+                   c("adgeMatrix", "CsparseMatrix"), c("CsparseMatrix", "adgeMatrix"),
+                   c("adgCMatrix", "CsparseMatrix"), c("CsparseMatrix", "adgCMatrix"),
+                   c("adgCMatrix", "denseMatrix"), c("denseMatrix", "adgCMatrix"))) {
+  setMethod("kronecker", signature(.pair[[1L]], .pair[[2L]]),
+            function(X, Y, FUN = "*", make.dimnames = FALSE, ...) {
+              .am_kronecker_result(X, Y, FUN, make.dimnames, ...)
+            })
+}
+
+# Sub-assignment. `[<-` dispatches on (x, i, j, value) and Matrix declares its
+# methods with value = "replValue".
+for (.cls in c("adgeMatrix", "adgCMatrix")) {
+  setReplaceMethod("[", signature(x = .cls, i = "index", j = "missing", value = "replValue"),
+    function(x, i, j, ..., value) {
+      am_subassign(x, i, j, ..., value = value, .linear = missing(j) && nargs() <= 3L)
+    })
+  setReplaceMethod("[", signature(x = .cls, i = "missing", j = "index", value = "replValue"),
+    function(x, i, j, ..., value) {
+      am_subassign(x, i, j, ..., value = value, .linear = FALSE)
+    })
+  setReplaceMethod("[", signature(x = .cls, i = "index", j = "index", value = "replValue"),
+    function(x, i, j, ..., value) {
+      am_subassign(x, i, j, ..., value = value, .linear = FALSE)
+    })
+  # Matrix-valued subscripts (logical masks, two-column index matrices) are
+  # always the one-subscript form.
+  for (.icls in c("matrix", "Matrix")) {
+    setReplaceMethod("[", signature(x = .cls, i = .icls, j = "missing", value = "replValue"),
+      function(x, i, j, ..., value) {
+        am_subassign(x, i, value = value, .linear = TRUE)
+      })
+  }
+}
+rm(.cls, .ycls, .pair, .icls)
+
+# Matrix defines `Logic` group methods on its logical classes. A method on the
+# more specific group generic is preferred over one on `Ops`, so the amatrix
+# `Ops` methods for the logical wrappers never saw `&` / `|` and the result
+# came back as a plain lgCMatrix / lgeMatrix.
+for (.e1 in c("adlgCMatrix", "adlgeMatrix")) {
+  for (.e2 in c("adlgCMatrix", "adlgeMatrix")) {
+    setMethod("Logic", signature(e1 = .e1, e2 = .e2), function(e1, e2) {
+      .amatrix_rewrap_value(e1, callGeneric(.amatrix_logical_host_arg(e1), .amatrix_logical_host_arg(e2)))
+    })
+  }
+}
+rm(.e1, .e2)

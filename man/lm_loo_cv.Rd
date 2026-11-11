@@ -13,10 +13,9 @@ lm_loo_cv(X, y, method = "qr", ...)
 \item{y}{Numeric vector or single-column matrix of responses, length
 \code{n}.}
 
-\item{method}{Character string passed to \code{am_qr} controlling
-the QR algorithm. Currently only \code{"qr"} is supported.}
+\item{method}{Retained for compatibility; only \code{"qr"} is supported.}
 
-\item{...}{Additional arguments forwarded to \code{am_qr}.}
+\item{...}{Additional arguments forwarded to \code{\link[base]{qr}}.}
 }
 \value{
 A named list with two elements:
@@ -27,18 +26,18 @@ A named list with two elements:
   }
 }
 \description{
-Computes exact leave-one-out (LOO) prediction errors by refitting the
-model \code{n} times, each time dropping one observation. Uses
-\code{qr_downdate} internally to avoid recomputing the full
-factorization from scratch.
+Computes exact leave-one-out (LOO) prediction errors from a single QR
+factorization, using the identity
+\eqn{e_{(i)} = e_i / (1 - h_{ii})} where \eqn{e_i} are the ordinary
+residuals and \eqn{h_{ii}} the leverages. The result is identical to
+refitting the model \code{n} times with one observation dropped each
+time. \code{X} must have full column rank.
 }
 \examples{
-\dontrun{
 X <- adgeMatrix(matrix(rnorm(50), nrow = 10))
 y <- rnorm(10)
 cv <- lm_loo_cv(X, y)
 cv$mse
-}
 
 }
 \seealso{

@@ -7,13 +7,11 @@
   if (is.null(dn)) {
     dn <- vector("list", 2L)
   }
-  new(
-    "dgeMatrix",
-    x = as.double(x),
-    Dim = as.integer(dim(x)),
-    Dimnames = dn,
-    factors = list()
-  )
+  if (!is.list(dn) || length(dn) != 2L) {
+    return(new("dgeMatrix", x = as.double(x), Dim = as.integer(dim(x)), Dimnames = dn, factors = list()))
+  }
+  # x is a genuine base matrix, so data length and dim agree by construction.
+  .amatrix_plain_dge(as.double(x), as.integer(dim(x)), dn, list())
 }
 
 .amatrix_build_lgeMatrix <- function(x, dn = base::dimnames(x)) {
@@ -68,10 +66,37 @@
     dimnames <- vector("list", 2L)
   }
   object_id <- .amatrix_next_object_id()
+  x_data <- as.double(data)
+  dim <- as.integer(dim)
+
+  # Fast path. new() + validObject() walks the whole Matrix class hierarchy and
+  # costs ~1 ms, which dominated every small operation (each result is a new
+  # object). When the slot values are already known to be well formed, copy a
+  # cached prototype and set the slots directly. Anything unusual falls
+  # through to new(), which validates and reports errors exactly as before.
+  if (.amatrix_dense_slots_wellformed(x_data, dim, dimnames, factors,
+                                      preferred_backend, policy, precision, src_id)) {
+    obj <- .amatrix_state$dense_prototype
+    if (is.null(obj)) {
+      obj <- new("adgeMatrix")
+      .amatrix_state$dense_prototype <- obj
+    }
+    attr(obj, "x") <- x_data
+    attr(obj, "Dim") <- dim
+    attr(obj, "Dimnames") <- dimnames
+    attr(obj, "preferred_backend") <- preferred_backend
+    attr(obj, "policy") <- policy
+    attr(obj, "precision") <- precision
+    attr(obj, "object_id") <- object_id
+    attr(obj, "src_id") <- src_id
+    attr(obj, "finalizer_env") <- .amatrix_make_finalizer_env(object_id)
+    return(obj)
+  }
+
   new(
     "adgeMatrix",
-    x = as.double(data),
-    Dim = as.integer(dim),
+    x = x_data,
+    Dim = dim,
     Dimnames = dimnames,
     factors = factors,
     preferred_backend = preferred_backend,
@@ -81,6 +106,24 @@
     src_id = src_id,
     finalizer_env = .amatrix_make_finalizer_env(object_id)
   )
+}
+
+# TRUE when the proposed adgeMatrix slot values satisfy everything
+# validObject() would check, so the validated constructor can be skipped.
+.amatrix_dense_slots_wellformed <- function(x, dim, dimnames, factors,
+                                            preferred_backend, policy, precision, src_id) {
+  scalar_string <- function(v) is.character(v) && length(v) == 1L && !is.na(v)
+  if (!is.double(x) || length(dim) != 2L || anyNA(dim) || any(dim < 0L)) return(FALSE)
+  if (length(x) != as.double(dim[1L]) * as.double(dim[2L])) return(FALSE)
+  if (!is.list(dimnames) || length(dimnames) != 2L || !is.null(names(dimnames))) return(FALSE)
+  for (k in 1:2) {
+    dn <- dimnames[[k]]
+    if (!is.null(dn) && !(is.character(dn) && length(dn) == dim[k])) return(FALSE)
+  }
+  if (!is.list(factors) || length(factors) != 0L) return(FALSE)
+  scalar_string(preferred_backend) && scalar_string(src_id) &&
+    scalar_string(policy) && policy %in% .amatrix_valid_policies &&
+    scalar_string(precision) && precision %in% .amatrix_valid_precisions
 }
 
 .amatrix_new_dense_logical <- function(

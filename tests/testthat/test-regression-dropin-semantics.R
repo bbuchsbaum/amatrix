@@ -192,3 +192,58 @@ test_that("diag() extraction matches base without copying the matrix", {
   expect_equal(diag(adgCMatrix(Matrix::Matrix(S, sparse = TRUE))), diag(S))
   expect_equal(diag(adgeMatrix(S[, 1:2])), diag(S[, 1:2]))
 })
+
+test_that("t() views behave like ordinary matrices", {
+  m <- matrix(c(1, 2, 3, 4, 5, 7), 2, 3)
+  A <- adgeMatrix(m)
+  tA <- t(A)
+  tm <- t(m)
+  expect_identical(length(tA), length(tm))
+  expect_equal(sum(tA), sum(tm))
+  expect_equal(range(tA), range(tm))
+  expect_equal(rowSums(tA), rowSums(tm))
+  expect_equal(colMeans(tA), colMeans(tm))
+  expect_equal(as.vector(tA), as.vector(tm))
+  expect_equal(diag(tA), diag(tm))
+  expect_same_as_host(-tA, -tm)
+  expect_same_as_host(exp(tA), exp(tm))
+  expect_same_as_host(crossprod(tA), crossprod(tm))
+  expect_same_as_host(tcrossprod(tA), tcrossprod(tm))
+  expect_same_as_host(1:3 %*% tA, 1:3 %*% tm)
+  expect_equal(norm(tA, "F"), norm(tm, "F"))
+  sq <- matrix(c(2, 1, 1, 3), 2)
+  expect_same_as_host(solve(t(adgeMatrix(sq))), solve(t(sq)))
+  expect_true(isSymmetric(adgeMatrix(sq)))
+  expect_false(isSymmetric(adgeMatrix(matrix(1:4 + 0, 2))))
+})
+
+test_that("results keep the amatrix class where Matrix methods used to win dispatch", {
+  m <- matrix(c(1, 2, 3, 4, 5, 6), 2, 3)
+  A <- adgeMatrix(m)
+  S <- adgCMatrix(Matrix::Matrix(m, sparse = TRUE))
+  dg <- Matrix::Matrix(m)
+
+  z <- A; z[1, ] <- 0
+  expect_s4_class(z, "adgeMatrix")
+  z <- A; z[, 1] <- c(1, 2)
+  expect_s4_class(z, "adgeMatrix")
+  z <- A; z[2] <- 0
+  expect_s4_class(z, "adgeMatrix")
+  z <- A; z[A > 2] <- 0
+  expect_s4_class(z, "adgeMatrix")
+  expect_same_as_host(z, {r <- m; r[m > 2] <- 0; r})
+  z <- S; z[S > 2] <- 0
+  expect_s4_class(z, "adgCMatrix")
+
+  expect_s4_class(A %*% 1:3, "adgeMatrix")
+  expect_same_as_host(A %*% 1:3, m %*% 1:3)
+  expect_same_as_host(S %*% 1:3, m %*% 1:3)
+  expect_true(inherits(S %*% 1:3, "aMatrix"))
+  expect_s4_class(crossprod(A, m), "adgeMatrix")
+  expect_s4_class(crossprod(A, dg), "adgeMatrix")
+  expect_s4_class(tcrossprod(A, m), "adgeMatrix")
+  expect_same_as_host(crossprod(A, 1:2), crossprod(m, 1:2))
+  expect_s4_class(kronecker(A, dg), "adgeMatrix")
+  expect_same_as_host(kronecker(A, dg), kronecker(m, m))
+  expect_s4_class((S > 2) & (S > 0), "adlgCMatrix")
+})

@@ -93,18 +93,19 @@ qr_downdate.default <- function(qr_factor, row_idx, X = NULL) {
 
 #' Leave-one-out cross-validation for linear models
 #'
-#' Computes exact leave-one-out (LOO) prediction errors by refitting the
-#' model \code{n} times, each time dropping one observation. Uses
-#' \code{qr_downdate} internally to avoid recomputing the full
-#' factorization from scratch.
+#' Computes exact leave-one-out (LOO) prediction errors from a single QR
+#' factorization, using the identity
+#' \eqn{e_{(i)} = e_i / (1 - h_{ii})} where \eqn{e_i} are the ordinary
+#' residuals and \eqn{h_{ii}} the leverages. The result is identical to
+#' refitting the model \code{n} times with one observation dropped each
+#' time. \code{X} must have full column rank.
 #'
 #' @param X Numeric matrix or \code{adgeMatrix} of predictors, shape
 #'   \code{[n, p]}. No intercept column is added automatically.
 #' @param y Numeric vector or single-column matrix of responses, length
 #'   \code{n}.
-#' @param method Character string passed to \code{am_qr} controlling
-#'   the QR algorithm. Currently only \code{"qr"} is supported.
-#' @param ... Additional arguments forwarded to \code{am_qr}.
+#' @param method Retained for compatibility; only \code{"qr"} is supported.
+#' @param ... Additional arguments forwarded to \code{\link[base]{qr}}.
 #'
 #' @return A named list with two elements:
 #'   \describe{
@@ -114,38 +115,48 @@ qr_downdate.default <- function(qr_factor, row_idx, X = NULL) {
 #'   }
 #'
 #' @examples
-#' \dontrun{
 #' X <- adgeMatrix(matrix(rnorm(50), nrow = 10))
 #' y <- rnorm(10)
 #' cv <- lm_loo_cv(X, y)
 #' cv$mse
-#' }
 #'
 #' @seealso \code{\link{lm_fit}}, \code{\link{many_lm}}
 #' @export
 lm_loo_cv <- function(X, y, method = "qr", ...) {
-  stopifnot(
-    is.numeric(y) || is.matrix(y),
-    nrow(X) == length(y) || nrow(X) == nrow(as.matrix(y))
-  )
-
+  stopifnot(is.numeric(y) || is.matrix(y))
+  if (!is.null(dim(y)) && ncol(as.matrix(y)) != 1L) {
+    .amatrix_abort_bad_arg("lm_loo_cv supports a single response; y must be a vector or one-column matrix")
+  }
   y_vec <- as.numeric(y)
   n     <- nrow(X)
+  if (length(y_vec) != n) {
+    .amatrix_abort_bad_arg("length(y) must equal nrow(X)")
+  }
 
   X_am <- if (inherits(X, "aMatrix")) X else as_adgeMatrix(X)
   .amatrix_validate_model_finite(X_am, "X")
   .amatrix_validate_model_finite(matrix(y_vec, ncol = 1L), "Y")
 
-  # Full QR factor (used as starting point for downdate)
-  qr_full <- am_qr(X_am, ...)
-
-  loo_resid <- numeric(n)
-
-  for (i in seq_len(n)) {
-    qr_i   <- qr_downdate(qr_full, i, X = X)   # drop row i
-    coef_i <- as.numeric(qr.coef(qr_i, y_vec[-i]))
-    loo_resid[[i]] <- y_vec[[i]] - sum(X[i, ] * coef_i)
+  # Leave-one-out residuals from a single QR factorization, using the exact
+  # identity  e_(i) = e_i / (1 - h_ii)  where e are the ordinary residuals and
+  # h_ii = ||Q[i, ]||^2 the leverages. This is O(n p^2) in total; refitting
+  # the model n times (the previous implementation) is O(n^2 p^2).
+  X_host <- as.matrix(amatrix_materialize_host(X_am))
+  qr_x <- base::qr(X_host, ...)
+  p <- ncol(X_host)
+  if (qr_x$rank < p) {
+    .amatrix_abort_bad_arg(sprintf(
+      "X is rank deficient (rank %d < %d columns); leave-one-out residuals are not defined",
+      qr_x$rank, p
+    ))
   }
+  leverage <- rowSums(base::qr.Q(qr_x)^2)
+  resid <- as.numeric(base::qr.resid(qr_x, y_vec))
+  denom <- 1 - leverage
+  # A leverage of 1 means the row is fitted exactly and deleting it leaves a
+  # rank-deficient design: the leave-one-out prediction is undefined.
+  denom[denom < sqrt(.Machine$double.eps)] <- NA_real_
+  loo_resid <- resid / denom
 
   list(
     residuals = loo_resid,

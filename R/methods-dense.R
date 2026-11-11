@@ -221,6 +221,109 @@ setAs("aTransposeView", "adgeMatrix", function(from) {
     precision         = from@precision)
 })
 
+# ── aTransposeView as an ordinary matrix ─────────────────────────────────────
+#
+# t(<adgeMatrix>) returns a lazy view so that t(A) %*% B can be lowered to a
+# crossprod without materialising the transpose. The view is not a Matrix, so
+# everything else a caller may reasonably do with t(A) is forwarded to the
+# concrete transposed adgeMatrix here. Without these methods length(t(A)) was
+# 1, mean(t(A)) was NA and sum/rowSums/exp/solve/... raised errors.
+
+.amatrix_view_concrete <- function(x) methods::as(x, "adgeMatrix")
+
+#' @noRd
+setMethod("length", "aTransposeView", function(x) prod(x@Dim))
+#' @noRd
+setMethod("Summary", "aTransposeView", function(x, ..., na.rm = FALSE) {
+  callGeneric(.amatrix_view_concrete(x), ..., na.rm = na.rm)
+})
+#' @noRd
+setMethod("Math", "aTransposeView", function(x) callGeneric(.amatrix_view_concrete(x)))
+#' @noRd
+setMethod("Math2", "aTransposeView", function(x, digits) {
+  if (missing(digits)) callGeneric(.amatrix_view_concrete(x)) else callGeneric(.amatrix_view_concrete(x), digits)
+})
+#' @noRd
+setMethod("log", "aTransposeView", function(x, ...) log(.amatrix_view_concrete(x), ...))
+#' @noRd
+setMethod("Ops", signature(e1 = "aTransposeView", e2 = "missing"), function(e1, e2) {
+  callGeneric(.amatrix_view_concrete(e1))
+})
+#' @noRd
+setMethod("as.vector", "aTransposeView", function(x, mode = "any") as.vector(as.matrix(x), mode = mode))
+#' @noRd
+setMethod("as.numeric", "aTransposeView", function(x, ...) as.numeric(as.matrix(x)))
+#' @noRd
+setMethod("mean", "aTransposeView", function(x, ...) mean(as.matrix(x), ...))
+#' @noRd
+setMethod("rowSums", "aTransposeView", function(x, na.rm = FALSE, dims = 1L, ...) {
+  rowSums(.amatrix_view_concrete(x), na.rm = na.rm, dims = dims, ...)
+})
+#' @noRd
+setMethod("colSums", "aTransposeView", function(x, na.rm = FALSE, dims = 1L, ...) {
+  colSums(.amatrix_view_concrete(x), na.rm = na.rm, dims = dims, ...)
+})
+#' @noRd
+setMethod("rowMeans", "aTransposeView", function(x, na.rm = FALSE, dims = 1L, ...) {
+  rowMeans(.amatrix_view_concrete(x), na.rm = na.rm, dims = dims, ...)
+})
+#' @noRd
+setMethod("colMeans", "aTransposeView", function(x, na.rm = FALSE, dims = 1L, ...) {
+  colMeans(.amatrix_view_concrete(x), na.rm = na.rm, dims = dims, ...)
+})
+#' @noRd
+setMethod("diag", "aTransposeView", function(x = 1, nrow, ncol, names = TRUE) {
+  diag(.amatrix_view_concrete(x), names = names)
+})
+#' @noRd
+setMethod("crossprod", signature(x = "aTransposeView", y = "ANY"), function(x, y = NULL, ...) {
+  if (inherits(y, "aTransposeView")) y <- .amatrix_view_concrete(y)
+  crossprod(.amatrix_view_concrete(x), y, ...)
+})
+#' @noRd
+setMethod("crossprod", signature(x = "aTransposeView", y = "missing"), function(x, y = NULL, ...) {
+  # crossprod(t(A)) is A %*% t(A).
+  tcrossprod(x@source)
+})
+#' @noRd
+setMethod("tcrossprod", signature(x = "aTransposeView", y = "ANY"), function(x, y = NULL, ...) {
+  if (inherits(y, "aTransposeView")) y <- .amatrix_view_concrete(y)
+  tcrossprod(.amatrix_view_concrete(x), y, ...)
+})
+#' @noRd
+setMethod("tcrossprod", signature(x = "aTransposeView", y = "missing"), function(x, y = NULL, ...) {
+  # tcrossprod(t(A)) is t(A) %*% A.
+  crossprod(x@source)
+})
+#' @noRd
+setMethod("solve", signature(a = "aTransposeView", b = "ANY"), function(a, b, ...) {
+  if (missing(b)) solve(.amatrix_view_concrete(a), ...) else solve(.amatrix_view_concrete(a), b, ...)
+})
+#' @noRd
+setMethod("solve", signature(a = "aTransposeView", b = "missing"), function(a, b, ...) {
+  solve(.amatrix_view_concrete(a), ...)
+})
+#' @noRd
+setMethod("norm", signature(x = "aTransposeView", type = "missing"), function(x, type, ...) {
+  norm(.amatrix_view_concrete(x))
+})
+#' @noRd
+setMethod("norm", signature(x = "aTransposeView", type = "character"), function(x, type, ...) {
+  norm(.amatrix_view_concrete(x), type)
+})
+#' @noRd
+setMethod("%*%", signature(x = "numeric", y = "aTransposeView"), function(x, y) {
+  x %*% .amatrix_view_concrete(y)
+})
+
+# Matrix's isSymmetric() method for dgeMatrix calls t(), which for an
+# adgeMatrix yields the lazy view above and then fails on a missing `@x`.
+#' @noRd
+setMethod("isSymmetric", "adgeMatrix", function(object, ...) {
+  host <- amatrix_materialize_dense(object)
+  isSymmetric(as.matrix(host), ...)
+})
+
 #' Cross-product methods for adgeMatrix
 #'
 #' Compute \eqn{t(x) \%*\% y} (\code{crossprod}) or

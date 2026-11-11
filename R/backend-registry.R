@@ -234,11 +234,23 @@
     return(FALSE)
   }
 
+  # Negative cache: a failed loadNamespace() costs ~0.2 ms and this function is
+  # reached on every dispatch for objects that prefer an optional backend.
+  # Remember per session that the package is not installed; amatrix_use_gpu()
+  # clears the cache so a freshly installed backend is picked up.
+  missing_pkgs <- .amatrix_state$backend_pkg_missing
+  if (!isNamespaceLoaded(spec$package) && isTRUE(missing_pkgs[[spec$package]])) {
+    return(FALSE)
+  }
+
   lib_locs <- unique(c(.libPaths(), .Library, .Library.site))
   ns <- tryCatch(
     loadNamespace(spec$package, lib.loc = lib_locs),
     error = function(e) {
       .amatrix_backend_health_mark(name, "unprobed", sprintf("namespace unavailable: %s", conditionMessage(e)))
+      if (is.null(missing_pkgs)) missing_pkgs <- list()
+      missing_pkgs[[spec$package]] <- TRUE
+      .amatrix_state$backend_pkg_missing <- missing_pkgs
       NULL
     }
   )

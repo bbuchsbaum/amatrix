@@ -1522,7 +1522,7 @@ am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) 
 #'   object accepted by \code{\link[base]{eigen}}.
 #'
 #' @return A list with components \code{values} (numeric vector of eigenvalues
-#'   in ascending order) and \code{vectors} (numeric matrix whose columns are
+#'   in decreasing order, as for \code{\link[base]{eigen}}) and \code{vectors} (numeric matrix whose columns are
 #'   the corresponding eigenvectors).
 #'
 #' @examples
@@ -1962,7 +1962,19 @@ mat_log  <- function(X) .mat_fun(X, log)
 #' @export
 trace_estim <- function(A = NULL, k = 30L, seed = NULL,
                         solve_fn = NULL, n = NULL) {
-  if (!is.null(seed)) set.seed(seed)
+  if (!is.null(seed)) {
+    # Seed only this call: restore the caller's RNG state on exit.
+    had_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+    old_seed <- if (had_seed) get(".Random.seed", envir = globalenv(), inherits = FALSE) else NULL
+    on.exit({
+      if (had_seed) {
+        assign(".Random.seed", old_seed, envir = globalenv())
+      } else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+        rm(".Random.seed", envir = globalenv())
+      }
+    }, add = TRUE)
+    set.seed(seed)
+  }
 
   if (!is.null(solve_fn)) {
     if (is.null(n)) stop("n must be supplied when using solve_fn", call. = FALSE)
@@ -2502,13 +2514,21 @@ pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
 }
 
 .am_scatter_mean_cpu <- function(X_mat, labels, K) {
-  p <- ncol(X_mat)
-  centroids <- matrix(NA_real_, K, p)
-  for (k in seq_len(K)) {
-    idx <- which(labels == k)
-    if (length(idx) > 0L)
-      centroids[k, ] <- colMeans(X_mat[idx, , drop = FALSE])
+  # One grouped pass (rowsum) instead of a scan of `labels` per cluster, which
+  # was O(n * K). Labels that are NA or outside 1..K are ignored; empty
+  # clusters are NA rows.
+  centroids <- matrix(NA_real_, K, ncol(X_mat))
+  valid <- !is.na(labels) & labels >= 1L & labels <= K
+  if (!any(valid)) {
+    return(centroids)
   }
+  if (!all(valid)) {
+    X_mat <- X_mat[valid, , drop = FALSE]
+    labels <- labels[valid]
+  }
+  sums <- rowsum(X_mat, labels, reorder = FALSE)
+  idx <- as.integer(rownames(sums))
+  centroids[idx, ] <- sums / tabulate(labels, nbins = K)[idx]
   centroids
 }
 
@@ -2534,6 +2554,9 @@ pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
 am_scatter_mean <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
+  if (length(labels) != nrow(x)) {
+    stop("length(labels) must equal nrow(x)", call. = FALSE)
+  }
   counts <- tabulate(labels, nbins = K)   # O(n), always on CPU
 
   if (!inherits(x, "adgeMatrix")) {

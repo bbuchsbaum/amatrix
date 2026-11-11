@@ -1,6 +1,8 @@
 .amatrix_next_object_id <- function() {
-  .amatrix_state$object_counter <- .amatrix_state$object_counter + 1L
-  sprintf("%s:am:%d", .amatrix_state$session_id, .amatrix_state$object_counter)
+  # Double arithmetic: an integer counter overflows to NA after 2^31 objects,
+  # after which every object would share one id.
+  .amatrix_state$object_counter <- .amatrix_state$object_counter + 1
+  sprintf("%s:am:%.0f", .amatrix_state$session_id, .amatrix_state$object_counter)
 }
 
 .amatrix_make_finalizer_env <- function(object_id) {
@@ -79,8 +81,8 @@
 }
 
 .amatrix_next_resident_key <- function(backend) {
-  .amatrix_state$resident_counter <- .amatrix_state$resident_counter + 1L
-  sprintf("%s:%d", backend, .amatrix_state$resident_counter)
+  .amatrix_state$resident_counter <- .amatrix_state$resident_counter + 1
+  sprintf("%s:%.0f", backend, .amatrix_state$resident_counter)
 }
 
 .amatrix_resident_entry <- function(x) {
@@ -557,18 +559,18 @@ amatrix_materialize_dense <- function(x) {
   }
 
   if (isTRUE(fenv$cache_state$host_cache_valid)) {
-    return(new("dgeMatrix", x = x@x, Dim = x@Dim, Dimnames = x@Dimnames, factors = x@factors))
+    return(.amatrix_plain_dge(x@x, x@Dim, x@Dimnames, x@factors))
   }
 
   # ── Eager path (existing logic) ─────────────────────────────────────────
   entry <- .amatrix_resident_entry(x)
   if (is.null(entry)) {
-    return(new("dgeMatrix", x = x@x, Dim = x@Dim, Dimnames = x@Dimnames, factors = x@factors))
+    return(.amatrix_plain_dge(x@x, x@Dim, x@Dimnames, x@factors))
   }
 
   backend <- .amatrix_get_backend(entry$backend)
   if (!is.function(backend$resident_materialize) || !isTRUE(backend$resident_has(entry$resident_key))) {
-    return(new("dgeMatrix", x = x@x, Dim = x@Dim, Dimnames = x@Dimnames, factors = x@factors))
+    return(.amatrix_plain_dge(x@x, x@Dim, x@Dimnames, x@factors))
   }
 
   .amatrix_tripwire_record(
@@ -622,8 +624,40 @@ amatrix_materialize_host <- function(x) {
   }
 
   if (inherits(x, "adgCMatrix")) {
-    return(new("dgCMatrix", i = x@i, p = x@p, Dim = x@Dim, Dimnames = x@Dimnames, x = x@x, factors = x@factors))
+    return(.amatrix_plain_dgc(x))
   }
 
   x
+}
+
+# Plain Matrix views of an amatrix object's slots. The slots come from an
+# object that is already valid, so re-running new() + validObject() on every
+# host access (~0.3 ms each) is pure overhead: copy a cached prototype and set
+# the slots directly instead.
+.amatrix_plain_dge <- function(x, dim, dimnames, factors = list()) {
+  obj <- .amatrix_state$dge_prototype
+  if (is.null(obj)) {
+    obj <- new("dgeMatrix")
+    .amatrix_state$dge_prototype <- obj
+  }
+  attr(obj, "x") <- x
+  attr(obj, "Dim") <- dim
+  attr(obj, "Dimnames") <- dimnames
+  attr(obj, "factors") <- factors
+  obj
+}
+
+.amatrix_plain_dgc <- function(x) {
+  obj <- .amatrix_state$dgc_prototype
+  if (is.null(obj)) {
+    obj <- new("dgCMatrix")
+    .amatrix_state$dgc_prototype <- obj
+  }
+  attr(obj, "i") <- x@i
+  attr(obj, "p") <- x@p
+  attr(obj, "x") <- x@x
+  attr(obj, "Dim") <- x@Dim
+  attr(obj, "Dimnames") <- x@Dimnames
+  attr(obj, "factors") <- x@factors
+  obj
 }

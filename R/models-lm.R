@@ -237,6 +237,29 @@
   paste("qr", backend, X_arg@precision, sep = ":")
 }
 
+# Numerical rank of X from its Gram matrix X'X (p x p) via pivoted Cholesky.
+# The normal-equation path already has X'X, so this costs O(p^3) instead of
+# the O(n p^2) Householder QR of X that used to be run purely to report rank
+# (and which made method = "normal" slower than method = "qr"). The tolerance
+# is the square of base::qr()'s default 1e-7, since X'X squares the scale.
+.amatrix_xtx_rank <- function(xtx) {
+  m <- as.matrix(amatrix_materialize_host(xtx))
+  p <- ncol(m)
+  if (p == 0L) return(0L)
+  d <- diag(m)
+  if (anyNA(m) || !all(is.finite(d)) || max(d) <= 0) {
+    return(base::qr(m)$rank)
+  }
+  r <- tryCatch(
+    suppressWarnings(base::chol(m, pivot = TRUE, tol = 1e-14 * max(d))),
+    error = function(e) NULL
+  )
+  if (is.null(r)) {
+    return(base::qr(m)$rank)
+  }
+  as.integer(attr(r, "rank"))
+}
+
 .amatrix_lm_cache_get <- function(cache_key) {
   .amatrix_cache_get(cache_key)
 }
@@ -325,6 +348,8 @@
   if (is.null(cached$rank)) {
     if (!is.null(cached$qr)) {
       cached$rank <- .amatrix_qr_rank(cached$qr)
+    } else if (!is.null(cached$xtx)) {
+      cached$rank <- .amatrix_xtx_rank(cached$xtx)
     } else {
       qr_x <- base::qr(as.matrix(amatrix_materialize_host(X_arg)))
       cached$rank <- qr_x$rank
@@ -502,8 +527,9 @@
     fitted_values <- outputs$fitted_values
     residuals <- outputs$residuals
     qr_meta <- .amatrix_qr_fit_metadata(NULL)
-    rank_qr <- base::qr(as.matrix(amatrix_materialize_host(X_arg)))
-    cache_value <- list(rank = rank_qr$rank, cache_key = NA_character_,
+    # Rank from the p x p Gram matrix; a QR of X here would densify the
+    # sparse design (n x p dense) just to report a rank.
+    cache_value <- list(rank = .amatrix_xtx_rank(XtX), cache_key = NA_character_,
                         cache_reused = FALSE)
   } else {
     Y_arg <- .amatrix_model_response_arg(Y, template = X_arg)
@@ -652,8 +678,8 @@
     return(NULL)
   }
 
-  if (!is.numeric(weights) || anyNA(weights) || any(weights < 0)) {
-    stop("weights must be a numeric vector of non-missing non-negative values")
+  if (!is.numeric(weights) || anyNA(weights) || any(!is.finite(weights)) || any(weights < 0)) {
+    stop("weights must be a numeric vector of finite, non-missing, non-negative values")
   }
 
   if (length(weights) != n_obs) {
@@ -1163,7 +1189,7 @@ wls_fit <- function(
     xtx <- crossprod_weighted(X_arg, weights)
     xty <- xty_weighted(X_arg, weights, Y_arg)
     coefficients <- .amatrix_spd_solve_rewrap(xtx, xty, template = X_arg)
-    cache_value <- list(rank = ncol(X_arg), cache_key = cache_key,
+    cache_value <- list(rank = .amatrix_xtx_rank(xtx), cache_key = cache_key,
                         cache_reused = FALSE)
     qr_meta <- .amatrix_qr_fit_metadata(NULL)
   }
@@ -1186,7 +1212,8 @@ wls_fit <- function(
       weights = as.double(weights),
       method = method,
       rank = rank,
-      df.residual = nrow(X_arg) - rank,
+      # Observations with zero weight carry no information (as in lm.wfit).
+      df.residual = sum(weights > 0) - rank,
       intercept = isTRUE(intercept),
       cache = isTRUE(cache),
       cache_key = cache_value$cache_key,

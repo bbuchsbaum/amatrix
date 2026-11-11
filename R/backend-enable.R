@@ -93,6 +93,7 @@
 #'   \code{\link{amatrix_set_default_precision}}
 #' @export
 amatrix_use_gpu <- function(backend = NULL, quiet = FALSE) {
+  .amatrix_state$backend_pkg_missing <- NULL
   specs <- .amatrix_optional_backend_specs()
   order <- intersect(.amatrix_auto_fast_backend_order(), names(specs))
   if (!is.null(backend)) {

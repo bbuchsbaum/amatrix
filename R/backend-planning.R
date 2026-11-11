@@ -493,11 +493,14 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
           from_backend = chosen_name
         )
 
-        # (4) Mark the backend unhealthy.
-        .amatrix_backend_health_mark(chosen_name, "unhealthy", reason)
+        # (4) Run the caller's fallback. If it fails too, the problem is the
+        # request itself (e.g. non-conformable arguments), not the backend:
+        # the error propagates and the backend's health is left alone.
+        result <- fallback()
 
-        # (5) Run the caller's fallback.
-        return(fallback())
+        # (5) CPU succeeded where the backend failed: mark it unhealthy.
+        .amatrix_backend_health_mark(chosen_name, "unhealthy", reason)
+        return(result)
       }
       stop(e)  # CPU errors are real bugs; don't swallow them.
     }

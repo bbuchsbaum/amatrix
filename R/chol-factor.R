@@ -752,14 +752,14 @@ quad_form <- function(factor, v) {
 
 #' LU factorization result for general square matrices
 #'
-#' Stores the original square matrix for use with LAPACK's
-#' \code{DGESV} routine. Unlike \code{\linkS4class{amChol}}, which
-#' caches the explicit triangular factor, \code{amLU} retains
-#' \code{A} and delegates factorization to \code{base::solve} at
-#' solve time.
+#' Stores a square matrix together with its pivoted LU factorization
+#' (LAPACK \code{DGETRF}), computed once by \code{\link{lu_factor}} and
+#' reused by every \code{\link{lu_solve}} call (LAPACK \code{DGETRS}).
 #'
 #' @slot A Numeric square matrix; the original matrix passed to
 #'   \code{\link{lu_factor}}.
+#' @slot lu The \pkg{Matrix} \code{denseLU} factorization of \code{A}, or
+#'   \code{NULL} for an empty object.
 #' @slot source_id Character string; the \code{object_id} of the
 #'   source \code{adgeMatrix}, or \code{NA} for base matrices.
 #' @slot precision Character string; \code{"strict"} or \code{"fast"},
@@ -772,13 +772,15 @@ quad_form <- function(factor, v) {
 setClass(
   "amLU",
   slots = list(
-    A          = "matrix",    # original square matrix; LAPACK DGESV factorises on solve
+    A          = "matrix",    # original square matrix
+    lu         = "ANY",       # Matrix denseLU factorization of A (NULL when empty)
     source_id  = "character",
     precision  = "character",
     backend    = "character"
   ),
   prototype = list(
     A          = matrix(numeric(0), 0L, 0L),
+    lu         = NULL,
     source_id  = NA_character_,
     precision  = NA_character_,
     backend    = NA_character_
@@ -795,12 +797,12 @@ setMethod("show", "amLU", function(object) {
   invisible(object)
 })
 
-#' Store a general square matrix for LU-based solving
+#' LU-factor a general square matrix
 #'
-#' Wraps a square numeric matrix or \code{adgeMatrix} in an
-#' \code{\linkS4class{amLU}} object. The actual LU decomposition is
-#' performed by \code{base::solve} at solve time via LAPACK's
-#' \code{DGESV}.
+#' Computes the pivoted LU factorization of a square numeric matrix or
+#' \code{adgeMatrix} (LAPACK \code{DGETRF}) and returns it in an
+#' \code{\linkS4class{amLU}} object for repeated use by
+#' \code{\link{lu_solve}}.
 #'
 #' @param A A square numeric matrix or \code{adgeMatrix}.
 #'
@@ -828,14 +830,20 @@ lu_factor <- function(A) {
   src  <- if (inherits(A, "adgeMatrix")) A@object_id else NA_character_
   prec <- if (inherits(A, "adgeMatrix")) A@precision  else NA_character_
   be   <- if (inherits(A, "adgeMatrix")) A@preferred_backend else NA_character_
-  new("amLU", A = A_mat, source_id = src, precision = prec, backend = be)
+  lu_fac <- if (nrow(A_mat) > 0L && !anyNA(A_mat)) {
+    Matrix::lu(.amatrix_plain_dge(as.double(A_mat), dim(A_mat), list(NULL, NULL)), warnSing = FALSE)
+  } else {
+    NULL
+  }
+  new("amLU", A = A_mat, lu = lu_fac, source_id = src, precision = prec, backend = be)
 }
 
 #' Solve a linear system using an LU factor
 #'
 #' Solves \code{A \%*\% x = B} where \code{A} is the square matrix
-#' stored in \code{factor}, delegating to \code{base::solve} (LAPACK
-#' \code{DGESV}).
+#' stored in \code{factor}, reusing the LU factorization computed by
+#' \code{\link{lu_factor}} (LAPACK \code{DGETRS}); repeated solves do not
+#' refactor \code{A}.
 #'
 #' @param factor An \code{\linkS4class{amLU}} object from
 #'   \code{\link{lu_factor}}.
@@ -859,6 +867,26 @@ lu_solve <- function(factor, B) {
   }
   scalar_out <- is.vector(B) || (is.matrix(B) && ncol(B) == 1L)
   B_mat <- if (is.vector(B)) matrix(B, ncol = 1L) else as.matrix(B)
-  x <- base::solve(factor@A, B_mat)
+  if (nrow(B_mat) != nrow(factor@A)) {
+    .amatrix_abort_bad_arg(sprintf(
+      "B must have %d row(s) to match the factor, not %d", nrow(factor@A), nrow(B_mat)
+    ))
+  }
+  lu_fac <- factor@lu
+  x <- if (is.null(lu_fac)) {
+    # Empty or NA-containing input: let base::solve produce its usual result.
+    base::solve(factor@A, B_mat)
+  } else {
+    n <- nrow(factor@A)
+    pivots <- lu_fac@x[seq.int(1L, n * n, by = n + 1L)]
+    if (any(pivots == 0)) {
+      stop("lu_solve: matrix is exactly singular (zero pivot in U)", call. = FALSE)
+    }
+    storage.mode(B_mat) <- "double"
+    out <- as.matrix(Matrix::solve(lu_fac, B_mat))
+    dn <- list(colnames(factor@A), colnames(B_mat))
+    dimnames(out) <- if (is.null(dn[[1L]]) && is.null(dn[[2L]])) NULL else dn
+    out
+  }
   if (scalar_out && ncol(x) == 1L) drop(x) else x
 }

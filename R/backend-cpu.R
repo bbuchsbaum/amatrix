@@ -17,6 +17,32 @@
   as.matrix(x)
 }
 
+# Arithmetic on plain dgeMatrix operands, computed directly on the data slots.
+# Matrix's own Arith methods build and validate a new S4 object on every call
+# (~0.35 ms), which dominates small elementwise operations. Returns NULL for
+# anything outside the simple cases so the caller falls back to Matrix.
+.amatrix_cpu_dense_arith <- function(lhs, rhs, op, ...) {
+  if (is.null(rhs) || ...length() > 0L || !is.character(op) || length(op) != 1L ||
+      !op %in% c("+", "-", "*", "/", "^")) {
+    return(NULL)
+  }
+  plain_dge <- function(v) identical(class(v), structure("dgeMatrix", package = "Matrix"))
+  scalar <- function(v) is.numeric(v) && length(v) == 1L && is.null(attributes(v))
+  if (plain_dge(lhs) && plain_dge(rhs)) {
+    if (!identical(lhs@Dim, rhs@Dim) || !identical(lhs@Dimnames, rhs@Dimnames)) {
+      return(NULL)
+    }
+    return(.amatrix_plain_dge(do.call(op, list(lhs@x, rhs@x)), lhs@Dim, lhs@Dimnames))
+  }
+  if (plain_dge(lhs) && scalar(rhs)) {
+    return(.amatrix_plain_dge(as.double(do.call(op, list(lhs@x, rhs))), lhs@Dim, lhs@Dimnames))
+  }
+  if (scalar(lhs) && plain_dge(rhs)) {
+    return(.amatrix_plain_dge(as.double(do.call(op, list(lhs, rhs@x))), rhs@Dim, rhs@Dimnames))
+  }
+  NULL
+}
+
 .amatrix_cpu_host_value <- function(x) {
   if (inherits(x, "adgCMatrix")) {
     return(amatrix_materialize_host(x))
@@ -83,6 +109,10 @@
       base::tcrossprod(.amatrix_cpu_dense_matrix(x), y = .amatrix_cpu_dense_matrix(y), ...)
     },
     ewise = function(x, lhs, rhs = NULL, op, ...) {
+      fast <- .amatrix_cpu_dense_arith(lhs, rhs, op, ...)
+      if (!is.null(fast)) {
+        return(fast)
+      }
       if (is.null(rhs)) {
         return(do.call(op, c(list(lhs), list(...))))
       }

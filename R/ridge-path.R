@@ -81,7 +81,17 @@ print.ridge_path <- function(x, ...) {
 #' @export
 coef.ridge_path <- function(object, lambda = NULL, ...) {
   if (is.null(lambda)) return(object$coef)
+  if (!is.numeric(lambda) || length(lambda) != 1L || is.na(lambda)) {
+    stop("lambda must be a single number", call. = FALSE)
+  }
   idx <- which.min(abs(object$lambdas - lambda))
+  nearest <- object$lambdas[[idx]]
+  if (abs(nearest - lambda) > 1e-8 * max(1, abs(lambda))) {
+    warning(sprintf(
+      "lambda = %g is not on the fitted grid; using the nearest value %g",
+      lambda, nearest
+    ), call. = FALSE)
+  }
   object$coef[,, idx, drop = FALSE]
 }
 
@@ -94,6 +104,8 @@ predict.ridge_path <- function(object, newdata, lambda = NULL, ...) {
     for (i in seq_len(dim(coefs)[3L])) result[,, i] <- newdata %*% coefs[,, i]
     result
   } else {
-    newdata %*% coefs[,, 1L, drop = FALSE]
+    # Drop only the lambda dimension so multi-response fits (q > 1) work.
+    coef_mat <- matrix(coefs[,, 1L], nrow = dim(coefs)[1L], ncol = dim(coefs)[2L])
+    newdata %*% coef_mat
   }
 }

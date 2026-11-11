@@ -4,8 +4,8 @@
 .amatrix_state$default_precision <- "strict"
 .amatrix_state$residency <- new.env(parent = emptyenv())
 .amatrix_state$model_cache <- new.env(parent = emptyenv())
-.amatrix_state$resident_counter <- 0L
-.amatrix_state$object_counter <- 0L
+.amatrix_state$resident_counter <- 0
+.amatrix_state$object_counter <- 0
 .amatrix_state$session_id <- ""
 
 .amatrix_backend_registration_valid <- function(backend) {

@@ -12,7 +12,7 @@ object accepted by \code{\link[base]{eigen}}.}
 }
 \value{
 A list with components \code{values} (numeric vector of eigenvalues
-  in ascending order) and \code{vectors} (numeric matrix whose columns are
+  in decreasing order, as for \code{\link[base]{eigen}}) and \code{vectors} (numeric matrix whose columns are
   the corresponding eigenvectors).
 }
 \description{

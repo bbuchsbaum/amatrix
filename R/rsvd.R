@@ -32,6 +32,9 @@ rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
   k             <- as.integer(k)
   n_oversamples <- as.integer(n_oversamples)
   n_iter        <- as.integer(n_iter)
+  if (length(k) != 1L || is.na(k) || k < 1L || k > min(dim(x))) {
+    stop(sprintf("k must be a single integer between 1 and min(dim(x)) = %d", min(dim(x))), call. = FALSE)
+  }
 
   if (is(x, "adgeMatrix")) {
     bk_name <- tryCatch(.amatrix_svd_factor_rsvd_backend(x), error = function(e) NULL)
