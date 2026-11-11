@@ -51,10 +51,10 @@ test_that("irlba wrapper accepts sparse input and a user fastpath argument", {
   set.seed(4)
   As <- Matrix::rsparsematrix(200, 100, 0.1)
   ref <- svd(as.matrix(As), nu = 0, nv = 0)$d[1:3]
-  expect_equal(amatrix::irlba(As, nv = 3)$d, ref, tolerance = 1e-6)
+  expect_equal(am_irlba(As, nv = 3)$d, ref, tolerance = 1e-6)
   dense <- as.matrix(As)
-  expect_equal(amatrix::irlba(dense, nv = 3, fastpath = TRUE)$d, ref, tolerance = 1e-6)
-  expect_equal(amatrix::irlba(adgeMatrix(dense), nv = 3)$d, ref, tolerance = 1e-6)
+  expect_equal(am_irlba(dense, nv = 3, fastpath = TRUE)$d, ref, tolerance = 1e-6)
+  expect_equal(am_irlba(adgeMatrix(dense), nv = 3)$d, ref, tolerance = 1e-6)
 })
 
 test_that("rowsum and segment reductions handle names and missing groups", {

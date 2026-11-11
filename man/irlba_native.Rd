@@ -55,5 +55,5 @@ dispatch, this function:
 }
 }
 \seealso{
-\code{\link{irlba}}, \code{\link{adgeMatrix}}
+\code{\link{am_irlba}}, \code{\link{adgeMatrix}}
 }

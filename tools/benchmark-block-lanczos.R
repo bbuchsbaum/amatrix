@@ -49,7 +49,7 @@ benchmark_dense_case <- function(n, p, k, block_size, n_steps, seed) {
     irlba::irlba(host, nv = k, nu = k, work = max(3L * k, k + 20L))
   })
   cpu_compat <- benchmark_elapsed(function() {
-    irlba(cpu_x, nv = k, nu = k, work = max(3L * k, k + 20L))
+    am_irlba(cpu_x, nv = k, nu = k, work = max(3L * k, k + 20L))
   })
   cpu_block <- benchmark_elapsed(function() {
     block_lanczos(cpu_x, nv = k, nu = k, block_size = block_size, n_steps = n_steps)
@@ -84,10 +84,10 @@ benchmark_dense_case <- function(n, p, k, block_size, n_steps, seed) {
     x_gpu <- adgeMatrix(host, preferred_backend = backend_spec$name, precision = backend_spec$precision)
     compat_bench <- benchmark_elapsed(
       function() {
-        irlba(x_gpu, nv = k, nu = k, work = max(3L * k, k + 20L))
+        am_irlba(x_gpu, nv = k, nu = k, work = max(3L * k, k + 20L))
       },
       warmup = function() {
-        invisible(irlba(x_gpu, nv = k, nu = k, work = max(3L * k, k + 20L)))
+        invisible(am_irlba(x_gpu, nv = k, nu = k, work = max(3L * k, k + 20L)))
       }
     )
     block_bench <- benchmark_elapsed(

@@ -66,7 +66,7 @@ test_that("irlba block implementation delegates to block_lanczos", {
 
   set.seed(1003L)
   expect_warning(
-    via_irlba <- irlba(
+    via_irlba <- am_irlba(
       x,
       nv = 4L,
       nu = 3L,

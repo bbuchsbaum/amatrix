@@ -41,7 +41,7 @@
 #'
 #' @seealso \code{\link{adgeMatrix}}, \code{\link{svd_factor}}
 #' @export
-irlba <- function(A,
+am_irlba <- function(A,
                      nv = 5,
                      nu = nv,
                      ...,
@@ -56,7 +56,7 @@ irlba <- function(A,
     dots <- list(...)
     if (length(dots) > 0L) {
       warning(
-        "irlba(..., implementation = 'block') ignores irlba-specific arguments in ...; ",
+        "am_irlba(..., implementation = 'block') ignores irlba-specific arguments in ...; ",
         "use block_lanczos() for the block implementation surface.",
         call. = FALSE
       )
@@ -134,7 +134,7 @@ irlba <- function(A,
 #' @return A list with components \code{d}, \code{u}, \code{v}, \code{iter},
 #'   \code{mprod}, compatible with \code{irlba::irlba()}.
 #'
-#' @seealso \code{\link{irlba}}, \code{\link{adgeMatrix}}
+#' @seealso \code{\link{am_irlba}}, \code{\link{adgeMatrix}}
 #' @export
 irlba_native <- function(A,
                              nv    = 5L,
@@ -158,7 +158,7 @@ irlba_native <- function(A,
   if (!af_ok) {
     if (!isTRUE(.amatrix_state$irlba_native_fallback_noted)) {
       .amatrix_state$irlba_native_fallback_noted <- TRUE
-      message("irlba_native: ArrayFire unavailable, falling back to irlba (noted once per session)")
+      message("irlba_native: ArrayFire unavailable, falling back to am_irlba (noted once per session)")
     }
     fallback_args <- list(A, nv = nv, nu = nu, tol = tol, maxit = maxit)
     if (!missing(work)) {
@@ -167,7 +167,7 @@ irlba_native <- function(A,
     if (!is.null(v0)) {
       fallback_args$v <- v0
     }
-    return(do.call(irlba, fallback_args))
+    return(do.call(am_irlba, fallback_args))
   }
 
   A_mat <- amatrix_materialize_host(A)

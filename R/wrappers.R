@@ -2057,10 +2057,10 @@ colmeans <- function(x, na.rm = FALSE) {
 #' @return A single numeric scalar equal to the sum of diagonal elements.
 #'
 #' @examples
-#' trace(diag(1:4))
+#' mat_trace(diag(1:4))
 #'
 #' @export
-trace <- function(x) {
+mat_trace <- function(x) {
   host <- amatrix_materialize_host(x)
   if (inherits(host, "sparseMatrix")) return(sum(Matrix::diag(host)))
   sum(base::diag(as.matrix(host)))

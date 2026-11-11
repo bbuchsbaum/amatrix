@@ -103,6 +103,11 @@ Initial public release.
 * `amatrix_calibrate()` writes to the user cache directory only with
   `persist = TRUE`.
 * Much lower per-operation overhead and fewer data copies on the CPU path.
+* Attaching the package no longer masks other packages' functions: the
+  matrix trace is `mat_trace()` (was `trace`, which masked `base::trace`),
+  the truncated-SVD wrapper is `am_irlba()` (was `irlba`, which masked
+  `irlba::irlba`), and `svd` is a standard generic with `base::svd` as its
+  default.
 
 ## Error handling and diagnostics
 
