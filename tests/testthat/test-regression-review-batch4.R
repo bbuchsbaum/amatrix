@@ -52,3 +52,82 @@ test_that("amatrix_compile_product leaves the defer_host option as it found it",
   plan(matrix(rnorm(8), 4, 2))
   expect_null(getOption("amatrix.defer_host"))
 })
+
+test_that("sweep() dispatches on amatrix objects and keeps sparse scaling sparse", {
+  m <- matrix(c(1, 0, 3, 0, 5, 6), 2, 3)
+  A <- adgeMatrix(m)
+  S <- adgCMatrix(Matrix::Matrix(m, sparse = TRUE))
+  hv <- function(x) if (methods::is(x, "Matrix")) as.matrix(x) else x
+  for (margin in 1:2) {
+    stats <- if (margin == 1L) c(2, 4) else c(1, 2, 4)
+    for (fun in c("-", "+", "*", "/")) {
+      ref <- base::sweep(m, margin, stats, fun)
+      expect_equal(hv(sweep(A, margin, stats, fun)), ref, ignore_attr = TRUE, info = paste(margin, fun))
+      expect_equal(hv(sweep(S, margin, stats, fun)), ref, ignore_attr = TRUE, info = paste(margin, fun))
+    }
+  }
+  # Default operation is "-", as in base, for both sweep() and am_sweep().
+  expect_equal(hv(sweep(A, 2, c(1, 2, 4))), base::sweep(m, 2, c(1, 2, 4)), ignore_attr = TRUE)
+  expect_equal(hv(am_sweep(A, 2, c(1, 2, 4))), base::sweep(m, 2, c(1, 2, 4)), ignore_attr = TRUE)
+  expect_s4_class(sweep(A, 2, c(1, 2, 4)), "adgeMatrix")
+  expect_s4_class(sweep(S, 2, c(1, 2, 4), "*"), "adgCMatrix")
+  expect_s4_class(colscale(S, c(1, 2, 4)), "adgCMatrix")
+  expect_s4_class(rowscale(S, c(2, 4)), "adgCMatrix")
+  expect_equal(hv(colscale(S, c(1, 2, 4))), t(t(m) * c(1, 2, 4)), ignore_attr = TRUE)
+  expect_equal(hv(rowscale(S, c(2, 4))), m * c(2, 4), ignore_attr = TRUE)
+  # Non-amatrix inputs are untouched.
+  expect_identical(sweep(m, 2, c(1, 2, 4)), base::sweep(m, 2, c(1, 2, 4)))
+})
+
+test_that("mean, which and isSymmetric work on amatrix objects", {
+  m <- matrix(c(1, 0, 3, 0, 5, 6), 2, 3)
+  A <- adgeMatrix(m)
+  S <- adgCMatrix(Matrix::Matrix(m, sparse = TRUE))
+  expect_identical(mean(A), mean(m))
+  expect_equal(mean(S), mean(m))
+  expect_equal(mean(A > 2), mean(m > 2))
+  expect_identical(as.integer(which(A > 2)), which(m > 2))
+  expect_identical(as.integer(which(S > 2)), which(m > 2))
+  sq <- matrix(c(2, 1, 1, 3), 2)
+  expect_true(isSymmetric(adgeMatrix(sq)))
+  expect_true(isSymmetric(adgCMatrix(Matrix::Matrix(sq, sparse = TRUE))))
+  expect_false(isSymmetric(adgeMatrix(matrix(1:4 + 0, 2))))
+})
+
+test_that("mean() and which() work with only amatrix attached", {
+  skip_if_not_installed("callr")
+  out <- callr::r(function() {
+    library(amatrix)
+    A <- adgeMatrix(matrix(c(1, 0, 3, 0, 5, 6), 2, 3))
+    list(
+      matrix_attached = "package:Matrix" %in% search(),
+      mean = mean(A),
+      which = as.integer(which(A > 2)),
+      sym = isSymmetric(adgeMatrix(diag(2)))
+    )
+  })
+  expect_false(out$matrix_attached)
+  expect_identical(out$mean, 2.5)
+  expect_identical(out$which, c(3L, 5L, 6L))
+  expect_true(out$sym)
+})
+
+test_that("dim<- reshapes to a valid object with a new identity", {
+  m <- matrix(c(1, 0, 3, 0, 5, 6), 2, 3, dimnames = list(c("a", "b"), NULL))
+  ref <- m
+  dim(ref) <- c(3L, 2L)
+  A <- adgeMatrix(m)
+  d <- A
+  dim(d) <- c(3L, 2L)
+  expect_true(methods::validObject(d))
+  expect_equal(as.matrix(d), ref, ignore_attr = TRUE)
+  expect_null(rownames(d))
+  expect_false(identical(d@object_id, A@object_id))
+
+  S <- adgCMatrix(Matrix::Matrix(m, sparse = TRUE))
+  ds <- S
+  dim(ds) <- c(3L, 2L)
+  expect_s4_class(ds, "adgCMatrix")
+  expect_equal(as.matrix(ds), ref, ignore_attr = TRUE)
+  expect_error({ z <- A; dim(z) <- c(4L, 2L) }, "do not match")
+})

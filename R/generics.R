@@ -13,6 +13,10 @@
 #' @exportMethod solve
 #' @exportMethod chol
 #' @exportMethod norm
+#' @exportMethod mean
+#' @exportMethod which
+#' @exportMethod isSymmetric
+#' @exportMethod sweep
 #' @exportMethod qr
 #' @exportMethod eigen
 #' @exportMethod diag

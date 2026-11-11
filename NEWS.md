@@ -104,6 +104,12 @@ Initial public release.
   `persist = TRUE`.
 * `dist_matrix(method = "cosine")` returns the cosine distance
   (`1 - similarity`); the similarity is `kernel_matrix(kernel = "cosine")`.
+* `sweep()` now dispatches on amatrix objects (it is exported as a standard
+  generic with `base::sweep` as default); `am_sweep()` defaults to `FUN = "-"`
+  like base; `rowscale()`, `colscale()` and multiplicative sweeps keep sparse
+  input sparse. `mean()`, `which()` and `isSymmetric()` work with only
+  amatrix attached. `dim(x) <- value` returns a valid, freshly identified
+  object.
 * Much lower per-operation overhead and fewer data copies on the CPU path.
 * Attaching the package no longer masks other packages' functions: the
   matrix trace is `mat_trace()` (was `trace`, which masked `base::trace`),

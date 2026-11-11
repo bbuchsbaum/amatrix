@@ -1802,6 +1802,10 @@ xty_weighted <- function(X, w, y) {
 #'
 #' @export
 rowscale <- function(X, d) {
+  if (inherits(X, c("adgCMatrix", "sparseMatrix"))) {
+    if (length(d) != nrow(X)) stop("length(d) must equal nrow(X)", call. = FALSE)
+    return(.amatrix_sparse_scale(X, 1, d, "*"))   # stays sparse
+  }
   X_arg <- .amatrix_model_dense_arg(X)
   d <- as.double(d)
   if (length(d) != nrow(X_arg)) {
@@ -1814,6 +1818,10 @@ rowscale <- function(X, d) {
 #' @rdname rowscale
 #' @export
 colscale <- function(X, d) {
+  if (inherits(X, c("adgCMatrix", "sparseMatrix"))) {
+    if (length(d) != ncol(X)) stop("length(d) must equal ncol(X)", call. = FALSE)
+    return(.amatrix_sparse_scale(X, 2, d, "*"))   # stays sparse
+  }
   X_arg <- .amatrix_model_dense_arg(X)
   d <- as.double(d)
   if (length(d) != ncol(X_arg)) {
@@ -2345,57 +2353,66 @@ rowsum.adgCMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
   result
 }
 
-# ── sweep / max.col S3 dispatch for adgeMatrix ────────────────────────────────
-# Lets idiomatic R code (sweep, max.col) route to GPU kernels automatically.
+# ── sweep() for amatrix objects ───────────────────────────────────────────────
+# base::sweep() is an ordinary function, not a generic, so S3-style methods
+# (the former sweep.adgeMatrix / sweep.adgCMatrix) were never called. sweep is
+# declared as a standard S4 generic instead, with base::sweep as its default,
+# so idiomatic sweep(x, MARGIN, STATS, FUN) reaches the backend kernels for
+# dense input and the O(nnz) path for sparse input.
 
-sweep.adgeMatrix <- function(x, MARGIN, STATS, FUN = "-",
-                             check.margin = TRUE, ...) {
+# Scale the rows (MARGIN = 1) or columns (MARGIN = 2) of a sparse matrix by
+# multiplying or dividing its stored values: O(nnz) and sparsity preserving.
+# Returns NULL when the request is not of that form.
+.amatrix_sparse_scale <- function(x, MARGIN, STATS, FUN) {
+  if (!is.character(FUN) || length(FUN) != 1L || !FUN %in% c("*", "/")) return(NULL)
+  if (!is.numeric(MARGIN) || length(MARGIN) != 1L || !MARGIN %in% c(1, 2)) return(NULL)
+  if (!is.numeric(STATS) || !is.null(dim(STATS))) return(NULL)
+  host <- if (inherits(x, "adgCMatrix")) {
+    amatrix_materialize_host(x)
+  } else {
+    methods::as(methods::as(methods::as(x, "dMatrix"), "generalMatrix"), "CsparseMatrix")
+  }
+  if (length(STATS) != dim(host)[MARGIN]) return(NULL)
+  STATS <- as.double(STATS)
+  factor <- if (MARGIN == 1) {
+    STATS[host@i + 1L]                 # @i holds 0-based row indices
+  } else {
+    rep.int(STATS, diff(host@p))       # one entry per stored value, by column
+  }
+  host@x <- if (identical(FUN, "*")) host@x * factor else host@x / factor
+  host@factors <- list()
+  if (inherits(x, "adgCMatrix")) {
+    new_adgCMatrix(host, preferred_backend = x@preferred_backend,
+                   precision = x@precision, policy = x@policy)
+  } else {
+    new_adgCMatrix(host)
+  }
+}
+
+#' @noRd
+setGeneric("sweep")
+
+#' @noRd
+setMethod("sweep", "adgeMatrix", function(x, MARGIN, STATS, FUN = "-", check.margin = TRUE, ...) {
+  if (...length() > 0L) {
+    return(.amatrix_rewrap_value(
+      x, base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, check.margin, ...)
+    ))
+  }
   am_sweep(x, MARGIN, STATS, FUN)
-}
+})
 
-sweep.adgCMatrix <- function(x, MARGIN, STATS, FUN = "-",
-                             check.margin = TRUE, ...) {
-  if (identical(as.integer(MARGIN), 2L) && is.character(FUN) &&
-      FUN %in% c("*", "/") && length(STATS) == ncol(x)) {
-    # Column-scale/divide: multiply/divide @x values by the appropriate STATS entry
-    host <- amatrix_materialize_host(x)   # dgCMatrix
-    new_x <- host@x
-    nc <- ncol(host)
-    for (j in seq_len(nc)) {
-      start <- host@p[j] + 1L
-      end   <- host@p[j + 1L]
-      if (end >= start) {
-        idx <- start:end
-        if (identical(FUN, "*")) {
-          new_x[idx] <- new_x[idx] * STATS[j]
-        } else {
-          new_x[idx] <- new_x[idx] / STATS[j]
-        }
-      }
-    }
-    result <- new("dgCMatrix", i = host@i, p = host@p, Dim = host@Dim,
-                  Dimnames = host@Dimnames, x = new_x, factors = list())
-    return(new_adgCMatrix(result, preferred_backend = x@preferred_backend,
-                          precision = x@precision, policy = x@policy))
+#' @noRd
+setMethod("sweep", "adgCMatrix", function(x, MARGIN, STATS, FUN = "-", check.margin = TRUE, ...) {
+  if (...length() == 0L) {
+    scaled <- .amatrix_sparse_scale(x, MARGIN, STATS, FUN)
+    if (!is.null(scaled)) return(scaled)
   }
-  # MARGIN=1 with * or /: row-scale preserving sparsity — O(nnz)
-  if (identical(as.integer(MARGIN), 1L) && is.character(FUN) &&
-      FUN %in% c("*", "/") && length(STATS) == nrow(x)) {
-    host <- amatrix_materialize_host(x)
-    xi <- host@i  # 0-based row indices
-    if (identical(FUN, "*")) {
-      new_x <- host@x * STATS[xi + 1L]
-    } else {
-      new_x <- host@x / STATS[xi + 1L]
-    }
-    result <- new("dgCMatrix", i = host@i, p = host@p, Dim = host@Dim,
-                  Dimnames = host@Dimnames, x = new_x, factors = list())
-    return(new_adgCMatrix(result, preferred_backend = x@preferred_backend,
-                          precision = x@precision, policy = x@policy))
-  }
-  # Fallback: densify for other margins/ops (e.g., +/- which destroy sparsity)
-  base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, ...)
-}
+  # Other operations (e.g. "+" / "-") fill in the zeros, so the result is dense.
+  .amatrix_rewrap_value(
+    x, base::sweep(as.matrix(amatrix_materialize_host(x)), MARGIN, STATS, FUN, check.margin, ...)
+  )
+})
 
 # ── addmm (amatrix-uaj) ─────────────────────────────────────────────────
 # alpha*(A%*%B) + beta*C  — BLAS-3 fused scaled matmul with optional bias.
@@ -2671,7 +2688,8 @@ am_scatter_mean <- function(x, labels, K) {
 #' @param x A numeric matrix or \code{adgeMatrix}.
 #' @param MARGIN 1 for rows, 2 for columns.
 #' @param STATS Numeric vector of statistics to apply.
-#' @param FUN Operation: \code{"+"}, \code{"-"}, \code{"*"}, or \code{"/"}.
+#' @param FUN Operation: \code{"+"}, \code{"-"} (the default, as for
+#'   \code{\link[base]{sweep}}), \code{"*"}, or \code{"/"}.
 #' @return A matrix of the same dimensions as \code{x}.
 #'
 #' @examples
@@ -2681,7 +2699,11 @@ am_scatter_mean <- function(x, labels, K) {
 #'
 #' @seealso \code{\link{am_sweep_inplace}}
 #' @export
-am_sweep <- function(x, MARGIN, STATS, FUN = "+") {
+am_sweep <- function(x, MARGIN, STATS, FUN = "-") {
+  if (inherits(x, c("adgCMatrix", "sparseMatrix"))) {
+    scaled <- .amatrix_sparse_scale(x, MARGIN, STATS, FUN)
+    if (!is.null(scaled)) return(scaled)
+  }
   if (!inherits(x, "adgeMatrix")) {
     return(base::sweep(as.matrix(x), MARGIN = MARGIN, STATS = STATS, FUN = FUN))
   }
