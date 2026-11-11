@@ -32,25 +32,25 @@
 #'   %*%,dgCMatrix,adgCMatrix-method %*%,dgeMatrix,adgCMatrix-method
 #'   %*%,matrix,adgCMatrix-method %*%,numeric,adgCMatrix-method
 NULL
-setMethod("%*%", signature(x = "adgeMatrix", y = "ANY"),       function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "ANY"),       function(x, y) am_matmul(x, y))
 #' @rdname matmul-methods
 #' @aliases %*%,adgeMatrix,matrix-method
-setMethod("%*%", signature(x = "adgeMatrix", y = "matrix"),    function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "matrix"),    function(x, y) am_matmul(x, y))
 #' @rdname matmul-methods
 #' @aliases %*%,adgeMatrix,Matrix-method
-setMethod("%*%", signature(x = "adgeMatrix", y = "Matrix"),    function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "Matrix"),    function(x, y) am_matmul(x, y))
 #' @rdname matmul-methods
 #' @aliases %*%,adgeMatrix,dgeMatrix-method
-setMethod("%*%", signature(x = "adgeMatrix", y = "dgeMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "dgeMatrix"), function(x, y) am_matmul(x, y))
 #' @rdname matmul-methods
 #' @aliases %*%,adgeMatrix,dgCMatrix-method
-setMethod("%*%", signature(x = "adgeMatrix", y = "dgCMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "dgCMatrix"), function(x, y) am_matmul(x, y))
 #' @rdname matmul-methods
 #' @aliases %*%,adgeMatrix,adgeMatrix-method
-setMethod("%*%", signature(x = "adgeMatrix", y = "adgeMatrix"),function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "adgeMatrix"),function(x, y) am_matmul(x, y))
 #' @rdname matmul-methods
 #' @aliases %*%,adgeMatrix,adgCMatrix-method
-setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"),function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgeMatrix", y = "adgCMatrix"),function(x, y) am_matmul(x, y))
 
 # Left-hand numeric/matrix — required for irlba's `mult(v, A)` pattern and any
 # row-vector times adgeMatrix call. Without these, S4 falls through to base::%*%
@@ -80,7 +80,7 @@ setMethod("%*%", signature(x = "numeric", y = "adgeMatrix"), function(x, y) {
     return(wrap(row))
   }
   if (nrow(y) == 1L) {
-    return(matmul(wrap(matrix(as.double(x), ncol = 1L)), y))
+    return(am_matmul(wrap(matrix(as.double(x), ncol = 1L)), y))
   }
   stop("non-conformable arguments", call. = FALSE)
 })
@@ -91,7 +91,7 @@ setMethod("%*%", signature(x = "numeric", y = "adgeMatrix"), function(x, y) {
 #' @noRd
 setMethod("%*%", signature(x = "matrix",  y = "adgeMatrix"), function(x, y) {
   # x(k×m) %*% y(m×n): wrap x as adgeMatrix and use the standard matmul path.
-  matmul(new_adgeMatrix(x,
+  am_matmul(new_adgeMatrix(x,
     preferred_backend = y@preferred_backend,
     policy            = y@policy,
     precision         = y@precision), y)
@@ -373,16 +373,16 @@ setMethod("tcrossprod", signature(x = "adgeMatrix", y = "missing"), function(x, 
 #'
 #' @rdname rowcol-summary-methods
 #' @aliases rowSums,adgeMatrix-method
-setMethod("rowSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) rowsums(x, na.rm = na.rm, dims = dims))
+setMethod("rowSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_rowsums(x, na.rm = na.rm, dims = dims))
 #' @rdname rowcol-summary-methods
 #' @aliases colSums,adgeMatrix-method
-setMethod("colSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colsums(x, na.rm = na.rm, dims = dims))
+setMethod("colSums", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_colsums(x, na.rm = na.rm, dims = dims))
 #' @rdname rowcol-summary-methods
 #' @aliases rowMeans,adgeMatrix-method
-setMethod("rowMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) rowmeans(x, na.rm = na.rm))
+setMethod("rowMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_rowmeans(x, na.rm = na.rm))
 #' @rdname rowcol-summary-methods
 #' @aliases colMeans,adgeMatrix-method
-setMethod("colMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) colmeans(x, na.rm = na.rm))
+setMethod("colMeans", "adgeMatrix", function(x, na.rm = FALSE, dims = 1L) am_colmeans(x, na.rm = na.rm))
 
 #' @noRd
 setMethod("cbind2", signature(x = "aMatrix", y = "aMatrix"), function(x, y, ...) {
@@ -843,7 +843,7 @@ setReplaceMethod("diag", "adgeMatrix", function(x, value) {
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "ANY"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 # Explicit same-class and mixed-amatrix signatures prevent S4 from preferring
@@ -852,82 +852,82 @@ setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "ANY"), function(e1, e2) {
 # ANY has distance > 2 for the second slot).
 #' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "adgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "adgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "adgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "numeric"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "integer"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "logical"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "matrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "Matrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgeMatrix", e2 = "dgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "ANY", e2 = "adgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "numeric", e2 = "adgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "integer", e2 = "adgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "logical", e2 = "adgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "matrix", e2 = "adgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "Matrix", e2 = "adgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "dgeMatrix", e2 = "adgeMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd

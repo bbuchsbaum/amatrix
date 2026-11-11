@@ -263,17 +263,17 @@ cat("\n── Step profiling  (8000×200  K=10) ──────────�
   X_gpu <- adgeMatrix(X_mat, preferred_backend = bk, precision = "fast")
 
   steps <- bench::mark(
-    segment_mean   = segment_mean(X_gpu, labels, K),
+    segment_mean   = am_segment_mean(X_gpu, labels, K),
     # Old path: CPU centering (n×p) then GPU crossprod — was bottleneck
-    Sw_twopass     = { mu <- as.matrix(segment_mean(X_gpu, labels, K));
+    Sw_twopass     = { mu <- as.matrix(am_segment_mean(X_gpu, labels, K));
                        Xc <- adgeMatrix(X_mat - mu[labels,], preferred_backend=bk,
                                         precision="fast");
                        crossprod(Xc) },
     # New path: one GPU crossprod(X) + tiny CPU correction — no n×p centering
-    Sw_onepass     = { mu  <- as.matrix(segment_mean(X_gpu, labels, K));
+    Sw_onepass     = { mu  <- as.matrix(am_segment_mean(X_gpu, labels, K));
                        Xsq <- as.matrix(crossprod(X_gpu));
                        Xsq - crossprod(sqrt(counts) * mu) },
-    Sb_cpu         = { mu <- as.matrix(segment_mean(X_gpu, labels, K));
+    Sb_cpu         = { mu <- as.matrix(am_segment_mean(X_gpu, labels, K));
                        md <- mu - rep(colMeans(X_mat), each=K);
                        crossprod(sqrt(counts) * md) },
     project        = { W_dummy <- matrix(rnorm(p*9), p, 9);

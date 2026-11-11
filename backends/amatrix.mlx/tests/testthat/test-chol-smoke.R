@@ -14,10 +14,10 @@ test_that("mlx chol bridge and factor path smoke test on native backend", {
   bridge_fac[lower.tri(bridge_fac)] <- 0
   bridge_sol <- amatrix.mlx:::amatrix_mlx_chol_solve_factor(bridge_fac, rhs)
 
-  factor_fit <- amatrix::chol_factor(
+  factor_fit <- amatrix::am_chol_factor(
     amatrix::adgeMatrix(spd, preferred_backend = "mlx", precision = "fast")
   )
-  factor_sol <- amatrix::chol_solve(factor_fit, rhs)
+  factor_sol <- amatrix::am_chol_solve(factor_fit, rhs)
 
   ref_sol <- base::solve(spd, rhs)
   by_col <- vapply(

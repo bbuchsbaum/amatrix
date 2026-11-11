@@ -410,12 +410,12 @@ setOldClass(c("amQR", "amDenseQR"))
 #' @examples
 #' X <- adgeMatrix(matrix(rnorm(30), nrow = 6))
 #' qf <- am_qr(X)
-#' info <- qr_info(qf)
+#' info <- am_qr_info(qf)
 #' info$rank
 #'
-#' @seealso \code{\link{am_qr}}, \code{\link{qr_downdate}}
+#' @seealso \code{\link{am_qr}}, \code{\link{am_qr_downdate}}
 #' @export
-qr_info <- function(qr) {
+am_qr_info <- function(qr) {
   if (!inherits(qr, "amQR")) {
     stop("qr must inherit from amQR", call. = FALSE)
   }

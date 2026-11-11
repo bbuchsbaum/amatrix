@@ -129,56 +129,56 @@ test_that("randomized finite wrapper cases match host references", {
       info_prefix <- sprintf("seed=%d case=%s dim=%dx%d", seed, case$name, nr, nc)
 
       expect_equal(
-        dist_matrix(case$x, method = "euclidean"),
+        am_dist_matrix(case$x, method = "euclidean"),
         .wrapper_dist_ref(as.matrix(case$host), method = "euclidean"),
         tolerance = 1e-10,
         info = paste(info_prefix, "dist self")
       )
 
       expect_equal(
-        dist_matrix(case$x, method = "sqeuclidean"),
+        am_dist_matrix(case$x, method = "sqeuclidean"),
         .wrapper_dist_ref(as.matrix(case$host), method = "sqeuclidean"),
         tolerance = 1e-10,
         info = paste(info_prefix, "sqdist self")
       )
 
       expect_equal(
-        kernel_matrix(case$x, kernel = "linear"),
+        am_kernel_matrix(case$x, kernel = "linear"),
         .wrapper_kernel_ref(as.matrix(case$host), kernel = "linear"),
         tolerance = 1e-10,
         info = paste(info_prefix, "kernel linear")
       )
 
       expect_equal(
-        kernel_matrix(case$x, kernel = "cosine"),
+        am_kernel_matrix(case$x, kernel = "cosine"),
         .wrapper_kernel_ref(as.matrix(case$host), kernel = "cosine"),
         tolerance = 1e-10,
         info = paste(info_prefix, "kernel cosine")
       )
 
       expect_equal(
-        kernel_matrix(case$x, kernel = "rbf", sigma = 0.7),
+        am_kernel_matrix(case$x, kernel = "rbf", sigma = 0.7),
         .wrapper_kernel_ref(as.matrix(case$host), kernel = "rbf", sigma = 0.7),
         tolerance = 1e-10,
         info = paste(info_prefix, "kernel rbf")
       )
 
       expect_equal(
-        kernel_matrix(case$x, kernel = "rbf", sigma = 0.7, zero_diag = TRUE),
+        am_kernel_matrix(case$x, kernel = "rbf", sigma = 0.7, zero_diag = TRUE),
         .wrapper_kernel_ref(as.matrix(case$host), kernel = "rbf", sigma = 0.7, zero_diag = TRUE),
         tolerance = 1e-10,
         info = paste(info_prefix, "kernel rbf zero_diag")
       )
 
       expect_equal(
-        dist_matrix(case$x, y_host, method = "euclidean"),
+        am_dist_matrix(case$x, y_host, method = "euclidean"),
         .wrapper_dist_ref(as.matrix(case$host), y_host, method = "euclidean"),
         tolerance = 1e-10,
         info = paste(info_prefix, "dist cross")
       )
 
       expect_equal(
-        kernel_matrix(case$x, y_host, kernel = "linear"),
+        am_kernel_matrix(case$x, y_host, kernel = "linear"),
         .wrapper_kernel_ref(as.matrix(case$host), y_host, kernel = "linear"),
         tolerance = 1e-10,
         info = paste(info_prefix, "kernel cross")
@@ -205,10 +205,10 @@ test_that("randomized non-finite contamination is rejected in X and Y", {
       y_bad[1L, 1L] <- bad
       info <- sprintf("seed=%d bad=%s", seed, format(bad))
 
-      expect_error(dist_matrix(x_bad), regexp = NULL, info = paste(info, "dist X"))
-      expect_error(kernel_matrix(x_bad, kernel = "rbf", sigma = 1), regexp = NULL, info = paste(info, "kernel X"))
-      expect_error(dist_matrix(x, y_bad), regexp = NULL, info = paste(info, "dist Y"))
-      expect_error(kernel_matrix(x, y_bad, kernel = "linear"), regexp = NULL, info = paste(info, "kernel Y"))
+      expect_error(am_dist_matrix(x_bad), regexp = NULL, info = paste(info, "dist X"))
+      expect_error(am_kernel_matrix(x_bad, kernel = "rbf", sigma = 1), regexp = NULL, info = paste(info, "kernel X"))
+      expect_error(am_dist_matrix(x, y_bad), regexp = NULL, info = paste(info, "dist Y"))
+      expect_error(am_kernel_matrix(x, y_bad, kernel = "linear"), regexp = NULL, info = paste(info, "kernel Y"))
     }
   }
 })

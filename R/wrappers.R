@@ -995,10 +995,10 @@
 #' @examples
 #' A <- adgeMatrix(matrix(1:6, 2, 3))
 #' B <- adgeMatrix(matrix(1:6, 3, 2))
-#' matmul(A, B)
+#' am_matmul(A, B)
 #'
 #' @export
-matmul <- function(x, y) {
+am_matmul <- function(x, y) {
   x <- .amatrix_promote_arg(x)
   if (.amatrix_sparse_rhs_lowerable(x, y)) {
     return(.amatrix_lower_sparse_rhs_matmul(x, y))
@@ -1147,30 +1147,30 @@ am_tcrossprod <- function(x, y = NULL, ...) {
 #' @examples
 #' A <- adgeMatrix(matrix(1:6, 2, 3))
 #' B <- adgeMatrix(matrix(1:6, 2, 3))
-#' gemm(A, B, transA = TRUE)          # t(A) %*% B
-#' gemm(A, B, transB = TRUE)          # A %*% t(B)
+#' am_gemm(A, B, transA = TRUE)          # t(A) %*% B
+#' am_gemm(A, B, transB = TRUE)          # A %*% t(B)
 #'
 #' @export
-gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
+am_gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
                     transA = FALSE, transB = FALSE) {
   A <- .amatrix_promote_arg(A)
   if (!is.null(C)) C <- .amatrix_promote_arg(C)
   AB <- if (transA && transB) {
     # t(A) %*% t(B) = t(B %*% A): use identity to avoid materialising t(B) to host.
-    am_transpose(matmul(B, A))
+    am_transpose(am_matmul(B, A))
   } else if (transA) {
     am_crossprod(A, B)
   } else if (transB) {
     am_tcrossprod(A, B)
   } else {
-    matmul(A, B)
+    am_matmul(A, B)
   }
 
-  if (alpha != 1.0) AB <- ewise("*", AB, alpha)
+  if (alpha != 1.0) AB <- am_ewise("*", AB, alpha)
 
   if (!is.null(C)) {
-    C_scaled <- if (beta != 1.0) ewise("*", C, beta) else C
-    ewise("+", AB, C_scaled)
+    C_scaled <- if (beta != 1.0) am_ewise("*", C, beta) else C
+    am_ewise("+", AB, C_scaled)
   } else {
     AB
   }
@@ -1185,18 +1185,18 @@ gemm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0,
 #' @param na.rm Logical; if \code{TRUE}, missing values are removed before
 #'   summing. Default \code{FALSE}.
 #' @param dims Integer; the number of dimensions to regard as rows
-#'   (for \code{rowsums}) or columns (for \code{colsums}). Default \code{1L}.
+#'   (for \code{am_rowsums}) or columns (for \code{am_colsums}). Default \code{1L}.
 #'
-#' @return A numeric vector of length \code{nrow(x)} (\code{rowsums}) or
-#'   \code{ncol(x)} (\code{colsums}).
+#' @return A numeric vector of length \code{nrow(x)} (\code{am_rowsums}) or
+#'   \code{ncol(x)} (\code{am_colsums}).
 #'
 #' @examples
 #' m <- adgeMatrix(matrix(1:12, 3, 4))
-#' rowsums(m)
-#' colsums(m)
+#' am_rowsums(m)
+#' am_colsums(m)
 #'
 #' @export
-rowsums <- function(x, na.rm = FALSE, dims = 1L) {
+am_rowsums <- function(x, na.rm = FALSE, dims = 1L) {
   x <- .amatrix_promote_arg(x)
   choice <- .amatrix_backend_for(x, "rowSums")
   resident <- .amatrix_try_resident_rowSums(x, na.rm, dims, choice$name)
@@ -1210,9 +1210,9 @@ rowsums <- function(x, na.rm = FALSE, dims = 1L) {
   )
 }
 
-#' @rdname rowsums
+#' @rdname am_rowsums
 #' @export
-colsums <- function(x, na.rm = FALSE, dims = 1L) {
+am_colsums <- function(x, na.rm = FALSE, dims = 1L) {
   x <- .amatrix_promote_arg(x)
   choice <- .amatrix_backend_for(x, "colSums")
   resident <- .amatrix_try_resident_colSums(x, na.rm, dims, choice$name)
@@ -1532,12 +1532,12 @@ am_eigen <- function(x, symmetric = NULL, only.values = FALSE, EISPACK = FALSE) 
 #'
 #' @examples
 #' S <- crossprod(matrix(rnorm(25), nrow = 5))
-#' ev <- eigh(adgeMatrix(S))
+#' ev <- am_eigh(adgeMatrix(S))
 #' length(ev$values)
 #'
-#' @seealso \code{\link{rsvd}}
+#' @seealso \code{\link{am_rsvd}}
 #' @export
-eigh <- function(x) {
+am_eigh <- function(x) {
   am_eigen(.amatrix_promote_arg(x), symmetric = TRUE)
 }
 
@@ -1557,12 +1557,12 @@ eigh <- function(x) {
 #' @examples
 #' X <- matrix(rnorm(20), nrow = 5)
 #' w <- runif(5)
-#' crossprod_weighted(X, w)
+#' am_crossprod_weighted(X, w)
 #'
-#' @seealso \code{\link{tcrossprod_weighted}}, \code{\link{xty_weighted}}
+#' @seealso \code{\link{am_tcrossprod_weighted}}, \code{\link{am_xty_weighted}}
 #' @export
 # X' diag(w) X  (p x p)
-crossprod_weighted <- function(X, w) {
+am_crossprod_weighted <- function(X, w) {
   X_arg <- .amatrix_model_dense_arg(X)
   w <- as.double(w)
   if (length(w) != nrow(X_arg)) {
@@ -1627,12 +1627,12 @@ crossprod_weighted <- function(X, w) {
 #' @examples
 #' X <- matrix(rnorm(20), nrow = 5)
 #' w <- runif(5)
-#' tcrossprod_weighted(X, w)
+#' am_tcrossprod_weighted(X, w)
 #'
-#' @seealso \code{\link{crossprod_weighted}}, \code{\link{xty_weighted}}
+#' @seealso \code{\link{am_crossprod_weighted}}, \code{\link{am_xty_weighted}}
 #' @export
 # X diag(w) X'  (n x n)
-tcrossprod_weighted <- function(X, w) {
+am_tcrossprod_weighted <- function(X, w) {
   X_arg <- .amatrix_model_dense_arg(X)
   w <- as.double(w)
   if (length(w) != nrow(X_arg)) {
@@ -1700,13 +1700,13 @@ tcrossprod_weighted <- function(X, w) {
 #' X <- matrix(rnorm(20), nrow = 5)
 #' w <- runif(5)
 #' y <- rnorm(5)
-#' xty_weighted(X, w, y)
+#' am_xty_weighted(X, w, y)
 #'
-#' @seealso \code{\link{crossprod_weighted}},
-#'   \code{\link{tcrossprod_weighted}}
+#' @seealso \code{\link{am_crossprod_weighted}},
+#'   \code{\link{am_tcrossprod_weighted}}
 #' @export
 # X' diag(w) y  (p x k)
-xty_weighted <- function(X, w, y) {
+am_xty_weighted <- function(X, w, y) {
   X_arg <- .amatrix_model_dense_arg(X)
   w <- as.double(w)
   if (length(w) != nrow(X_arg)) {
@@ -1785,23 +1785,23 @@ xty_weighted <- function(X, w, y) {
 #'
 #' Scale each row or column of a matrix by a numeric vector, equivalent to
 #' left- or right-multiplying by a diagonal matrix.
-#' \code{rowscale} computes \code{diag(d) \%*\% X} (row \eqn{i} scaled by
-#' \code{d[i]}); \code{colscale} computes \code{X \%*\% diag(d)} (column
+#' \code{am_rowscale} computes \code{diag(d) \%*\% X} (row \eqn{i} scaled by
+#' \code{d[i]}); \code{am_colscale} computes \code{X \%*\% diag(d)} (column
 #' \eqn{j} scaled by \code{d[j]}).
 #'
 #' @param X A matrix or \code{aMatrix} object.
 #' @param d Numeric vector of scale factors. Length must equal \code{nrow(X)}
-#'   for \code{rowscale} and \code{ncol(X)} for \code{colscale}.
+#'   for \code{am_rowscale} and \code{ncol(X)} for \code{am_colscale}.
 #'
 #' @return A matrix or \code{aMatrix} of the same dimensions as \code{X}.
 #'
 #' @examples
 #' m <- matrix(1:6, 2, 3)
-#' rowscale(m, c(2, 0.5))
-#' colscale(m, c(1, 2, 3))
+#' am_rowscale(m, c(2, 0.5))
+#' am_colscale(m, c(1, 2, 3))
 #'
 #' @export
-rowscale <- function(X, d) {
+am_rowscale <- function(X, d) {
   if (inherits(X, c("adgCMatrix", "sparseMatrix"))) {
     if (length(d) != nrow(X)) stop("length(d) must equal nrow(X)", call. = FALSE)
     return(.amatrix_sparse_scale(X, 1, d, "*"))   # stays sparse
@@ -1815,9 +1815,9 @@ rowscale <- function(X, d) {
   .amatrix_rewrap_like(X_arg, x_host * d)
 }
 
-#' @rdname rowscale
+#' @rdname am_rowscale
 #' @export
-colscale <- function(X, d) {
+am_colscale <- function(X, d) {
   if (inherits(X, c("adgCMatrix", "sparseMatrix"))) {
     if (length(d) != ncol(X)) stop("length(d) must equal ncol(X)", call. = FALSE)
     return(.amatrix_sparse_scale(X, 2, d, "*"))   # stays sparse
@@ -1878,12 +1878,12 @@ am_diag <- function(x, nrow, ncol, names = TRUE) {
 #'
 #' @examples
 #' X <- matrix(rnorm(20), nrow = 5)
-#' crossprod_add_diag(X, lambda = 0.1)
+#' am_crossprod_add_diag(X, lambda = 0.1)
 #'
-#' @seealso \code{\link{crossprod_weighted}}
+#' @seealso \code{\link{am_crossprod_weighted}}
 #' @export
 # X'X + lambda*I  or  X'X + diag(d)
-crossprod_add_diag <- function(X, lambda) {
+am_crossprod_add_diag <- function(X, lambda) {
   X_arg  <- .amatrix_model_dense_arg(X)
   xtx    <- am_crossprod(X_arg)
   p      <- ncol(X_arg)
@@ -1902,7 +1902,7 @@ crossprod_add_diag <- function(X, lambda) {
 
 .mat_fun <- function(X, f, check_positive = TRUE) {
   X_arg <- .amatrix_model_dense_arg(X)
-  res   <- eigh(X_arg)
+  res   <- am_eigh(X_arg)
   lam   <- res$values
   if (isTRUE(check_positive) && any(lam <= 0))
     warning("matrix has non-positive eigenvalues; result may be complex or NaN",
@@ -1924,29 +1924,29 @@ crossprod_add_diag <- function(X, lambda) {
 #'
 #' @param X Symmetric positive definite numeric matrix or
 #'   \code{adgeMatrix} of shape \code{[p, p]}.
-#' @param p Numeric scalar exponent (used by \code{mat_pow} only).
+#' @param p Numeric scalar exponent (used by \code{am_powm} only).
 #'
 #' @return An \code{adgeMatrix} of shape \code{[p, p]}: the matrix
 #'   function applied to \code{X}.
 #'
 #' @examples
 #' S <- crossprod(matrix(rnorm(16), 4)) + diag(4)
-#' mat_sqrt(S)
-#' mat_log(S)
-#' mat_pow(S, -1)
+#' am_sqrtm(S)
+#' am_logm(S)
+#' am_powm(S, -1)
 #'
-#' @name mat_fun
-#' @rdname mat_fun
+#' @name am_matfun
+#' @rdname am_matfun
 #' @export
-mat_sqrt <- function(X) .mat_fun(X, sqrt)
+am_sqrtm <- function(X) .mat_fun(X, sqrt)
 
-#' @rdname mat_fun
+#' @rdname am_matfun
 #' @export
-mat_pow  <- function(X, p) .mat_fun(X, function(lam) lam^p)
+am_powm  <- function(X, p) .mat_fun(X, function(lam) lam^p)
 
-#' @rdname mat_fun
+#' @rdname am_matfun
 #' @export
-mat_log  <- function(X) .mat_fun(X, log)
+am_logm  <- function(X) .mat_fun(X, log)
 
 # ── Stochastic trace estimator (Hutchinson) ───────────────────────────────────
 
@@ -1971,10 +1971,10 @@ mat_log  <- function(X) .mat_fun(X, log)
 #'
 #' @examples
 #' A <- crossprod(matrix(rnorm(25), 5, 5)) + 5 * diag(5)
-#' trace_estim(A, k = 50L, seed = 1L)
+#' am_trace_estim(A, k = 50L, seed = 1L)
 #'
 #' @export
-trace_estim <- function(A = NULL, k = 30L, seed = NULL,
+am_trace_estim <- function(A = NULL, k = 30L, seed = NULL,
                         solve_fn = NULL, n = NULL) {
   if (!is.null(seed)) {
     # Seed only this call: restore the caller's RNG state on exit.
@@ -2014,16 +2014,16 @@ trace_estim <- function(A = NULL, k = 30L, seed = NULL,
 #' @param na.rm Logical; if \code{TRUE}, \code{NA} values are excluded before
 #'   averaging. Default \code{FALSE}.
 #'
-#' @return A numeric vector of length \code{nrow(x)} (\code{rowmeans}) or
-#'   \code{ncol(x)} (\code{colmeans}).
+#' @return A numeric vector of length \code{nrow(x)} (\code{am_rowmeans}) or
+#'   \code{ncol(x)} (\code{am_colmeans}).
 #'
 #' @examples
 #' m <- matrix(1:12, 3, 4)
-#' rowmeans(m)
-#' colmeans(m)
+#' am_rowmeans(m)
+#' am_colmeans(m)
 #'
 #' @export
-rowmeans <- function(x, na.rm = FALSE) {
+am_rowmeans <- function(x, na.rm = FALSE) {
   if (inherits(x, "adgCMatrix")) {
     return(Matrix::rowMeans(amatrix_materialize_host(x), na.rm = na.rm))
   }
@@ -2031,15 +2031,15 @@ rowmeans <- function(x, na.rm = FALSE) {
     if (isTRUE(na.rm)) {
       return(base::rowMeans(as.matrix(amatrix_materialize_host(x)), na.rm = TRUE))
     }
-    return(rowsums(x, na.rm = na.rm) / ncol(x))
+    return(am_rowsums(x, na.rm = na.rm) / ncol(x))
   }
   x_host <- as.matrix(amatrix_materialize_host(x))
   base::rowMeans(x_host, na.rm = na.rm)
 }
 
-#' @rdname rowmeans
+#' @rdname am_rowmeans
 #' @export
-colmeans <- function(x, na.rm = FALSE) {
+am_colmeans <- function(x, na.rm = FALSE) {
   if (inherits(x, "adgCMatrix")) {
     return(Matrix::colMeans(amatrix_materialize_host(x), na.rm = na.rm))
   }
@@ -2047,7 +2047,7 @@ colmeans <- function(x, na.rm = FALSE) {
     if (isTRUE(na.rm)) {
       return(base::colMeans(as.matrix(amatrix_materialize_host(x)), na.rm = TRUE))
     }
-    return(colsums(x, na.rm = na.rm) / nrow(x))
+    return(am_colsums(x, na.rm = na.rm) / nrow(x))
   }
   x_host <- as.matrix(amatrix_materialize_host(x))
   base::colMeans(x_host, na.rm = na.rm)
@@ -2065,10 +2065,10 @@ colmeans <- function(x, na.rm = FALSE) {
 #' @return A single numeric scalar equal to the sum of diagonal elements.
 #'
 #' @examples
-#' mat_trace(diag(1:4))
+#' am_trace(diag(1:4))
 #'
 #' @export
-mat_trace <- function(x) {
+am_trace <- function(x) {
   host <- amatrix_materialize_host(x)
   if (inherits(host, "sparseMatrix")) return(sum(Matrix::diag(host)))
   sum(base::diag(as.matrix(host)))
@@ -2088,10 +2088,10 @@ mat_trace <- function(x) {
 #'
 #' @examples
 #' m <- matrix(c(1, 2, 3, 4), 2, 2)
-#' sym(m)
+#' am_sym(m)
 #'
 #' @export
-sym <- function(x) {
+am_sym <- function(x) {
   if (inherits(x, "adgCMatrix")) {
     host <- amatrix_materialize_host(x)
     result <- (host + Matrix::t(host)) / 2
@@ -2117,10 +2117,10 @@ sym <- function(x) {
 #' @return A single numeric scalar.
 #'
 #' @examples
-#' dot(1:4, 4:1)
+#' am_dot(1:4, 4:1)
 #'
 #' @export
-dot <- function(x, y) {
+am_dot <- function(x, y) {
   x_host <- .amatrix_host_arg(x)
   y_host <- .amatrix_host_arg(y)
   sum(x_host * y_host)
@@ -2207,11 +2207,11 @@ dot <- function(x, y) {
 #' @examples
 #' x <- matrix(1:12, 6, 2)
 #' labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
-#' segment_sum(x, labels, K = 3L)
+#' am_segment_sum(x, labels, K = 3L)
 #'
-#' @seealso \code{\link{segment_mean}}, \code{\link{am_scatter_mean}}
+#' @seealso \code{\link{am_segment_mean}}, \code{\link{am_scatter_mean}}
 #' @export
-segment_sum <- function(x, labels, K) {
+am_segment_sum <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
   if (inherits(x, "adgCMatrix")) {
@@ -2249,11 +2249,11 @@ segment_sum <- function(x, labels, K) {
 #' @examples
 #' x <- matrix(1:12, 6, 2)
 #' labels <- c(1L, 2L, 1L, 3L, 2L, 1L)
-#' segment_mean(x, labels, K = 3L)
+#' am_segment_mean(x, labels, K = 3L)
 #'
-#' @seealso \code{\link{segment_sum}}, \code{\link{am_scatter_mean}}
+#' @seealso \code{\link{am_segment_sum}}, \code{\link{am_scatter_mean}}
 #' @export
-segment_mean <- function(x, labels, K) {
+am_segment_mean <- function(x, labels, K) {
   labels <- as.integer(labels)
   K      <- as.integer(K)
   if (inherits(x, "adgCMatrix")) {
@@ -2316,7 +2316,7 @@ rowsum.adgeMatrix <- function(x, group, reorder = TRUE, na.rm = FALSE, ...) {
   }
   labels <- as.integer(grp)
   K      <- nlevels(grp)
-  result <- segment_sum(x, labels, K)
+  result <- am_segment_sum(x, labels, K)
   if (is.matrix(result)) dimnames(result) <- list(lvls, colnames(x))
   result
 }
@@ -2451,10 +2451,10 @@ setMethod("sweep", "adgCMatrix", function(x, MARGIN, STATS, FUN = "-", check.mar
 #' B <- matrix(1:12, 3, 4)
 #' C <- matrix(1, 2, 4)
 #' # 2 * (A %*% B) + 0.5 * C
-#' addmm(A, B, C, alpha = 2, beta = 0.5)
+#' am_addmm(A, B, C, alpha = 2, beta = 0.5)
 #'
 #' @export
-addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
+am_addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
   B_mat <- as.matrix(B); storage.mode(B_mat) <- "double"
   C_mat <- if (!is.null(C)) { m <- as.matrix(C); storage.mode(m) <- "double"; m } else NULL
 
@@ -2552,10 +2552,10 @@ addmm <- function(A, B, C = NULL, alpha = 1.0, beta = 1.0) {
 #' X <- matrix(rnorm(40), 10, 4)
 #' centroids <- X[c(1, 5, 9), ]
 #' # Centroids go in COLUMNS: pass t(centroids)
-#' pairwise_sqdist_argmin(X, t(centroids))
+#' am_pairwise_sqdist_argmin(X, t(centroids))
 #'
 #' @export
-pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
+am_pairwise_sqdist_argmin <- function(X, Ct, x_norms = NULL, c_norms = NULL) {
   Ct_mat  <- as.matrix(Ct);  storage.mode(Ct_mat) <- "double"
   if (ncol(X) != nrow(Ct_mat))
     stop(sprintf(
@@ -2806,12 +2806,12 @@ am_colargmin <- function(x) .am_argreduce(x, "colargmin")
 #'
 #' @examples
 #' x <- adgeMatrix(matrix(1:6, 2, 3))
-#' ewise("+", x, 1)
-#' ewise("*", x, x)
-#' ewise("exp", x)
+#' am_ewise("+", x, 1)
+#' am_ewise("*", x, x)
+#' am_ewise("exp", x)
 #'
 #' @export
-ewise <- function(op, e1, e2 = NULL) {
+am_ewise <- function(op, e1, e2 = NULL) {
   if (!inherits(e1, "aMatrix") && !inherits(e2, "aMatrix")) {
     e1 <- .amatrix_promote_arg(e1)
   }
@@ -3140,7 +3140,7 @@ am_set_dimnames <- function(x, value) {
 #' @param method One of \code{"euclidean"} (default), \code{"sqeuclidean"},
 #'   or \code{"cosine"} (cosine distance,
 #'   \eqn{1 - x^\top y / (\|x\| \|y\|)}; for the similarity itself use
-#'   \code{\link{kernel_matrix}(kernel = "cosine")}).
+#'   \code{\link{am_kernel_matrix}(kernel = "cosine")}).
 #' @param tile_size Integer row-block size for tiled computation, or \code{NULL}
 #'   (default) to auto-tile when \code{nrow(X) > 50000} (self-distance only).
 #'   Set explicitly to process any size in row-blocks; useful when GPU memory
@@ -3149,12 +3149,12 @@ am_set_dimnames <- function(x, value) {
 #'
 #' @examples
 #' X <- matrix(rnorm(30), nrow = 6)
-#' D <- dist_matrix(X)
+#' D <- am_dist_matrix(X)
 #' dim(D)
 #'
-#' @seealso \code{\link{kernel_matrix}}
+#' @seealso \code{\link{am_kernel_matrix}}
 #' @export
-dist_matrix <- function(X, Y = NULL,
+am_dist_matrix <- function(X, Y = NULL,
                     method = c("euclidean", "sqeuclidean", "cosine"),
                     tile_size = NULL) {
   method <- match.arg(method)
@@ -3175,7 +3175,7 @@ dist_matrix <- function(X, Y = NULL,
 
   if (method == "cosine") {
     # Cosine distance = 1 - cosine similarity (the similarity itself is
-    # kernel_matrix(kernel = "cosine")). Clamp rounding noise into [0, 2] and
+    # am_kernel_matrix(kernel = "cosine")). Clamp rounding noise into [0, 2] and
     # make self-distances exactly zero.
     sim <- .am_kernel_gpu(X, Y, "cosine", 1.0, 2L, 0.0, spec = spec)
     D <- 1 - as.matrix(sim)
@@ -3222,14 +3222,14 @@ dist_matrix <- function(X, Y = NULL,
 #' @examples
 #' set.seed(1)
 #' X <- matrix(rnorm(20), 5, 4)
-#' K <- kernel_matrix(X, kernel = "rbf", sigma = 1.5)
+#' K <- am_kernel_matrix(X, kernel = "rbf", sigma = 1.5)
 #' dim(K)
 #' # Cross-kernel between two sets of rows
-#' kernel_matrix(X, X[1:2, ], kernel = "linear")
+#' am_kernel_matrix(X, X[1:2, ], kernel = "linear")
 #'
-#' @seealso \code{\link{dist_matrix}}
+#' @seealso \code{\link{am_dist_matrix}}
 #' @export
-kernel_matrix <- function(X, Y = NULL,
+am_kernel_matrix <- function(X, Y = NULL,
                       kernel = c("linear", "rbf", "polynomial",
                                  "cosine", "laplacian"),
                       sigma = 1.0, degree = 2L, coef = 0.0,
@@ -3374,7 +3374,7 @@ setMethod("norm", signature(x = "numeric", type = "character"), function(x, type
 #' Batch Cholesky factorization
 #'
 #' Factorize B symmetric positive-definite matrices in parallel.  Each matrix
-#' is dispatched through the same backend as \code{\link{chol_factor}}, so MLX
+#' is dispatched through the same backend as \code{\link{am_chol_factor}}, so MLX
 #' GPU acceleration applies to every element when available.
 #'
 #' @param A A list of square numeric matrices, or a 3-D array \code{[n, n, B]}.
@@ -3382,41 +3382,41 @@ setMethod("norm", signature(x = "numeric", type = "character"), function(x, type
 #'
 #' @examples
 #' mats <- lapply(1:3, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
-#' facs <- batch_chol(mats)
+#' facs <- am_batch_chol(mats)
 #' length(facs)
 #'
-#' @seealso \code{\link{chol_factor}}, \code{\link{batch_solve}}
+#' @seealso \code{\link{am_chol_factor}}, \code{\link{am_batch_solve}}
 #' @export
-batch_chol <- function(A) {
+am_batch_chol <- function(A) {
   mats <- .am_batch_to_list(A, "A")
   lapply(mats, function(m) {
     X <- adgeMatrix(m)
-    chol_factor(X)
+    am_chol_factor(X)
   })
 }
 
 #' Batch triangular solve
 #'
 #' Solve B linear systems \code{A_b x_b = B_b} where each \code{A_b} is
-#' represented by its Cholesky factor from \code{\link{batch_chol}}.
+#' represented by its Cholesky factor from \code{\link{am_batch_chol}}.
 #'
-#' @param Ls A list of \code{amChol} objects (output of \code{batch_chol}).
+#' @param Ls A list of \code{amChol} objects (output of \code{am_batch_chol}).
 #' @param B A list of right-hand-side matrices/vectors, or a 3-D array
 #'   \code{[n, k, B]}.  Length / third dimension must match \code{Ls}.
 #' @return A list of solution matrices (or vectors when each rhs is a vector).
 #'
 #' @examples
 #' mats <- lapply(1:2, function(i) crossprod(matrix(rnorm(12), 4, 3)) + diag(3))
-#' facs <- batch_chol(mats)
+#' facs <- am_batch_chol(mats)
 #' rhs <- lapply(1:2, function(i) rnorm(3))
-#' sols <- batch_solve(facs, rhs)
+#' sols <- am_batch_solve(facs, rhs)
 #' all.equal(sols[[1]], solve(mats[[1]], rhs[[1]]))
 #'
-#' @seealso \code{\link{batch_chol}}, \code{\link{chol_solve}}
+#' @seealso \code{\link{am_batch_chol}}, \code{\link{am_chol_solve}}
 #' @export
-batch_solve <- function(Ls, B) {
+am_batch_solve <- function(Ls, B) {
   if (!is.list(Ls) || !all(vapply(Ls, inherits, logical(1L), "amChol"))) {
-    stop("Ls must be a list of amChol objects from batch_chol()", call. = FALSE)
+    stop("Ls must be a list of amChol objects from am_batch_chol()", call. = FALSE)
   }
 
   rhs_list <- if (is.list(B)) {
@@ -3432,7 +3432,7 @@ batch_solve <- function(Ls, B) {
     stop("Ls and B must have the same batch size", call. = FALSE)
   }
 
-  Map(chol_solve, Ls, rhs_list)
+  Map(am_chol_solve, Ls, rhs_list)
 }
 
 #' Eager Kronecker product
@@ -3448,11 +3448,11 @@ batch_solve <- function(Ls, B) {
 #' @examples
 #' A <- matrix(1:4, 2, 2)
 #' B <- diag(2)
-#' kron(A, B)
+#' am_kron(A, B)
 #'
 #' @seealso \code{\link{kron_matrix}}
 #' @export
-kron <- function(A, B) {
+am_kron <- function(A, B) {
   A_mat <- .am_as_double_matrix(A)
   B_mat <- .am_as_double_matrix(B)
   adgeMatrix(base::kronecker(A_mat, B_mat))
@@ -3467,12 +3467,12 @@ kron <- function(A, B) {
 #'
 #' @examples
 #' mats <- lapply(1:3, function(i) matrix(rnorm(12), 4, 3))
-#' xtx <- batch_crossprod(mats)
+#' xtx <- am_batch_crossprod(mats)
 #' dim(xtx[[1]])
 #'
-#' @seealso \code{\link{batch_chol}}
+#' @seealso \code{\link{am_batch_chol}}
 #' @export
-batch_crossprod <- function(A) {
+am_batch_crossprod <- function(A) {
   mats <- .am_batch_to_list(A, "A")
   lapply(mats, function(m) crossprod(m))
 }

@@ -13,7 +13,7 @@
 #' @param k Integer or \code{NULL}. Number of singular values to retain
 #'   in the truncated SVD. When \code{NULL}, defaults to
 #'   \code{min(nrow(X), ncol(X))}.
-#' @param ... Additional arguments forwarded to \code{svd_factor}.
+#' @param ... Additional arguments forwarded to \code{am_svd_factor}.
 #'
 #' @return An object of class \code{"ridge_path"}, a named list
 #'   containing:
@@ -28,12 +28,12 @@
 #' @examples
 #' X <- matrix(rnorm(60), nrow = 15)
 #' y <- rnorm(15)
-#' path <- ridge_path(X, y, lambdas = c(0.1, 1, 10))
+#' path <- am_ridge_path(X, y, lambdas = c(0.1, 1, 10))
 #' dim(path$coef)
 #'
-#' @seealso \code{\link{ridge_fit}}, \code{\link{svd_factor}}
+#' @seealso \code{\link{am_ridge_fit}}, \code{\link{am_svd_factor}}
 #' @export
-ridge_path <- function(X, Y, lambdas, k = NULL, ...) {
+am_ridge_path <- function(X, Y, lambdas, k = NULL, ...) {
   stopifnot(is.numeric(lambdas), length(lambdas) >= 1L, all(lambdas > 0))
 
   Y_mat <- if (is.null(dim(Y))) matrix(Y, ncol = 1L) else as.matrix(Y)
@@ -42,7 +42,7 @@ ridge_path <- function(X, Y, lambdas, k = NULL, ...) {
   if (!inherits(X, "aMatrix")) X <- as_adgeMatrix(X)
   if (is.null(k)) k <- min(nrow(X), ncol(X))
 
-  fac <- svd_factor(X, k = k, ...)
+  fac <- am_svd_factor(X, k = k, ...)
 
   k_use <- fac@k
   U_k <- fac@u[, seq_len(k_use), drop = FALSE]

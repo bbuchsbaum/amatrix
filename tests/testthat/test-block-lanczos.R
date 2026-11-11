@@ -6,7 +6,7 @@ low_rank_matrix <- function(n = 80L, p = 50L, rank = 5L) {
   u %*% diag(d, nrow = rank, ncol = rank) %*% t(v)
 }
 
-svd_reconstruct <- function(res) {
+am_svd_reconstruct <- function(res) {
   res$u %*% diag(res$d, nrow = length(res$d), ncol = length(res$d)) %*% t(res$v)
 }
 
@@ -25,13 +25,13 @@ test_that("block_lanczos recovers a low-rank matrix accurately", {
   ref <- La.svd(x, nu = 5L, nv = 5L)
 
   set.seed(1001L)
-  res <- block_lanczos(x, nv = 5L, nu = 5L, block_size = 4L, n_steps = 6L)
+  res <- am_block_lanczos(x, nv = 5L, nu = 5L, block_size = 4L, n_steps = 6L)
 
   expect_identical(dim(res$u), c(nrow(x), 5L))
   expect_identical(dim(res$v), c(ncol(x), 5L))
   expect_equal(res$d, ref$d[seq_len(5L)], tolerance = 1e-6)
 
-  rel_err <- norm(svd_reconstruct(res) - x, type = "F") / max(norm(x, type = "F"), 1e-12)
+  rel_err <- norm(am_svd_reconstruct(res) - x, type = "F") / max(norm(x, type = "F"), 1e-12)
   expect_lt(rel_err, 1e-6)
 })
 
@@ -39,12 +39,12 @@ test_that("block_svd remains an alias for block_lanczos", {
   x <- low_rank_matrix(n = 60L, p = 40L, rank = 4L)
 
   set.seed(1002L)
-  via_alias <- block_svd(x, k = 4L, block_size = 4L, n_steps = 6L)
+  via_alias <- am_block_svd(x, k = 4L, block_size = 4L, n_steps = 6L)
   set.seed(1002L)
-  via_named <- block_lanczos(x, nv = 4L, nu = 4L, block_size = 4L, n_steps = 6L)
+  via_named <- am_block_lanczos(x, nv = 4L, nu = 4L, block_size = 4L, n_steps = 6L)
 
   expect_equal(via_alias$d, via_named$d, tolerance = 1e-10)
-  expect_equal(svd_reconstruct(via_alias), svd_reconstruct(via_named), tolerance = 1e-10)
+  expect_equal(am_svd_reconstruct(via_alias), am_svd_reconstruct(via_named), tolerance = 1e-10)
   expect_identical(via_alias$iter, via_named$iter)
   expect_identical(via_alias$mprod, via_named$mprod)
 })
@@ -54,7 +54,7 @@ test_that("block_lanczos supports oversampled block sizes above k", {
   ref <- La.svd(x, nu = 4L, nv = 4L)
 
   set.seed(1005L)
-  fit <- block_lanczos(x, nv = 4L, nu = 4L, block_size = 6L, n_steps = 5L)
+  fit <- am_block_lanczos(x, nv = 4L, nu = 4L, block_size = 6L, n_steps = 5L)
 
   expect_identical(dim(fit$u), c(nrow(x), 4L))
   expect_identical(dim(fit$v), c(ncol(x), 4L))
@@ -78,7 +78,7 @@ test_that("irlba block implementation delegates to block_lanczos", {
     "ignores irlba-specific arguments"
   )
   set.seed(1003L)
-  via_named <- block_lanczos(x, nv = 4L, nu = 3L, block_size = 4L, n_steps = 6L)
+  via_named <- am_block_lanczos(x, nv = 4L, nu = 3L, block_size = 4L, n_steps = 6L)
 
   expect_equal(via_irlba$d, via_named$d, tolerance = 1e-10)
   expect_equal(via_irlba$u, via_named$u, tolerance = 1e-10)
@@ -109,7 +109,7 @@ test_that("block_lanczos uses compiled resident plans for dense non-MLX backends
       )
 
       set.seed(1007L)
-      fit <- block_lanczos(x_plan, nv = 4L, nu = 4L, block_size = 4L, n_steps = 6L)
+      fit <- am_block_lanczos(x_plan, nv = 4L, nu = 4L, block_size = 4L, n_steps = 6L)
 
       ref <- La.svd(x_host, nu = 4L, nv = 4L)$d[seq_len(4L)]
       expect_equal(fit$d, ref, tolerance = 1e-6)
@@ -154,7 +154,7 @@ test_that("block_lanczos reuses a sparse lhs through compiled resident plans", {
       # A deliberately short, fixed-step run: only residency is under test here
       # and the accuracy bound below is loose, so non-convergence is expected.
       fit <- suppressWarnings(
-        block_lanczos(x_plan, nv = 4L, nu = 4L, block_size = 4L, n_steps = 5L),
+        am_block_lanczos(x_plan, nv = 4L, nu = 4L, block_size = 4L, n_steps = 5L),
         classes = "amatrix_not_converged"
       )
 
@@ -182,7 +182,7 @@ test_that("block_lanczos runs on MLX fast matrices", {
   x_mlx <- adgeMatrix(x_host, preferred_backend = "mlx", precision = "fast")
 
   set.seed(1004L)
-  fit <- block_lanczos(x_mlx, nv = 6L, nu = 6L, block_size = 8L, n_steps = 5L)
+  fit <- am_block_lanczos(x_mlx, nv = 6L, nu = 6L, block_size = 8L, n_steps = 5L)
 
   expect_identical(dim(fit$u), c(nrow(x_host), 6L))
   expect_identical(dim(fit$v), c(ncol(x_host), 6L))
@@ -206,7 +206,7 @@ test_that("block_lanczos runs on OpenCL fast matrices", {
     x_opencl <- adgeMatrix(x_host, preferred_backend = "opencl", precision = "fast")
 
     set.seed(1006L)
-    fit <- block_lanczos(x_opencl, nv = 6L, nu = 6L, block_size = 8L, n_steps = 5L)
+    fit <- am_block_lanczos(x_opencl, nv = 6L, nu = 6L, block_size = 8L, n_steps = 5L)
 
     expect_identical(dim(fit$u), c(nrow(x_host), 6L))
     expect_identical(dim(fit$v), c(ncol(x_host), 6L))

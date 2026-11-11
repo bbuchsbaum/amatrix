@@ -34,8 +34,8 @@ weighted normal equations, is expressed with \code{amatrix} kernels:
 }
 \details{
 \itemize{
-\item \code{amatrix::crossprod_weighted(X, w)} — \eqn{X^\top W X}
-\item \code{amatrix::xty_weighted(X, w, z)} — \eqn{X^\top W z}
+\item \code{amatrix::am_crossprod_weighted(X, w)} — \eqn{X^\top W X}
+\item \code{amatrix::am_xty_weighted(X, w, z)} — \eqn{X^\top W z}
 \item \code{solve()} on the resulting \eqn{p \times p} system
 }
 

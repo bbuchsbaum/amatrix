@@ -270,7 +270,7 @@
     stop(errorCondition(
       sprintf(paste0(
         "%s is rank deficient (rank %d < %d columns), so the least-squares ",
-        "coefficients are not unique; remove collinear columns or use ridge_fit()"
+        "coefficients are not unique; remove collinear columns or use am_ridge_fit()"
       ), what, as.integer(rank), as.integer(p)),
       class = c("amatrix_rank_deficient", "amatrix_bad_arg"), call = NULL
     ))
@@ -318,7 +318,7 @@
     return(.amatrix_host_solve_rewrap(lhs, rhs, template = template))
   }
 
-  value <- chol_solve(chol_factor(lhs), rhs)
+  value <- am_chol_solve(am_chol_factor(lhs), rhs)
   if (inherits(value, "aMatrix")) {
     return(value)
   }
@@ -334,7 +334,7 @@
     penalty[1L, 1L] <- 0
   }
 
-  ewise(
+  am_ewise(
     "+",
     XtX,
     adgeMatrix(
@@ -395,12 +395,12 @@
 .amatrix_model_outputs <- function(X_arg, Y_arg, coefficients, include_fitted = TRUE, include_residuals = TRUE) {
   fitted_values <- NULL
   if (isTRUE(include_fitted) || isTRUE(include_residuals)) {
-    fitted_values <- matmul(X_arg, coefficients)
+    fitted_values <- am_matmul(X_arg, coefficients)
   }
 
   residuals <- NULL
   if (isTRUE(include_residuals)) {
-    residuals <- ewise("-", Y_arg, fitted_values)
+    residuals <- am_ewise("-", Y_arg, fitted_values)
   }
 
   list(fitted_values = fitted_values, residuals = residuals)
@@ -835,12 +835,12 @@
 #'
 #' @examples
 #' X <- matrix(rnorm(200), nrow = 40)
-#' C <- covariance(X)
+#' C <- am_covariance(X)
 #' dim(C)
 #'
-#' @seealso \code{\link{many_lm}}
+#' @seealso \code{\link{am_many_lm}}
 #' @export
-covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_size = NULL) {
+am_covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_size = NULL) {
   # Sparse path: avoid densifying large sparse matrices.
   # Formula: cov(X) = (X^TX - n * mu * mu^T) / (n-1)
   # X^TX via Matrix::crossprod (sparse BLAS, O(NNZ*p)); mu via Matrix::colMeans (O(NNZ)).
@@ -941,13 +941,13 @@ covariance <- function(X, center = TRUE, sample = TRUE, weights = NULL, block_si
 #'
 #' @examples
 #' X <- matrix(rnorm(50), nrow = 10)
-#' R <- correlation(X)
+#' R <- am_correlation(X)
 #' round(diag(as.matrix(R)), 6)
 #'
-#' @seealso \code{\link{covariance}}
+#' @seealso \code{\link{am_covariance}}
 #' @export
-correlation <- function(X, center = TRUE, weights = NULL, block_size = NULL) {
-  cov_arg <- covariance(X, center = center, sample = TRUE, weights = weights, block_size = block_size)
+am_correlation <- function(X, center = TRUE, weights = NULL, block_size = NULL) {
+  cov_arg <- am_covariance(X, center = center, sample = TRUE, weights = weights, block_size = block_size)
   cov_host <- as.matrix(amatrix_materialize_host(cov_arg))
   sds <- sqrt(diag(cov_host))
   scale_mat <- outer(sds, sds)
@@ -1002,12 +1002,12 @@ correlation <- function(X, center = TRUE, weights = NULL, block_size = NULL) {
 #' @examples
 #' X <- matrix(rnorm(50), nrow = 10)
 #' y <- rnorm(10)
-#' fit <- lm_fit(X, y)
+#' fit <- am_lm_fit(X, y)
 #' coef(fit)
 #'
-#' @seealso \code{\link{many_lm}}, \code{\link{array_lm}}
+#' @seealso \code{\link{am_many_lm}}, \code{\link{am_array_lm}}
 #' @export
-lm_fit <- function(
+am_lm_fit <- function(
   X,
   Y,
   intercept = FALSE,
@@ -1078,12 +1078,12 @@ lm_fit <- function(
 #' @examples
 #' X <- matrix(rnorm(50), nrow = 10)
 #' y <- rnorm(10)
-#' fit <- ridge_fit(X, y, lambda = 1)
+#' fit <- am_ridge_fit(X, y, lambda = 1)
 #' coef(fit)
 #'
-#' @seealso \code{\link{ridge_path}}, \code{\link{lm_fit}}
+#' @seealso \code{\link{am_ridge_path}}, \code{\link{am_lm_fit}}
 #' @export
-ridge_fit <- function(
+am_ridge_fit <- function(
   X,
   Y,
   lambda,
@@ -1121,7 +1121,7 @@ ridge_fit <- function(
       penalize_intercept = penalize_intercept,
       has_intercept = has_intercept_col
     )
-    penalized_xtx <- ewise("+", XtX, penalty)
+    penalized_xtx <- am_ewise("+", XtX, penalty)
     coefficients <- .amatrix_spd_solve_rewrap(penalized_xtx, XtY, template = X_arg)
   }
   outputs <- .amatrix_model_outputs(
@@ -1196,12 +1196,12 @@ ridge_fit <- function(
 #' X <- matrix(rnorm(50), nrow = 10)
 #' y <- rnorm(10)
 #' w <- runif(10, 0.5, 2)
-#' fit <- wls_fit(X, y, weights = w)
+#' fit <- am_wls_fit(X, y, weights = w)
 #' coef(fit)
 #'
-#' @seealso \code{\link{lm_fit}}, \code{\link{crossprod_weighted}}
+#' @seealso \code{\link{am_lm_fit}}, \code{\link{am_crossprod_weighted}}
 #' @export
-wls_fit <- function(
+am_wls_fit <- function(
   X,
   Y,
   weights,
@@ -1239,9 +1239,9 @@ wls_fit <- function(
       extra = cache_extra,
       object_id = X_arg@object_id
     )
-    xtx <- crossprod_weighted(X_arg, weights)
+    xtx <- am_crossprod_weighted(X_arg, weights)
     .amatrix_check_normal_equations(xtx, .amatrix_xtx_rank(xtx), what = "The weighted design")
-    xty <- xty_weighted(X_arg, weights, Y_arg)
+    xty <- am_xty_weighted(X_arg, weights, Y_arg)
     coefficients <- .amatrix_spd_solve_rewrap(xtx, xty, template = X_arg)
     cache_value <- list(rank = .amatrix_xtx_rank(xtx), cache_key = cache_key,
                         cache_reused = FALSE)
@@ -1343,12 +1343,12 @@ wls_fit <- function(
 #' @examples
 #' X <- matrix(rnorm(100), nrow = 20)
 #' Y <- matrix(rnorm(60), nrow = 20)
-#' fit <- many_lm(X, Y, method = "qr")
+#' fit <- am_many_lm(X, Y, method = "qr")
 #' dim(coef(fit))
 #'
-#' @seealso \code{\link{lm_fit}}, \code{\link{array_lm}}
+#' @seealso \code{\link{am_lm_fit}}, \code{\link{am_array_lm}}
 #' @export
-many_lm <- function(
+am_many_lm <- function(
   X,
   Y,
   weights = NULL,
@@ -1379,7 +1379,7 @@ many_lm <- function(
     )
     return(.amatrix_make_many_lm_fit(core, X_arg, Y, weights = NULL, call = match.call()))
   } else {
-    fit <- wls_fit(
+    fit <- am_wls_fit(
       X,
       Y,
       weights = weights,
@@ -1423,7 +1423,7 @@ many_lm <- function(
 
 #' Fit linear models with array-shaped response
 #'
-#' Wraps \code{\link{many_lm}} to accept a response \code{Y} with more than
+#' Wraps \code{\link{am_many_lm}} to accept a response \code{Y} with more than
 #' two dimensions (e.g. a 3-D array). The trailing dimensions are collapsed
 #' into columns for fitting and optionally restored in the output.
 #'
@@ -1448,7 +1448,7 @@ many_lm <- function(
 #'   original trailing dimensions of \code{Y}.
 #'
 #' @return An object of class \code{"am_array_lm_fit"}, a named list
-#'   containing the same fields as \code{\link{many_lm}} plus:
+#'   containing the same fields as \code{\link{am_many_lm}} plus:
 #'   \describe{
 #'     \item{response_dims}{Integer vector of trailing dimensions of \code{Y}.}
 #'     \item{rss}{Array or vector of residual sums of squares.}
@@ -1458,12 +1458,12 @@ many_lm <- function(
 #' @examples
 #' X <- matrix(rnorm(50), nrow = 10)
 #' Y <- array(rnorm(10 * 3 * 4), dim = c(10, 3, 4))
-#' fit <- array_lm(X, Y)
+#' fit <- am_array_lm(X, Y)
 #' dim(fit$sigma2)
 #'
-#' @seealso \code{\link{many_lm}}, \code{\link{lm_fit}}
+#' @seealso \code{\link{am_many_lm}}, \code{\link{am_lm_fit}}
 #' @export
-array_lm <- function(
+am_array_lm <- function(
   X,
   Y,
   weights = NULL,
@@ -1475,7 +1475,7 @@ array_lm <- function(
   restore_array = TRUE
 ) {
   layout <- .amatrix_response_layout(Y)
-  fit <- many_lm(
+  fit <- am_many_lm(
     X,
     layout$y_matrix,
     weights = weights,

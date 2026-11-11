@@ -1,7 +1,7 @@
 # Matrix's unary minus / round / signif / zapsmall methods update `x@x` in
 # place on a copy and so keep every amatrix slot, including `object_id`. The
 # result then aliased the identity-keyed caches of its source matrix and
-# chol_factor()/lm_fit() silently returned factors of the *original* data.
+# am_chol_factor()/am_lm_fit() silently returned factors of the *original* data.
 
 test_that("value-changing unary and rounding ops mint a new object identity", {
   m <- matrix(sin(1:16) * 3, 4, dimnames = list(letters[1:4], LETTERS[1:4]))
@@ -35,20 +35,20 @@ test_that("value-changing unary and rounding ops mint a new object identity", {
 test_that("chol_factor and lm_fit do not reuse a cached factor after round()", {
   set.seed(3)
   S <- adgeMatrix(crossprod(matrix(rnorm(40), 10)) + diag(4))
-  chol_factor(S)
+  am_chol_factor(S)
   S2 <- round(S, 0)
   expect_equal(
-    as.matrix(chol_factor(S2)),
+    as.matrix(am_chol_factor(S2)),
     chol(as.matrix(S2)),
     ignore_attr = TRUE
   )
 
   X <- adgeMatrix(cbind(1, matrix(rnorm(60), 20)))
   y <- rnorm(20)
-  lm_fit(X, y)
+  am_lm_fit(X, y)
   X2 <- -X
   expect_equal(
-    as.numeric(as.matrix(coef(lm_fit(X2, y)))),
+    as.numeric(as.matrix(coef(am_lm_fit(X2, y)))),
     as.numeric(qr.coef(qr(as.matrix(X2)), y)),
     tolerance = 1e-8
   )
@@ -61,8 +61,8 @@ test_that("model-cache entries are released when their source matrix is collecte
   set.seed(11)
   for (i in 1:8) {
     X <- matrix(rnorm(120), 30)
-    lm_fit(X, rnorm(30))
-    chol_factor(adgeMatrix(crossprod(X) + diag(4)))
+    am_lm_fit(X, rnorm(30))
+    am_chol_factor(adgeMatrix(crossprod(X) + diag(4)))
   }
   rm(X)
   gc()

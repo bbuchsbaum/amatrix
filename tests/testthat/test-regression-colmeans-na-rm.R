@@ -22,7 +22,7 @@ test_that("colmeans(adgeMatrix, na.rm=TRUE) matches base colMeans", {
   )
 
   expect_equal(
-    colmeans(x, na.rm = TRUE),
+    am_colmeans(x, na.rm = TRUE),
     base::colMeans(host, na.rm = TRUE),
     tolerance = 1e-12
   )

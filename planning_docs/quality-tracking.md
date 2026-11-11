@@ -246,39 +246,39 @@ matching these patterns are exempt by the coverage-table test:
 
 | Export | Oracle | Metamorphic | Adversarial | Regression | Benchmark | Tiers |
 |---|---|---|---|---|---|---|
-| `matmul` / `%*%` method | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
-| `gemm` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `addmm` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `dot` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_matmul` / `%*%` method | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
+| `am_gemm` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_addmm` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_dot` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `crossprod` method | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
 | `tcrossprod` method | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
-| `crossprod_add_diag` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `crossprod_weighted` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `tcrossprod_weighted` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `xty_weighted` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `quad_form` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `kron` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_crossprod_add_diag` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_crossprod_weighted` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_tcrossprod_weighted` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_xty_weighted` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_quad_form` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_kron` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `sparse %*%` (adgCMatrix method) | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
 
 #### 4.2.2 Reductions, scaling, element-wise
 
 | Export | Oracle | Metamorphic | Adversarial | Regression | Benchmark | Tiers |
 |---|---|---|---|---|---|---|
-| `rowsums` / `rowSums` method | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
-| `colsums` / `colSums` method | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
-| `rowmeans` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `colmeans` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `rowscale` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `colscale` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `sym` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `mat_trace` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `trace_estim` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `ewise` | ✓ | ✓ | — | — | ✓ | C✓ M? A? O? X— |
+| `am_rowsums` / `rowSums` method | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
+| `am_colsums` / `colSums` method | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
+| `am_rowmeans` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_colmeans` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_rowscale` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_colscale` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_sym` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_trace` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_trace_estim` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_ewise` | ✓ | ✓ | — | — | ✓ | C✓ M? A? O? X— |
 | `am_ewise_inplace` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `am_sweep` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `am_sweep_inplace` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `segment_sum` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `segment_mean` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_segment_sum` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_segment_mean` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `am_scatter_mean` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `am_rowargmax` | ○ | — | — | — | — | C✓ M? A? O? X— |
 | `am_rowargmin` | ○ | — | — | — | — | C✓ M? A? O? X— |
@@ -291,52 +291,52 @@ matching these patterns are exempt by the coverage-table test:
 | Export | Oracle | Metamorphic | Adversarial | Regression | Benchmark | Tiers |
 |---|---|---|---|---|---|---|
 | `solve` method | ✓ | ○ | ○ | — | ✓ | C✓ M? A? O? X— |
-| `solve_triangular` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
+| `am_solve_triangular` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
 | `chol` method | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
-| `chol_factor` | ✓ | ✓ | ✓ | ✓ | — | C✓ M? A? O? X— |
-| `chol_solve` | ✓ | — | — | — | — | C✓ M? A? O? X— |
-| `chol_solve_batches` | ✓ | — | — | — | — | C✓ M? A? O? X— |
-| `chol_diag` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `chol_logdet` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `batch_chol` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
-| `batch_solve` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
-| `batch_crossprod` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `lu_factor` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `lu_solve` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
+| `am_chol_factor` | ✓ | ✓ | ✓ | ✓ | — | C✓ M? A? O? X— |
+| `am_chol_solve` | ✓ | — | — | — | — | C✓ M? A? O? X— |
+| `am_chol_solve_batches` | ✓ | — | — | — | — | C✓ M? A? O? X— |
+| `am_chol_diag` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_chol_logdet` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_batch_chol` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
+| `am_batch_solve` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
+| `am_batch_crossprod` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_lu_factor` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_lu_solve` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
 | `am_qr` | ✓ | ✓ | — | ✓ | ✓ | C✓ M? A? O? X— |
-| `qr_info` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
-| `qr_downdate` | ✓ | — | ✓ | — | — | C✓ M? A? O? X— |
+| `am_qr_info` | ○ | ✓ | — | — | — | C✓ M? A? O? X— |
+| `am_qr_downdate` | ✓ | — | ✓ | — | — | C✓ M? A? O? X— |
 
 #### 4.2.4 Spectral and iterative
 
 | Export | Oracle | Metamorphic | Adversarial | Regression | Benchmark | Tiers |
 |---|---|---|---|---|---|---|
 | `svd` method | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
-| `svd_factor` | ✓ | — | — | — | ○ | C✓ M? A? O? X— |
-| `svd_project` | ✓ | — | — | — | — | C✓ M? A? O? X— |
-| `svd_reconstruct` | ✓ | — | — | — | — | C✓ M? A? O? X— |
-| `eigh` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
-| `rsvd` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
+| `am_svd_factor` | ✓ | — | — | — | ○ | C✓ M? A? O? X— |
+| `am_svd_project` | ✓ | — | — | — | — | C✓ M? A? O? X— |
+| `am_svd_reconstruct` | ✓ | — | — | — | — | C✓ M? A? O? X— |
+| `am_eigh` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
+| `am_rsvd` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
 | `am_irlba` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `irlba_native` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `block_lanczos` | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
-| `block_svd` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
-| `mat_sqrt` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `mat_pow` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `mat_log` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_irlba_native` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_block_lanczos` | ✓ | ✓ | ✓ | — | ✓ | C✓ M? A? O? X— |
+| `am_block_svd` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
+| `am_sqrtm` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_powm` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_logm` | ○ | — | — | — | — | C✓ M? A? O? X— |
 
 #### 4.2.5 Statistical models
 
 | Export | Oracle | Metamorphic | Adversarial | Regression | Benchmark | Tiers |
 |---|---|---|---|---|---|---|
-| `lm_fit` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `many_lm` | ✓ | ✓ | — | — | ✓ | C✓ M? A? O? X— |
-| `array_lm` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `lm_loo_cv` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `wls_fit` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `ridge_fit` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `ridge_path` | ○ | ✓ | ✓ | — | — | C✓ M? A? O? X— |
-| `pca_coef` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_lm_fit` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_many_lm` | ✓ | ✓ | — | — | ✓ | C✓ M? A? O? X— |
+| `am_array_lm` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_lm_loo_cv` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_wls_fit` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_ridge_fit` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_ridge_path` | ○ | ✓ | ✓ | — | — | C✓ M? A? O? X— |
+| `am_pca_coef` | ○ | — | — | — | — | C✓ M? A? O? X— |
 
 ### 4.2.7 Composed workflow tests
 
@@ -361,14 +361,14 @@ variance. The reference is a 15-line plain-R GP via
 
 | Export | Oracle | Metamorphic | Adversarial | Regression | Benchmark | Tiers |
 |---|---|---|---|---|---|---|
-| `dist_matrix` | ✓ | ✓ | — | — | ✓ | C✓ M? A? O? X— |
-| `pairwise_sqdist_argmin` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `kernel_matrix` | ✓ | ✓ | ✓ | — | — | C✓ M? A? O? X— |
-| `covariance` | ✓ | ✓ | — | — | ✓ | C✓ M? A? O? X— |
-| `correlation` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `sinkhorn` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
-| `woodbury_solve` | ○ | — | — | — | — | C✓ M? A? O? X— |
-| `woodbury_logdet` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_dist_matrix` | ✓ | ✓ | — | — | ✓ | C✓ M? A? O? X— |
+| `am_pairwise_sqdist_argmin` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_kernel_matrix` | ✓ | ✓ | ✓ | — | — | C✓ M? A? O? X— |
+| `am_covariance` | ✓ | ✓ | — | — | ✓ | C✓ M? A? O? X— |
+| `am_correlation` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_sinkhorn` | ✓ | — | — | — | ✓ | C✓ M? A? O? X— |
+| `am_woodbury_solve` | ○ | — | — | — | — | C✓ M? A? O? X— |
+| `am_woodbury_logdet` | ○ | — | — | — | — | C✓ M? A? O? X— |
 
 ---
 

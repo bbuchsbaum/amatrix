@@ -38,6 +38,6 @@ m <- adgeMatrix(matrix(runif(12), 3, 4), preferred_backend = "cpu")
 
 }
 \seealso{
-\code{\link{am_sweep_inplace}}, \code{\link{rh_rowSums}},
-  \code{\link{rh_colSums}}
+\code{\link{am_sweep_inplace}}, \code{\link{am_rh_rowSums}},
+  \code{\link{am_rh_colSums}}
 }

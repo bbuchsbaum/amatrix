@@ -73,24 +73,24 @@ test_that("weighted QR cache is not reused for different weights with equal mome
   w <- runif(50, 0.5, 2)
   XA <- adgeMatrix(X)
 
-  f1 <- wls_fit(XA, y, w, method = "qr")
+  f1 <- am_wls_fit(XA, y, w, method = "qr")
   # rev(w) has the same length, sum and sum of squares as w.
-  f2 <- wls_fit(XA, y, rev(w), method = "qr")
+  f2 <- am_wls_fit(XA, y, rev(w), method = "qr")
   expect_equal(
     as.numeric(as.matrix(coef(f2))),
     as.numeric(stats::lm.wfit(X, y, rev(w))$coefficients),
     tolerance = 1e-10
   )
   # Identical weights still hit the cache.
-  f3 <- wls_fit(XA, y, rev(w), method = "qr")
+  f3 <- am_wls_fit(XA, y, rev(w), method = "qr")
   expect_true(isTRUE(f3$cache_reused))
   expect_equal(as.matrix(coef(f3)), as.matrix(coef(f2)))
 })
 
 test_that("chol_solve rejects a right-hand side with the wrong number of rows", {
   S <- crossprod(matrix(sin(1:36), 6)) + diag(6)
-  f <- chol_factor(adgeMatrix(S))
-  expect_error(chol_solve(f, rep(1, 7)), class = "amatrix_bad_arg")
-  expect_error(chol_solve(f, rep(1, 3)), class = "amatrix_bad_arg")
-  expect_equal(as.numeric(chol_solve(f, rep(1, 6))), as.numeric(solve(S, rep(1, 6))))
+  f <- am_chol_factor(adgeMatrix(S))
+  expect_error(am_chol_solve(f, rep(1, 7)), class = "amatrix_bad_arg")
+  expect_error(am_chol_solve(f, rep(1, 3)), class = "amatrix_bad_arg")
+  expect_equal(as.numeric(am_chol_solve(f, rep(1, 6))), as.numeric(solve(S, rep(1, 6))))
 })

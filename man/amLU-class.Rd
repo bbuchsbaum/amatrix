@@ -6,14 +6,14 @@
 \title{LU factorization result for general square matrices}
 \description{
 Stores a square matrix together with its pivoted LU factorization
-(LAPACK \code{DGETRF}), computed once by \code{\link{lu_factor}} and
-reused by every \code{\link{lu_solve}} call (LAPACK \code{DGETRS}).
+(LAPACK \code{DGETRF}), computed once by \code{\link{am_lu_factor}} and
+reused by every \code{\link{am_lu_solve}} call (LAPACK \code{DGETRS}).
 }
 \section{Slots}{
 
 \describe{
 \item{\code{A}}{Numeric square matrix; the original matrix passed to
-\code{\link{lu_factor}}.}
+\code{\link{am_lu_factor}}.}
 
 \item{\code{lu}}{The \pkg{Matrix} \code{denseLU} factorization of \code{A}, or
 \code{NULL} for an empty object.}
@@ -29,5 +29,5 @@ object, or \code{NA} for base matrices.}
 }}
 
 \seealso{
-\code{\link{lu_factor}}, \code{\link{lu_solve}}
+\code{\link{am_lu_factor}}, \code{\link{am_lu_solve}}
 }

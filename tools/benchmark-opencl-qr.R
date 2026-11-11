@@ -65,7 +65,7 @@ bench_qr_case <- function(case_name, case, backend, reps = 5L) {
   x_arg <- make_qr_operand(case$X, backend)
   y_arg <- make_qr_operand(case$Y, backend)
   qr_fit <- qr(x_arg)
-  qr_meta <- tryCatch(qr_info(qr_fit), error = function(e) NULL)
+  qr_meta <- tryCatch(am_qr_info(qr_fit), error = function(e) NULL)
   qr_ref <- qr(case$X)
   coef_ref <- qr.coef(qr_ref, case$Y)
   fitted_ref <- qr.fitted(qr_ref, case$Y)

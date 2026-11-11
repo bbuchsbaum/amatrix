@@ -17,69 +17,69 @@
 
 test_that("chol_logdet equals log(det(S))", {
   d  <- .lmm_spd
-  fac <- chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
-  expect_equal(chol_logdet(fac),
+  fac <- am_chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
+  expect_equal(am_chol_logdet(fac),
                as.numeric(determinant(d$S, logarithm = TRUE)$modulus),
                tolerance = 1e-10)
 })
 
 test_that("chol_logdet errors on non-amChol", {
-  expect_error(chol_logdet(list(factor = diag(3))), "amChol")
+  expect_error(am_chol_logdet(list(factor = diag(3))), "amChol")
 })
 
 # ── chol_diag ─────────────────────────────────────────────────────────────
 
 test_that("chol_diag returns diagonal of R", {
   d   <- .lmm_spd
-  fac <- chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
-  expect_equal(chol_diag(fac), diag(d$ch), tolerance = 1e-10)
+  fac <- am_chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
+  expect_equal(am_chol_diag(fac), diag(d$ch), tolerance = 1e-10)
 })
 
 test_that("chol_diag values are positive (SPD input)", {
   d   <- .lmm_spd
-  fac <- chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
-  expect_true(all(chol_diag(fac) > 0))
+  fac <- am_chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
+  expect_true(all(am_chol_diag(fac) > 0))
 })
 
 # ── quad_form ──────────────────────────────────────────────────────────────
 
 test_that("quad_form vector matches t(v) %*% solve(S) %*% v", {
   d   <- .lmm_spd
-  fac <- chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
+  fac <- am_chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
   set.seed(7)
   v   <- rnorm(d$p)
   ref <- as.numeric(t(v) %*% solve(d$S) %*% v)
-  expect_equal(quad_form(fac, v), ref, tolerance = 1e-8)
+  expect_equal(am_quad_form(fac, v), ref, tolerance = 1e-8)
 })
 
 test_that("quad_form matrix matches t(V) %*% solve(S) %*% V", {
   d   <- .lmm_spd
-  fac <- chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
+  fac <- am_chol_factor(adgeMatrix(d$S, preferred_backend = "cpu"))
   set.seed(8)
   V   <- matrix(rnorm(d$p * 3L), d$p, 3L)
   ref <- t(V) %*% solve(d$S) %*% V
-  expect_equal(quad_form(fac, V), ref, tolerance = 1e-8)
+  expect_equal(am_quad_form(fac, V), ref, tolerance = 1e-8)
 })
 
 # ── eigh ───────────────────────────────────────────────────────────────────
 
 test_that("eigh eigenvalues match eigen() on SPD matrix", {
   d   <- .lmm_spd
-  ev  <- eigh(adgeMatrix(d$S, preferred_backend = "cpu"))
+  ev  <- am_eigh(adgeMatrix(d$S, preferred_backend = "cpu"))
   ref <- eigen(d$S, symmetric = TRUE)
   expect_equal(sort(ev$values, decreasing = TRUE), ref$values, tolerance = 1e-8)
 })
 
 test_that("eigh eigenvectors are orthonormal", {
   d   <- .lmm_spd
-  ev  <- eigh(adgeMatrix(d$S, preferred_backend = "cpu"))
+  ev  <- am_eigh(adgeMatrix(d$S, preferred_backend = "cpu"))
   UtU <- t(ev$vectors) %*% ev$vectors
   expect_equal(UtU, diag(d$p), tolerance = 1e-8)
 })
 
 test_that("eigh satisfies S V = V diag(lambda)", {
   d   <- .lmm_spd
-  ev  <- eigh(adgeMatrix(d$S, preferred_backend = "cpu"))
+  ev  <- am_eigh(adgeMatrix(d$S, preferred_backend = "cpu"))
   resid <- norm(d$S %*% ev$vectors -
                   ev$vectors %*% diag(ev$values, nrow = length(ev$values)), "F") /
            norm(d$S, "F")
@@ -96,14 +96,14 @@ test_that("crossprod_weighted matches t(X) %*% diag(w) %*% X", {
   aX <- adgeMatrix(X, preferred_backend = "cpu")
 
   ref <- t(X) %*% diag(w) %*% X
-  res <- as.matrix(crossprod_weighted(aX, w))
+  res <- as.matrix(am_crossprod_weighted(aX, w))
   expect_equal(res, ref, tolerance = 1e-10)
 })
 
 test_that("crossprod_weighted errors when length(w) != nrow(X)", {
   set.seed(22)
   aX <- adgeMatrix(matrix(rnorm(20), 10, 2), preferred_backend = "cpu")
-  expect_error(crossprod_weighted(aX, runif(5)), "nrow")
+  expect_error(am_crossprod_weighted(aX, runif(5)), "nrow")
 })
 
 # ── tcrossprod_weighted ────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ test_that("tcrossprod_weighted matches tcrossprod(X * sqrt(w))", {
 
   # Row i scaled by sqrt(w[i]): equivalent to diag(sqrt(w)) %*% X %*% t(X) %*% diag(sqrt(w))
   ref <- tcrossprod(X * sqrt(w))
-  res <- as.matrix(tcrossprod_weighted(aX, w))
+  res <- as.matrix(am_tcrossprod_weighted(aX, w))
   expect_equal(res, ref, tolerance = 1e-10)
 })
 
@@ -132,7 +132,7 @@ test_that("xty_weighted matches t(X) %*% diag(w) %*% y", {
   aX <- adgeMatrix(X, preferred_backend = "cpu")
 
   ref <- t(X) %*% diag(w) %*% y
-  res <- as.matrix(xty_weighted(aX, w, y))
+  res <- as.matrix(am_xty_weighted(aX, w, y))
   expect_equal(res, ref, tolerance = 1e-10)
 })
 
@@ -146,7 +146,7 @@ test_that("wls_fit normal method matches lm.wfit", {
   w  <- runif(n, 0.5, 2.0)
 
   fit_ref <- lm.wfit(X, y, w = w)
-  fit_am  <- wls_fit(X, y, weights = w, method = "normal", cache = FALSE)
+  fit_am  <- am_wls_fit(X, y, weights = w, method = "normal", cache = FALSE)
 
   ref_coef <- as.numeric(fit_ref$coefficients)
   am_coef  <- as.numeric(coef(fit_am))

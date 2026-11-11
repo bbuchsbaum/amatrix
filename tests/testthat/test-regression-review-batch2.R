@@ -8,11 +8,11 @@ test_that("lm_loo_cv matches brute-force leave-one-out", {
   brute <- vapply(seq_len(n), function(i) {
     y[i] - sum(X[i, ] * qr.coef(qr(X[-i, ]), y[-i]))
   }, numeric(1))
-  expect_equal(lm_loo_cv(X, y)$residuals, brute, tolerance = 1e-10)
-  expect_equal(lm_loo_cv(adgeMatrix(X), y)$residuals, brute, tolerance = 1e-10)
-  expect_equal(lm_loo_cv(X, y)$mse, mean(brute^2), tolerance = 1e-10)
-  expect_error(lm_loo_cv(cbind(X, X[, 2]), y), class = "amatrix_bad_arg")
-  expect_error(lm_loo_cv(X, cbind(y, y)), class = "amatrix_bad_arg")
+  expect_equal(am_lm_loo_cv(X, y)$residuals, brute, tolerance = 1e-10)
+  expect_equal(am_lm_loo_cv(adgeMatrix(X), y)$residuals, brute, tolerance = 1e-10)
+  expect_equal(am_lm_loo_cv(X, y)$mse, mean(brute^2), tolerance = 1e-10)
+  expect_error(am_lm_loo_cv(cbind(X, X[, 2]), y), class = "amatrix_bad_arg")
+  expect_error(am_lm_loo_cv(X, cbind(y, y)), class = "amatrix_bad_arg")
 })
 
 test_that("lu_factor stores a factorization that lu_solve reuses", {
@@ -20,27 +20,27 @@ test_that("lu_factor stores a factorization that lu_solve reuses", {
   A <- matrix(rnorm(25), 5, dimnames = list(NULL, letters[1:5]))
   b <- rnorm(5)
   B <- matrix(rnorm(10), 5)
-  f <- lu_factor(A)
+  f <- am_lu_factor(A)
   expect_s4_class(f@lu, "denseLU")
-  expect_equal(lu_solve(f, b), solve(A, b), tolerance = 1e-12)
-  expect_equal(lu_solve(f, B), solve(A, B), tolerance = 1e-12)
-  expect_equal(lu_solve(lu_factor(adgeMatrix(A)), b), solve(A, b), tolerance = 1e-12)
-  expect_error(lu_solve(lu_factor(matrix(1, 3, 3)), 1:3), "singular")
-  expect_error(lu_solve(f, 1:3), class = "amatrix_bad_arg")
+  expect_equal(am_lu_solve(f, b), solve(A, b), tolerance = 1e-12)
+  expect_equal(am_lu_solve(f, B), solve(A, B), tolerance = 1e-12)
+  expect_equal(am_lu_solve(am_lu_factor(adgeMatrix(A)), b), solve(A, b), tolerance = 1e-12)
+  expect_error(am_lu_solve(am_lu_factor(matrix(1, 3, 3)), 1:3), "singular")
+  expect_error(am_lu_solve(f, 1:3), class = "amatrix_bad_arg")
 })
 
 test_that("normal-equation fits report rank without a QR of X", {
   set.seed(7)
   X <- cbind(1, matrix(rnorm(150), 50))
   y <- rnorm(50)
-  expect_identical(as.integer(lm_fit(X, y, method = "normal")$rank), 4L)
-  expect_identical(as.integer(lm_fit(X, y, method = "qr")$rank), 4L)
+  expect_identical(as.integer(am_lm_fit(X, y, method = "normal")$rank), 4L)
+  expect_identical(as.integer(am_lm_fit(X, y, method = "qr")$rank), 4L)
   deficient <- adgeMatrix(crossprod(cbind(X, X[, 2])))
   expect_identical(amatrix:::.amatrix_xtx_rank(deficient), 4L)
 
   Xs <- Matrix::rsparsematrix(400, 12, 0.3)
   ys <- rnorm(400)
-  fit <- lm_fit(adgCMatrix(Xs), ys)
+  fit <- am_lm_fit(adgCMatrix(Xs), ys)
   ref <- as.numeric(Matrix::solve(Matrix::crossprod(Xs), Matrix::crossprod(Xs, ys)))
   expect_equal(as.numeric(as.matrix(coef(fit))), ref, tolerance = 1e-8)
   expect_identical(as.integer(fit$rank), 12L)
@@ -53,19 +53,19 @@ test_that("zero weights do not count towards residual degrees of freedom", {
   w <- c(rep(0, 10), runif(40, 0.5, 2))
   ref <- stats::lm.wfit(X, y, w)
   for (method in c("normal", "qr")) {
-    fit <- wls_fit(X, y, w, method = method)
+    fit <- am_wls_fit(X, y, w, method = method)
     expect_equal(fit$df.residual, ref$df.residual, info = method)
     expect_equal(as.numeric(as.matrix(coef(fit))), as.numeric(ref$coefficients),
                  tolerance = 1e-8, info = method)
   }
-  expect_error(wls_fit(X, y, c(Inf, rep(1, 49))), "finite")
+  expect_error(am_wls_fit(X, y, c(Inf, rep(1, 49))), "finite")
 })
 
 test_that("ridge_path predict works for several responses and flags off-grid lambda", {
   set.seed(9)
   X <- matrix(rnorm(120), 30)
   Y <- matrix(rnorm(60), 30)
-  rp <- ridge_path(X, Y, lambdas = c(0.5, 1, 2))
+  rp <- am_ridge_path(X, Y, lambdas = c(0.5, 1, 2))
   pred <- predict(rp, X, lambda = 1)
   ref <- X %*% solve(crossprod(X) + diag(4), crossprod(X, Y))
   expect_equal(unname(as.matrix(pred)), unname(ref), tolerance = 1e-8)
@@ -75,7 +75,7 @@ test_that("ridge_path predict works for several responses and flags off-grid lam
 test_that("rsvd validates k and am_scatter_mean matches a per-cluster reference", {
   set.seed(10)
   A <- matrix(rnorm(60), 10)
-  expect_error(rsvd(A, k = 7), "min\\(dim")
+  expect_error(am_rsvd(A, k = 7), "min\\(dim")
 
   X <- matrix(rnorm(400), 100)
   labels <- sample.int(6L, 100L, replace = TRUE)
@@ -94,9 +94,9 @@ test_that("trace_estim(seed=) leaves the caller's RNG stream untouched", {
   set.seed(303)
   expected <- runif(2)
   set.seed(303)
-  first <- trace_estim(A, k = 20L, seed = 1L)
+  first <- am_trace_estim(A, k = 20L, seed = 1L)
   expect_identical(runif(2), expected)
-  expect_identical(trace_estim(A, k = 20L, seed = 1L), first)
+  expect_identical(am_trace_estim(A, k = 20L, seed = 1L), first)
 })
 
 test_that("a user error does not mark a healthy backend unhealthy", {

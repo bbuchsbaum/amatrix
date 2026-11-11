@@ -13,7 +13,7 @@ make_ridge_spd <- function(n_obs, p, lambda = 0.5, seed = 1L) {
 make_kernel_spd <- function(n_obs, p, sigma = 1.0, jitter = 0.1, seed = 1L) {
   set.seed(seed)
   X <- matrix(rnorm(n_obs * p), nrow = n_obs, ncol = p)
-  kernel_matrix(X, kernel = "rbf", sigma = sigma) + diag(jitter, n_obs)
+  am_kernel_matrix(X, kernel = "rbf", sigma = sigma) + diag(jitter, n_obs)
 }
 
 .mlx_test_spec <- function() {
@@ -34,7 +34,7 @@ test_that("chol_factor returns correct upper triangular factor", {
   M <- make_spd(8L, seed = 42L)
   X <- as_adgeMatrix(M)
 
-  fac <- chol_factor(X)
+  fac <- am_chol_factor(X)
   expect_s4_class(fac, "amChol")
 
   R <- as.matrix(fac)
@@ -49,10 +49,10 @@ test_that("chol_factor returns correct upper triangular factor", {
 test_that("chol_solve matches base::solve for single RHS vector", {
   M <- make_spd(10L, seed = 7L)
   X <- as_adgeMatrix(M)
-  fac <- chol_factor(X)
+  fac <- am_chol_factor(X)
 
   b <- rnorm(10L)
-  sol <- chol_solve(fac, b)
+  sol <- am_chol_solve(fac, b)
   ref <- base::solve(M, b)
 
   expect_equal(as.numeric(sol), as.numeric(ref), tolerance = 1e-10)
@@ -62,12 +62,12 @@ test_that("chol_solve matches base::solve for multi-column B (k=1, 10, 100)", {
   n <- 12L
   M <- make_spd(n, seed = 11L)
   X <- as_adgeMatrix(M)
-  fac <- chol_factor(X)
+  fac <- am_chol_factor(X)
 
   for (k in c(1L, 10L, 100L)) {
     set.seed(k)
     B <- matrix(rnorm(n * k), n, k)
-    sol <- chol_solve(fac, B)
+    sol <- am_chol_solve(fac, B)
     ref <- base::solve(M, B)
     expect_equal(dim(sol), c(n, k))
     expect_lt(max(abs(sol - ref)), 1e-10)
@@ -78,7 +78,7 @@ test_that("chol_solve_batches matches repeated chol_solve calls", {
   n <- 10L
   M <- make_spd(n, seed = 13L)
   X <- as_adgeMatrix(M)
-  fac <- chol_factor(X)
+  fac <- am_chol_factor(X)
 
   rhs <- list(
     rnorm(n),
@@ -86,8 +86,8 @@ test_that("chol_solve_batches matches repeated chol_solve calls", {
     matrix(rnorm(n), nrow = n, ncol = 1L)
   )
 
-  out <- chol_solve_batches(fac, rhs)
-  ref <- lapply(rhs, function(b) chol_solve(fac, b))
+  out <- am_chol_solve_batches(fac, rhs)
+  ref <- lapply(rhs, function(b) am_chol_solve(fac, b))
 
   expect_length(out, length(rhs))
   for (idx in seq_along(rhs)) {
@@ -95,7 +95,7 @@ test_that("chol_solve_batches matches repeated chol_solve calls", {
   }
 
   rhs_arr <- array(rnorm(n * 2L * 4L), dim = c(n, 2L, 4L))
-  arr_out <- chol_solve_batches(fac, rhs_arr)
+  arr_out <- am_chol_solve_batches(fac, rhs_arr)
   expect_length(arr_out, 4L)
   for (idx in seq_along(arr_out)) {
     expect_equal(arr_out[[idx]], solve(M, rhs_arr[, , idx]), tolerance = 1e-10)
@@ -104,17 +104,17 @@ test_that("chol_solve_batches matches repeated chol_solve calls", {
 
 test_that("chol_solve_batches validates RHS dimensions", {
   M <- make_spd(5L, seed = 17L)
-  fac <- chol_factor(as_adgeMatrix(M))
-  expect_error(chol_solve_batches(fac, list(matrix(rnorm(6L), nrow = 6L))), "nrow")
-  expect_error(chol_solve_batches(fac, matrix(rnorm(5L), nrow = 5L)), "list of RHS")
+  fac <- am_chol_factor(as_adgeMatrix(M))
+  expect_error(am_chol_solve_batches(fac, list(matrix(rnorm(6L), nrow = 6L))), "nrow")
+  expect_error(am_chol_solve_batches(fac, matrix(rnorm(5L), nrow = 5L)), "list of RHS")
 })
 
 test_that("chol_factor reuses cache on second call", {
   M <- make_spd(6L, seed = 3L)
   X <- as_adgeMatrix(M)
 
-  fac1 <- chol_factor(X)
-  fac2 <- chol_factor(X)
+  fac1 <- am_chol_factor(X)
+  fac2 <- am_chol_factor(X)
 
   expect_equal(as.matrix(fac1), as.matrix(fac2), tolerance = 1e-10)
   expect_identical(fac1, fac2)
@@ -123,7 +123,7 @@ test_that("chol_factor reuses cache on second call", {
 test_that("amChol show method runs without error", {
   M <- make_spd(4L, seed = 5L)
   X <- as_adgeMatrix(M)
-  fac <- chol_factor(X)
+  fac <- am_chol_factor(X)
 
   expect_output(show(fac), "amChol")
 })
@@ -143,12 +143,12 @@ test_that("fast MLX Cholesky path matches CPU on ridge-like SPD many-RHS solves"
 
     expect_identical(amatrix_backend_plan(X_mlx, "chol")$chosen, "mlx")
 
-    fac <- chol_factor(X_mlx)
-    sol <- chol_solve(fac, B)
+    fac <- am_chol_factor(X_mlx)
+    sol <- am_chol_solve(fac, B)
     ref_sol <- solve(A, B)
     by_col <- vapply(
       seq_len(ncol(B)),
-      function(j) as.numeric(chol_solve(fac, B[, j])),
+      function(j) as.numeric(am_chol_solve(fac, B[, j])),
       numeric(nrow(B))
     )
     recon_rel <- .frob_norm(crossprod(as.matrix(fac)) - A) / .frob_norm(A)
@@ -182,8 +182,8 @@ test_that("fast MLX Cholesky path stays aligned on kernel-like SPD systems", {
 
     expect_identical(amatrix_backend_plan(X_mlx, "chol")$chosen, "mlx")
 
-    fac <- chol_factor(X_mlx)
-    sol <- chol_solve(fac, B)
+    fac <- am_chol_factor(X_mlx)
+    sol <- am_chol_solve(fac, B)
     ref_sol <- solve(A, B)
     recon_rel <- .frob_norm(crossprod(as.matrix(fac)) - A) / .frob_norm(A)
     solve_ref_rel <- .frob_norm(sol - ref_sol) / .frob_norm(ref_sol)
@@ -216,8 +216,8 @@ test_that("fast OpenCL Cholesky path matches CPU on dense SPD solves", {
     expect_identical(amatrix_backend_plan(X_opencl, "chol")$chosen, "opencl")
     expect_identical(amatrix_backend_plan(X_opencl, "solve", y = adgeMatrix(B, preferred_backend = "opencl", precision = "fast"))$chosen, "opencl")
 
-    fac <- chol_factor(X_opencl)
-    sol <- chol_solve(fac, B)
+    fac <- am_chol_factor(X_opencl)
+    sol <- am_chol_solve(fac, B)
     ref_sol <- solve(A, B)
     recon_rel <- .frob_norm(crossprod(as.matrix(fac)) - A) / .frob_norm(A)
     solve_ref_rel <- .frob_norm(sol - ref_sol) / .frob_norm(ref_sol)
@@ -260,12 +260,12 @@ test_that("fast OpenCL chol_factor retains resident factor for repeated solves",
     X_opencl <- adgeMatrix(A, preferred_backend = "opencl", precision = "fast")
     B_opencl <- adgeMatrix(B, preferred_backend = "opencl", precision = "fast")
 
-    fac <- chol_factor(X_opencl)
-    tri <- solve_triangular(fac, B)
-    sol <- chol_solve(fac, B)
-    tri_opencl <- solve_triangular(fac, B_opencl)
-    sol_opencl <- chol_solve(fac, B_opencl)
-    batch_opencl <- chol_solve_batches(fac, list(B_opencl, B_opencl))
+    fac <- am_chol_factor(X_opencl)
+    tri <- am_solve_triangular(fac, B)
+    sol <- am_chol_solve(fac, B)
+    tri_opencl <- am_solve_triangular(fac, B_opencl)
+    sol_opencl <- am_chol_solve(fac, B_opencl)
+    batch_opencl <- am_chol_solve_batches(fac, list(B_opencl, B_opencl))
 
     expect_true(inherits(fac@factor_obj, "aMatrix"))
     expect_identical(amatrix:::.amatrix_live_resident_backend(fac@factor_obj), "opencl")

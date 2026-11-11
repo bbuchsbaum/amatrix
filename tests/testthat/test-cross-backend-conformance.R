@@ -103,7 +103,7 @@
 
   # covariance vs cov()
   ref_cov <- cov(d$A_r)
-  am_cov  <- as.matrix(covariance(make(d$A_r)))
+  am_cov  <- as.matrix(am_covariance(make(d$A_r)))
   expect_equal(am_cov, ref_cov, tolerance = tol, label = tag("covariance"))
 
   # am_eigen: eigenvalues (sorted) + sign-invariant residual ||A·V - V·Λ||_F / ||A||_F
@@ -125,7 +125,7 @@
   ref_coef <- do.call(cbind, lapply(seq_len(3L), function(j)
     lm.fit(d$A_r, d$rhs_lm[, j])$coefficients))
   dimnames(ref_coef) <- NULL   # many_lm does not set dimnames
-  am_coef  <- as.matrix(many_lm(make(d$A_r), d$rhs_lm,
+  am_coef  <- as.matrix(am_many_lm(make(d$A_r), d$rhs_lm,
                                     method = "qr", cache = FALSE)$coefficients)
   expect_equal(am_coef, ref_coef, tolerance = tol, label = tag("many_lm"))
 
@@ -135,7 +135,7 @@
   # float64, so we floor the tolerance at 1e-6 even for the CPU backend.
   ref_dist <- as.matrix(dist(d$A_r, method = "euclidean"))
   dimnames(ref_dist) <- NULL   # dist_matrix does not set dimnames
-  am_d     <- dist_matrix(d$A_r, method = "euclidean")
+  am_d     <- am_dist_matrix(d$A_r, method = "euclidean")
   expect_equal(am_d, ref_dist, tolerance = max(tol, 1e-6),
                label = tag("dist_matrix_euclidean"))
 }
@@ -146,7 +146,7 @@
   X_in <- adgeMatrix(d$low_rank_r, preferred_backend = backend_name, precision = precision)
   k   <- 3L  # true rank of d$low_rank_r is 3
 
-  sv  <- rsvd(X_in, k = k, n_oversamples = 10L, n_iter = 4L)
+  sv  <- am_rsvd(X_in, k = k, n_oversamples = 10L, n_iter = 4L)
   X_rec <- sv$u %*% diag(sv$d) %*% t(sv$v)
 
   # Reconstruction error: compare to optimal rank-k truncated SVD.
@@ -242,18 +242,18 @@
   X_train <- adgeMatrix(X_train_host, preferred_backend = backend_name)
   X_test  <- adgeMatrix(X_test_host,  preferred_backend = backend_name)
 
-  K_train   <- kernel_matrix(X_train, kernel = "rbf", sigma = lengthscale)
+  K_train   <- am_kernel_matrix(X_train, kernel = "rbf", sigma = lengthscale)
   K_train   <- as.matrix(K_train) * (amplitude^2) +
                diag(noise^2, n_train)
-  K_cross   <- kernel_matrix(X_test, X_train, kernel = "rbf", sigma = lengthscale)
+  K_cross   <- am_kernel_matrix(X_test, X_train, kernel = "rbf", sigma = lengthscale)
   K_cross   <- as.matrix(K_cross) * (amplitude^2)
-  K_test    <- kernel_matrix(X_test, kernel = "rbf", sigma = lengthscale)
+  K_test    <- am_kernel_matrix(X_test, kernel = "rbf", sigma = lengthscale)
   K_test    <- as.matrix(K_test) * (amplitude^2) +
                diag(noise^2, n_test)
 
   K_am    <- as_adgeMatrix(K_train, preferred_backend = backend_name)
-  factor  <- chol_factor(K_am)
-  alpha   <- chol_solve(factor, matrix(y_train, ncol = 1L))
+  factor  <- am_chol_factor(K_am)
+  alpha   <- am_chol_solve(factor, matrix(y_train, ncol = 1L))
   alpha_v <- as.numeric(alpha)
 
   mu_am   <- as.numeric(K_cross %*% alpha_v)
@@ -262,12 +262,12 @@
   # Using diag(A %*% B) = rowSums(A * t(B)): with A = K_cross (n_test x n_train)
   # and B = K^{-1} %*% t(K_cross) = Ks_t_m (n_train x n_test), we get
   # diag(A B) = rowSums(K_cross * t(Ks_t_m)).
-  Ks_t    <- chol_solve(factor, t(K_cross))
+  Ks_t    <- am_chol_solve(factor, t(K_cross))
   Ks_t_m  <- as.matrix(Ks_t)
   var_am  <- diag(K_test) - rowSums(K_cross * t(Ks_t_m))
 
   # Log marginal likelihood via chol_logdet + quad_form
-  logdet_K <- chol_logdet(factor)
+  logdet_K <- am_chol_logdet(factor)
   quad     <- sum(y_train * alpha_v)
   lml_am   <- -0.5 * quad - 0.5 * logdet_K - 0.5 * n_train * log(2 * pi)
 
@@ -330,7 +330,7 @@ test_that("dist_matrix euclidean matches base R", {
   Y <- matrix(rnorm(30 * 8), 30, 8)
 
   # Cross euclidean distance
-  D_gpu  <- dist_matrix(X, Y, method = "euclidean")
+  D_gpu  <- am_dist_matrix(X, Y, method = "euclidean")
   # Build reference: euclidean cross-distance
   D_base <- matrix(0, 50, 30)
   for (i in seq_len(50)) for (j in seq_len(30))
@@ -339,7 +339,7 @@ test_that("dist_matrix euclidean matches base R", {
                label = "dist_matrix/euclidean cross")
 
   # Self-distance: diagonal must be exactly 0
-  D_self <- dist_matrix(X, method = "euclidean")
+  D_self <- am_dist_matrix(X, method = "euclidean")
   expect_equal(diag(D_self), rep(0, 50), label = "dist_matrix/euclidean self-diag")
 
   # Symmetric
@@ -350,7 +350,7 @@ test_that("dist_matrix euclidean matches base R", {
 test_that("dist_matrix sqeuclidean matches base R", {
   set.seed(12)
   X <- matrix(rnorm(40 * 6), 40, 6)
-  D_sq   <- dist_matrix(X, method = "sqeuclidean")
+  D_sq   <- am_dist_matrix(X, method = "sqeuclidean")
   # Reference: squared euclidean from outer product identity
   nx <- rowSums(X^2)
   D_base <- outer(nx, nx, "+") - 2 * tcrossprod(X)
@@ -366,11 +366,11 @@ test_that("kernel_matrix linear matches tcrossprod", {
   X <- matrix(rnorm(30 * 5), 30, 5)
   Y <- matrix(rnorm(20 * 5), 20, 5)
 
-  K_self <- kernel_matrix(X, kernel = "linear")
+  K_self <- am_kernel_matrix(X, kernel = "linear")
   expect_equal(K_self, tcrossprod(X), tolerance = .GPU_TOL,
                label = "kernel_matrix/linear self")
 
-  K_cross <- kernel_matrix(X, Y, kernel = "linear")
+  K_cross <- am_kernel_matrix(X, Y, kernel = "linear")
   expect_equal(K_cross, tcrossprod(X, Y), tolerance = .GPU_TOL,
                label = "kernel_matrix/linear cross")
 })
@@ -380,7 +380,7 @@ test_that("kernel_matrix rbf matches reference implementation", {
   X     <- matrix(rnorm(20 * 4), 20, 4)
   sigma <- 0.5
 
-  K_rbf <- kernel_matrix(X, kernel = "rbf", sigma = sigma)
+  K_rbf <- am_kernel_matrix(X, kernel = "rbf", sigma = sigma)
 
   # Reference: K(x,y) = exp(-||x-y||^2 / (2*sigma^2))
   nx     <- rowSums(X^2)
@@ -400,7 +400,7 @@ test_that("kernel_matrix polynomial matches reference implementation", {
   X      <- matrix(rnorm(25 * 4), 25, 4)
   degree <- 3L; coef <- 1.0
 
-  K_poly <- kernel_matrix(X, kernel = "polynomial", degree = degree, coef = coef)
+  K_poly <- am_kernel_matrix(X, kernel = "polynomial", degree = degree, coef = coef)
   G      <- tcrossprod(X)
   K_base <- (G + coef)^degree
   expect_equal(K_poly, K_base, tolerance = .GPU_TOL,

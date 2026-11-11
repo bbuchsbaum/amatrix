@@ -156,16 +156,16 @@ test_that("numeric %*% adgeMatrix has base R's shape", {
 })
 
 test_that("matrix functions are correct for 1 x 1 input and keep dimnames", {
-  expect_equal(as.numeric(as.matrix(mat_sqrt(matrix(2.25)))), 1.5)
-  expect_equal(as.numeric(as.matrix(mat_sqrt(matrix(4)))), 2)
-  expect_equal(as.numeric(as.matrix(mat_log(matrix(exp(2))))), 2)
+  expect_equal(as.numeric(as.matrix(am_sqrtm(matrix(2.25)))), 1.5)
+  expect_equal(as.numeric(as.matrix(am_sqrtm(matrix(4)))), 2)
+  expect_equal(as.numeric(as.matrix(am_logm(matrix(exp(2))))), 2)
 
   S <- crossprod(matrix(sin(1:20), 5)) + diag(4)
   dimnames(S) <- list(letters[1:4], letters[1:4])
-  root <- mat_sqrt(S)
+  root <- am_sqrtm(S)
   expect_equal(as.matrix(root) %*% as.matrix(root), S, ignore_attr = TRUE)
   expect_identical(dimnames(root), dimnames(S))
-  expect_same_as_host(mat_pow(adgeMatrix(S), 2), S %*% S)
+  expect_same_as_host(am_powm(adgeMatrix(S), 2), S %*% S)
 })
 
 test_that("wrappers accept plain matrices as documented", {
@@ -174,15 +174,15 @@ test_that("wrappers accept plain matrices as documented", {
   A <- adgeMatrix(m)
   S <- crossprod(matrix(sin(1:20), 5)) + diag(4)
 
-  expect_s4_class(matmul(m, m2), "adgeMatrix")
-  expect_same_as_host(matmul(m, m2), m %*% m2)
-  expect_same_as_host(matmul(Matrix::Matrix(m, sparse = TRUE), m2), m %*% m2)
-  expect_same_as_host(gemm(m, m2), m %*% m2)
-  expect_same_as_host(gemm(A, adgeMatrix(m2), C = m, beta = 2), m %*% m2 + 2 * m)
-  expect_equal(rowsums(m), rowSums(m))
-  expect_equal(colsums(m), colSums(m))
-  expect_equal(sort(eigh(S)$values), sort(eigen(S)$values))
-  expect_same_as_host(ewise("+", m, m), m + m)
+  expect_s4_class(am_matmul(m, m2), "adgeMatrix")
+  expect_same_as_host(am_matmul(m, m2), m %*% m2)
+  expect_same_as_host(am_matmul(Matrix::Matrix(m, sparse = TRUE), m2), m %*% m2)
+  expect_same_as_host(am_gemm(m, m2), m %*% m2)
+  expect_same_as_host(am_gemm(A, adgeMatrix(m2), C = m, beta = 2), m %*% m2 + 2 * m)
+  expect_equal(am_rowsums(m), rowSums(m))
+  expect_equal(am_colsums(m), colSums(m))
+  expect_equal(sort(am_eigh(S)$values), sort(eigen(S)$values))
+  expect_same_as_host(am_ewise("+", m, m), m + m)
 })
 
 test_that("diag() extraction matches base without copying the matrix", {

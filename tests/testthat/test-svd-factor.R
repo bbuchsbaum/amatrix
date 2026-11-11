@@ -54,7 +54,7 @@ drop_mock_backend <- function(name = "mockgpu") {
 test_that("svd_factor singular values match base::svd", {
   dat <- make_dense(20L, 8L, seed = 1L)
   k <- 5L
-  fac <- svd_factor(dat$am, k = k)
+  fac <- am_svd_factor(dat$am, k = k)
   base_svd <- base::svd(dat$host)
 
   expect_s4_class(fac, "amSVD")
@@ -74,7 +74,7 @@ test_that("svd_factor subspace method recovers full-rank small problems", {
   k <- 5L
 
   set.seed(1101L)
-  fac <- svd_factor(dat$am, k = k, method = "subspace")
+  fac <- am_svd_factor(dat$am, k = k, method = "subspace")
   base_svd <- base::svd(dat$host)
 
   expect_s4_class(fac, "amSVD")
@@ -106,7 +106,7 @@ test_that("svd_factor subspace uses compiled resident plans for dense backends",
       )
 
       set.seed(1301L)
-      fac <- svd_factor(X, k = 6L, method = "subspace", n_oversamples = 6L, n_iter = 1L)
+      fac <- am_svd_factor(X, k = 6L, method = "subspace", n_oversamples = 6L, n_iter = 1L)
       ref <- base::svd(dat$host)$d[seq_len(6L)]
       rel_sv_err <- max(abs(fac@d - ref) / pmax(abs(ref), 1e-12))
 
@@ -151,7 +151,7 @@ test_that("svd_factor subspace reuses sparse lhs resident plans", {
       )
 
       set.seed(1302L)
-      fac <- svd_factor(X, k = 6L, method = "subspace", n_oversamples = 8L, n_iter = 2L)
+      fac <- am_svd_factor(X, k = 6L, method = "subspace", n_oversamples = 8L, n_iter = 2L)
       ref <- diag_vals[seq_len(6L)]
       rel_sv_err <- max(abs(fac@d - ref) / pmax(abs(ref), 1e-12))
 
@@ -185,7 +185,7 @@ test_that("svd_factor subspace uses backend-native randomized SVD when available
   dat <- make_dense(60L, 24L, seed = 12L)
   X <- adgeMatrix(dat$host, preferred_backend = "mocksubspace", precision = "fast")
 
-  fac <- svd_factor(X, k = 8L, method = "subspace", n_oversamples = 6L, n_iter = 1L)
+  fac <- am_svd_factor(X, k = 8L, method = "subspace", n_oversamples = 6L, n_iter = 1L)
 
   expect_identical(calls$rsvd, 1L)
   expect_identical(fac@method, "subspace")
@@ -197,14 +197,14 @@ test_that("svd_factor subspace uses backend-native randomized SVD when available
 test_that("svd_project matches t(U) %*% Y", {
   dat <- make_dense(15L, 6L, seed = 2L)
   k <- 4L
-  fac <- svd_factor(dat$am, k = k)
+  fac <- am_svd_factor(dat$am, k = k)
 
   set.seed(99L)
   Y_single <- matrix(rnorm(15L), nrow = 15L, ncol = 1L)
   Y_multi <- matrix(rnorm(15L * 7L), nrow = 15L, ncol = 7L)
 
-  Z_single <- svd_project(fac, Y_single)
-  Z_multi <- svd_project(fac, Y_multi)
+  Z_single <- am_svd_project(fac, Y_single)
+  Z_multi <- am_svd_project(fac, Y_multi)
 
   expect_equal(dim(Z_single), c(k, 1L))
   expect_equal(dim(Z_multi), c(k, 7L))
@@ -215,19 +215,19 @@ test_that("svd_project matches t(U) %*% Y", {
 test_that("svd_reconstruct matches V %*% diag(1/d) %*% Z", {
   dat <- make_dense(12L, 7L, seed = 3L)
   k <- 3L
-  fac <- svd_factor(dat$am, k = k)
+  fac <- am_svd_factor(dat$am, k = k)
 
   set.seed(101L)
   Z <- matrix(rnorm(k * 5L), nrow = k, ncol = 5L)
   expected <- fac@v %*% diag(1 / fac@d) %*% Z
 
-  expect_equal(svd_reconstruct(fac, Z), expected, tolerance = 1e-10)
+  expect_equal(am_svd_reconstruct(fac, Z), expected, tolerance = 1e-10)
 })
 
 test_that("pca_coef round-trip matches manual PCR formula", {
   dat <- make_dense(30L, 10L, seed = 4L)
   k <- 6L
-  fac <- svd_factor(dat$am, k = k)
+  fac <- am_svd_factor(dat$am, k = k)
 
   set.seed(202L)
   Y <- matrix(rnorm(30L * 3L), nrow = 30L, ncol = 3L)
@@ -236,20 +236,20 @@ test_that("pca_coef round-trip matches manual PCR formula", {
   base_svd <- base::svd(dat$host, nu = k, nv = k)
   expected <- base_svd$v %*% base::diag(1 / base_svd$d[seq_len(k)]) %*% base::crossprod(base_svd$u, Y)
 
-  expect_equal(pca_coef(fac, Y), expected, tolerance = 1e-8)
+  expect_equal(am_pca_coef(fac, Y), expected, tolerance = 1e-8)
 })
 
 test_that("svd_factor cache reuse returns identical factor", {
   dat <- make_dense(18L, 9L, seed = 5L)
   k <- 4L
-  fac1 <- svd_factor(dat$am, k = k)
-  fac2 <- svd_factor(dat$am, k = k)
+  fac1 <- am_svd_factor(dat$am, k = k)
+  fac2 <- am_svd_factor(dat$am, k = k)
 
   # Identical same-object because of cache
   expect_identical(fac1, fac2)
 
   # Different k creates a different cache entry
-  fac3 <- svd_factor(dat$am, k = 3L)
+  fac3 <- am_svd_factor(dat$am, k = 3L)
   expect_identical(fac3@k, 3L)
   expect_false(identical(fac1, fac3))
 })
@@ -257,12 +257,12 @@ test_that("svd_factor cache reuse returns identical factor", {
 test_that("svd_project handles k=1, k=10, k=50 column Y matrices", {
   dat <- make_dense(40L, 12L, seed = 6L)
   k <- 5L
-  fac <- svd_factor(dat$am, k = k)
+  fac <- am_svd_factor(dat$am, k = k)
 
   for (m in c(1L, 10L, 50L)) {
     set.seed(m)
     Y <- matrix(rnorm(40L * m), nrow = 40L, ncol = m)
-    Z <- svd_project(fac, Y)
+    Z <- am_svd_project(fac, Y)
     expect_equal(dim(Z), c(k, m))
     expect_equal(Z, base::crossprod(fac@u, Y), tolerance = 1e-12)
   }
@@ -283,13 +283,13 @@ test_that("svd_factor auto keeps the exact path in strict precision", {
       calls$exact <- calls$exact + 1L
       base::svd(as.matrix(x), nu = nu, nv = nv, ...)
     },
-    rsvd = function(...) {
+    am_rsvd = function(...) {
       stop("auto should not use rsvd for strict precision")
     },
     .package = "amatrix"
   )
 
-  fac <- svd_factor(X, k = 5L)
+  fac <- am_svd_factor(X, k = 5L)
 
   expect_identical(calls$exact, 1L)
   expect_identical(fac@method, "exact")
@@ -310,7 +310,7 @@ test_that("rsvd standalone keeps CPU fallback in strict precision", {
   X <- adgeMatrix(dat$host, preferred_backend = "mockgpu", precision = "strict")
 
   set.seed(701L)
-  fit <- rsvd(X, k = 4L, n_oversamples = 5L, n_iter = 1L)
+  fit <- am_rsvd(X, k = 4L, n_oversamples = 5L, n_iter = 1L)
   set.seed(701L)
   ref <- if (requireNamespace("irlba", quietly = TRUE)) {
     irlba::svdr(dat$host, k = 4L, extra = 5L, it = 1L)
@@ -343,7 +343,7 @@ test_that("rsvd standalone uses backend rsvd in fast precision", {
   dat <- make_dense(48L, 24L, seed = 71L)
   X <- adgeMatrix(dat$host, preferred_backend = "mockgpu", precision = "fast")
 
-  fit <- rsvd(X, k = 4L, n_oversamples = 5L, n_iter = 1L)
+  fit <- am_rsvd(X, k = 4L, n_oversamples = 5L, n_iter = 1L)
 
   expect_identical(calls$rsvd, 1L)
   expect_equal(fit$d, base::svd(dat$host)$d[seq_len(4L)], tolerance = 1e-10)
@@ -368,7 +368,7 @@ test_that("svd_factor auto uses rsvd for fast low-rank GPU factors", {
     am_svd = function(...) {
       stop("auto should choose rsvd for this factorization")
     },
-    rsvd = function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
+    am_rsvd = function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
       calls$rsvd <- calls$rsvd + 1L
       calls$n_oversamples <- as.integer(n_oversamples)
       calls$n_iter <- as.integer(n_iter)
@@ -382,7 +382,7 @@ test_that("svd_factor auto uses rsvd for fast low-rank GPU factors", {
     .package = "amatrix"
   )
 
-  fac <- svd_factor(X, k = 6L, n_oversamples = 7L, n_iter = 1L)
+  fac <- am_svd_factor(X, k = 6L, n_oversamples = 7L, n_iter = 1L)
 
   expect_identical(calls$rsvd, 1L)
   expect_identical(calls$n_oversamples, 7L)
@@ -449,7 +449,7 @@ test_that("svd_factor auto chooses subspace for fast moderate-rank GPU factors",
     am_svd = function(...) {
       stop("auto should not choose exact for this factorization")
     },
-    rsvd = function(...) {
+    am_rsvd = function(...) {
       stop("auto should not choose rsvd for this factorization")
     },
     .amatrix_subspace_svd = function(X, k, n_oversamples = 10L, n_iter = 2L, target_backend = NULL, eps_rank = 1e-8) {
@@ -463,7 +463,7 @@ test_that("svd_factor auto chooses subspace for fast moderate-rank GPU factors",
     .package = "amatrix"
   )
 
-  fac <- svd_factor(X, k = 80L, n_oversamples = 6L, n_iter = 1L)
+  fac <- am_svd_factor(X, k = 80L, n_oversamples = 6L, n_iter = 1L)
 
   expect_identical(calls$subspace, 1L)
   expect_identical(fac@method, "subspace")
@@ -509,7 +509,7 @@ test_that("svd_factor auto chooses OpenCL subspace for fast moderate-rank factor
     expect_identical(plan$subspace_backend, "opencl")
 
     set.seed(20260412L)
-    fac <- svd_factor(X, k = 80L, n_oversamples = 6L, n_iter = 1L)
+    fac <- am_svd_factor(X, k = 80L, n_oversamples = 6L, n_iter = 1L)
     ref_d <- base::svd(dat$host, nu = 80L, nv = 80L)$d[seq_len(80L)]
     rel_sv <- abs(fac@d - ref_d) / pmax(abs(ref_d), 1e-12)
 
@@ -568,7 +568,7 @@ test_that("svd_factor sparse subspace keeps explicit OpenCL residency", {
     expect_identical(plan$factor_backend, "opencl")
 
     set.seed(20260409L)
-    fac <- svd_factor(X, k = 32L, method = "subspace", n_oversamples = 8L, n_iter = 1L)
+    fac <- am_svd_factor(X, k = 32L, method = "subspace", n_oversamples = 8L, n_iter = 1L)
     ref <- diag_vals[seq_len(32L)]
     rel_sv <- abs(fac@d - ref) / pmax(abs(ref), 1e-12)
 
@@ -601,7 +601,7 @@ test_that("svd_factor exact supports OpenCL parity on dense inputs", {
     )
     expect_identical(plan$method, "exact")
 
-    fac <- svd_factor(X, k = 12L, method = "exact", n_oversamples = 6L, n_iter = 1L)
+    fac <- am_svd_factor(X, k = 12L, method = "exact", n_oversamples = 6L, n_iter = 1L)
     ref <- base::svd(dat$host, nu = 12L, nv = 12L)
 
     expect_identical(fac@method, "exact")
@@ -633,7 +633,7 @@ test_that("standalone rsvd uses OpenCL backend on low-rank dense inputs", {
     expect_identical(amatrix:::.amatrix_svd_factor_rsvd_backend(X), "opencl")
 
     set.seed(20260414L)
-    fit <- rsvd(X, k = 6L, n_oversamples = 4L, n_iter = 1L)
+    fit <- am_rsvd(X, k = 6L, n_oversamples = 4L, n_iter = 1L)
 
     expect_identical(fit$iter, 1L)
     expect_identical(fit$mprod, 4L)
@@ -656,7 +656,7 @@ test_that("svd_factor cache key distinguishes exact, rsvd, and subspace factors"
         v = matrix(0, nrow = ncol(x), ncol = nv)
       )
     },
-    rsvd = function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
+    am_rsvd = function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
       list(
         u = matrix(0, nrow = nrow(x), ncol = k),
         d = rep(7, k),
@@ -676,9 +676,9 @@ test_that("svd_factor cache key distinguishes exact, rsvd, and subspace factors"
     .package = "amatrix"
   )
 
-  fac_exact <- svd_factor(X, k = 4L, method = "exact")
-  fac_rsvd <- svd_factor(X, k = 4L, method = "rsvd")
-  fac_subspace <- svd_factor(X, k = 4L, method = "subspace")
+  fac_exact <- am_svd_factor(X, k = 4L, method = "exact")
+  fac_rsvd <- am_svd_factor(X, k = 4L, method = "rsvd")
+  fac_subspace <- am_svd_factor(X, k = 4L, method = "subspace")
 
   expect_equal(fac_exact@d, rep(11, 4L))
   expect_equal(fac_rsvd@d, rep(7, 4L))

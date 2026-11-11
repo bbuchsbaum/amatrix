@@ -23,12 +23,12 @@
 #'
 #' @examples
 #' A <- matrix(rnorm(200), nrow = 20)
-#' res <- rsvd(A, k = 3L)
+#' res <- am_rsvd(A, k = 3L)
 #' length(res$d)
 #'
-#' @seealso \code{\link{block_lanczos}}, \code{\link{eigh}}
+#' @seealso \code{\link{am_block_lanczos}}, \code{\link{am_eigh}}
 #' @export
-rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
+am_rsvd <- function(x, k, n_oversamples = 10L, n_iter = 2L, ...) {
   k             <- as.integer(k)
   n_oversamples <- as.integer(n_oversamples)
   n_iter        <- as.integer(n_iter)

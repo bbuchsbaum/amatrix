@@ -25,8 +25,8 @@ kernels (the "hot-kernel swap" from
 
 ```r
 # after: amatrix kernels — see R/logit.R
-xtwx <- amatrix::crossprod_weighted(X, w)
-xtwz <- amatrix::xty_weighted(X, w, z)
+xtwx <- amatrix::am_crossprod_weighted(X, w)
+xtwz <- amatrix::am_xty_weighted(X, w, z)
 beta <- solve(xtwx, xtwz)
 ```
 

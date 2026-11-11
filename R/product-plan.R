@@ -246,7 +246,7 @@ amatrix_compile_product <- function(
     value <- if (inherits(lhs_bound, "adgCMatrix")) {
       switch(
         op,
-        matmul = matmul(lhs_bound, y),
+        matmul = am_matmul(lhs_bound, y),
         crossprod = am_crossprod(lhs_bound, y),
         tcrossprod = am_tcrossprod(lhs_bound, y)
       )
@@ -264,7 +264,7 @@ amatrix_compile_product <- function(
 
       switch(
         op,
-        matmul = matmul(prep$x, prep$y),
+        matmul = am_matmul(prep$x, prep$y),
         crossprod = am_crossprod(prep$x, prep$y),
         tcrossprod = am_tcrossprod(prep$x, prep$y)
       )

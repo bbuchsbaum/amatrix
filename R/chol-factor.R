@@ -56,9 +56,9 @@
 #'
 #' Stores the upper-triangular Cholesky factor \code{R} of a
 #' symmetric positive-definite \code{adgeMatrix}, as returned by
-#' \code{\link{chol_factor}}. When the factor is resident on a GPU
+#' \code{\link{am_chol_factor}}. When the factor is resident on a GPU
 #' backend the host-side \code{@factor} slot may be an empty
-#' zero-row matrix; use \code{\link{chol_solve}} rather than
+#' zero-row matrix; use \code{\link{am_chol_solve}} rather than
 #' accessing slots directly.
 #'
 #' @slot factor Numeric matrix; the upper-triangular factor \code{R}
@@ -74,8 +74,8 @@
 #'   factorization.
 #'
 #' @exportClass amChol
-#' @seealso \code{\link{chol_factor}}, \code{\link{chol_solve}},
-#'   \code{\link{chol_logdet}}
+#' @seealso \code{\link{am_chol_factor}}, \code{\link{am_chol_solve}},
+#'   \code{\link{am_chol_logdet}}
 setClass(
   "amChol",
   slots = list(
@@ -121,7 +121,7 @@ setMethod("show", "amChol", function(object) {
 #'
 #' @examples
 #' S <- crossprod(matrix(rnorm(20), 5, 4)) + diag(4)
-#' fac <- chol_factor(adgeMatrix(S))
+#' fac <- am_chol_factor(adgeMatrix(S))
 #' R <- as.matrix(fac)
 #' all.equal(crossprod(R), S, check.attributes = FALSE)
 #'
@@ -142,11 +142,11 @@ as.matrix.amChol <- function(x, ...) .amatrix_amchol_factor_matrix(x)
 #' @examples
 #' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
 #' A <- adgeMatrix(m)
-#' fac <- chol_factor(A)
+#' fac <- am_chol_factor(A)
 #' fac
 #'
 #' @export
-chol_factor <- function(X) {
+am_chol_factor <- function(X) {
   if (!inherits(X, "adgeMatrix")) {
     .amatrix_abort_bad_arg("X must be an adgeMatrix (symmetric positive definite)")
   }
@@ -160,7 +160,7 @@ chol_factor <- function(X) {
   # deferred objects, whose @x is a placeholder until first host access.
   if (!isTRUE(X@finalizer_env$host_deferred) && anyNA(X@x)) {
     .amatrix_abort_bad_arg(
-      "X contains NA/NaN values; chol_factor() requires a finite symmetric positive-definite matrix"
+      "X contains NA/NaN values; am_chol_factor() requires a finite symmetric positive-definite matrix"
     )
   }
 
@@ -451,7 +451,7 @@ chol_factor <- function(X) {
 #' is available.
 #'
 #' @param factor An \code{\linkS4class{amChol}} object from
-#'   \code{\link{chol_factor}}.
+#'   \code{\link{am_chol_factor}}.
 #' @param B Numeric vector or matrix; the right-hand side. The number
 #'   of rows must equal the dimension of the factor.
 #'
@@ -462,12 +462,12 @@ chol_factor <- function(X) {
 #' @examples
 #' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
 #' A <- adgeMatrix(m)
-#' fac <- chol_factor(A)
+#' fac <- am_chol_factor(A)
 #' b <- rnorm(4)
-#' x <- chol_solve(fac, b)
+#' x <- am_chol_solve(fac, b)
 #'
 #' @export
-chol_solve <- function(factor, B) {
+am_chol_solve <- function(factor, B) {
   if (!inherits(factor, "amChol")) {
     .amatrix_abort_bad_arg("factor must be an amChol object")
   }
@@ -530,24 +530,24 @@ chol_solve <- function(factor, B) {
 #' Solve many right-hand-side batches with one Cholesky factor
 #'
 #' This is the same operation as repeatedly calling
-#' \code{chol_solve(factor, B[[i]])}, but it packs all RHS batches into one
+#' \code{am_chol_solve(factor, B[[i]])}, but it packs all RHS batches into one
 #' wide solve and then splits the result.  BLAS/GPU backends generally amortize
 #' launch and dispatch overhead much better on one wide RHS than on many small
 #' independent solves.
 #'
-#' @param factor An \code{amChol} object from \code{\link{chol_factor}}.
+#' @param factor An \code{amChol} object from \code{\link{am_chol_factor}}.
 #' @param B A list of RHS vectors/matrices, or a 3-D array \code{[n, k, batch]}.
 #' @return A list of solution vectors/matrices.
 #'
 #' @examples
 #' S <- crossprod(matrix(rnorm(20), 5, 4)) + diag(4)
-#' fac <- chol_factor(adgeMatrix(S))
+#' fac <- am_chol_factor(adgeMatrix(S))
 #' rhs <- list(rnorm(4), matrix(rnorm(8), 4, 2))
-#' sols <- chol_solve_batches(fac, rhs)
+#' sols <- am_chol_solve_batches(fac, rhs)
 #' all.equal(sols[[1]], solve(S, rhs[[1]]))
 #'
 #' @export
-chol_solve_batches <- function(factor, B) {
+am_chol_solve_batches <- function(factor, B) {
   if (!inherits(factor, "amChol")) {
     .amatrix_abort_bad_arg("factor must be an amChol object")
   }
@@ -580,7 +580,7 @@ chol_solve_batches <- function(factor, B) {
   # launch and dispatch overhead much better on one n x sum(k_i) RHS than on
   # many small independent calls.
   rhs_packed <- do.call(cbind, rhs_mats)
-  solved <- chol_solve(factor, rhs_packed)
+  solved <- am_chol_solve(factor, rhs_packed)
   solved_mat <- as.matrix(.amatrix_host_arg(solved))
 
   starts <- cumsum(c(1L, rhs_ncols[-length(rhs_ncols)]))
@@ -600,18 +600,18 @@ chol_solve_batches <- function(factor, B) {
 #' in an \code{\linkS4class{amChol}} object.
 #'
 #' @param factor An \code{\linkS4class{amChol}} object from
-#'   \code{\link{chol_factor}}.
+#'   \code{\link{am_chol_factor}}.
 #'
 #' @return Numeric vector of length equal to the matrix dimension.
 #'
 #' @examples
 #' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
 #' A <- adgeMatrix(m)
-#' fac <- chol_factor(A)
-#' chol_diag(fac)
+#' fac <- am_chol_factor(A)
+#' am_chol_diag(fac)
 #'
 #' @export
-chol_diag <- function(factor) {
+am_chol_diag <- function(factor) {
   if (!inherits(factor, "amChol")) {
     .amatrix_abort_bad_arg("factor must be an amChol object")
   }
@@ -626,18 +626,18 @@ chol_diag <- function(factor) {
 #' determinant and is numerically stable.
 #'
 #' @param factor An \code{\linkS4class{amChol}} object from
-#'   \code{\link{chol_factor}}.
+#'   \code{\link{am_chol_factor}}.
 #'
 #' @return Scalar double; the log-determinant of the source matrix.
 #'
 #' @examples
 #' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
 #' A <- adgeMatrix(m)
-#' fac <- chol_factor(A)
-#' chol_logdet(fac)
+#' fac <- am_chol_factor(A)
+#' am_chol_logdet(fac)
 #'
 #' @export
-chol_logdet <- function(factor) {
+am_chol_logdet <- function(factor) {
   if (!inherits(factor, "amChol")) {
     .amatrix_abort_bad_arg("factor must be an amChol object")
   }
@@ -670,10 +670,10 @@ chol_logdet <- function(factor) {
 #' @examples
 #' R <- chol(crossprod(matrix(rnorm(16), 4, 4)) + diag(4))
 #' b <- rnorm(4)
-#' x <- solve_triangular(R, b)
+#' x <- am_solve_triangular(R, b)
 #'
 #' @export
-solve_triangular <- function(R, B, lower = FALSE) {
+am_solve_triangular <- function(R, B, lower = FALSE) {
   scalar_out <- is.vector(B) || (is.matrix(B) && ncol(B) == 1L)
   B_arg <- .amatrix_triangular_rhs_arg(B)
   B_mat <- NULL
@@ -734,7 +734,7 @@ solve_triangular <- function(R, B, lower = FALSE) {
 #' forming the inverse.
 #'
 #' @param factor An \code{\linkS4class{amChol}} object from
-#'   \code{\link{chol_factor}}.
+#'   \code{\link{am_chol_factor}}.
 #' @param v Numeric vector or matrix. For a vector, the result is a
 #'   scalar; for a matrix with \code{p} columns, the result is a
 #'   \code{p x p} matrix.
@@ -746,16 +746,16 @@ solve_triangular <- function(R, B, lower = FALSE) {
 #' @examples
 #' m <- crossprod(matrix(rnorm(16), 4, 4)) + diag(4)
 #' A <- adgeMatrix(m)
-#' fac <- chol_factor(A)
+#' fac <- am_chol_factor(A)
 #' v <- rnorm(4)
-#' quad_form(fac, v)
+#' am_quad_form(fac, v)
 #'
 #' @export
-quad_form <- function(factor, v) {
+am_quad_form <- function(factor, v) {
   if (!inherits(factor, "amChol")) {
     .amatrix_abort_bad_arg("factor must be an amChol object")
   }
-  z <- chol_solve(factor, v)
+  z <- am_chol_solve(factor, v)
   if (is.vector(v)) {
     as.double(crossprod(v, z))
   } else {
@@ -770,11 +770,11 @@ quad_form <- function(factor, v) {
 #' LU factorization result for general square matrices
 #'
 #' Stores a square matrix together with its pivoted LU factorization
-#' (LAPACK \code{DGETRF}), computed once by \code{\link{lu_factor}} and
-#' reused by every \code{\link{lu_solve}} call (LAPACK \code{DGETRS}).
+#' (LAPACK \code{DGETRF}), computed once by \code{\link{am_lu_factor}} and
+#' reused by every \code{\link{am_lu_solve}} call (LAPACK \code{DGETRS}).
 #'
 #' @slot A Numeric square matrix; the original matrix passed to
-#'   \code{\link{lu_factor}}.
+#'   \code{\link{am_lu_factor}}.
 #' @slot lu The \pkg{Matrix} \code{denseLU} factorization of \code{A}, or
 #'   \code{NULL} for an empty object.
 #' @slot source_id Character string; the \code{object_id} of the
@@ -785,7 +785,7 @@ quad_form <- function(factor, v) {
 #'   object, or \code{NA} for base matrices.
 #'
 #' @exportClass amLU
-#' @seealso \code{\link{lu_factor}}, \code{\link{lu_solve}}
+#' @seealso \code{\link{am_lu_factor}}, \code{\link{am_lu_solve}}
 setClass(
   "amLU",
   slots = list(
@@ -819,7 +819,7 @@ setMethod("show", "amLU", function(object) {
 #' Computes the pivoted LU factorization of a square numeric matrix or
 #' \code{adgeMatrix} (LAPACK \code{DGETRF}) and returns it in an
 #' \code{\linkS4class{amLU}} object for repeated use by
-#' \code{\link{lu_solve}}.
+#' \code{\link{am_lu_solve}}.
 #'
 #' @param A A square numeric matrix or \code{adgeMatrix}.
 #'
@@ -827,11 +827,11 @@ setMethod("show", "amLU", function(object) {
 #'
 #' @examples
 #' m <- matrix(c(2, 1, 5, 3), nrow = 2)
-#' fac <- lu_factor(m)
+#' fac <- am_lu_factor(m)
 #' fac
 #'
 #' @export
-lu_factor <- function(A) {
+am_lu_factor <- function(A) {
   A_mat <- if (inherits(A, "adgeMatrix")) {
     m <- as.matrix(amatrix_materialize_host(A))
     storage.mode(m) <- "double"
@@ -859,11 +859,11 @@ lu_factor <- function(A) {
 #'
 #' Solves \code{A \%*\% x = B} where \code{A} is the square matrix
 #' stored in \code{factor}, reusing the LU factorization computed by
-#' \code{\link{lu_factor}} (LAPACK \code{DGETRS}); repeated solves do not
+#' \code{\link{am_lu_factor}} (LAPACK \code{DGETRS}); repeated solves do not
 #' refactor \code{A}.
 #'
 #' @param factor An \code{\linkS4class{amLU}} object from
-#'   \code{\link{lu_factor}}.
+#'   \code{\link{am_lu_factor}}.
 #' @param B Numeric vector or matrix; the right-hand side. The number
 #'   of rows must equal the dimension of \code{factor@A}.
 #'
@@ -873,12 +873,12 @@ lu_factor <- function(A) {
 #'
 #' @examples
 #' m <- matrix(c(2, 1, 5, 3), nrow = 2)
-#' fac <- lu_factor(m)
+#' fac <- am_lu_factor(m)
 #' b <- c(1, 2)
-#' lu_solve(fac, b)
+#' am_lu_solve(fac, b)
 #'
 #' @export
-lu_solve <- function(factor, B) {
+am_lu_solve <- function(factor, B) {
   if (!inherits(factor, "amLU")) {
     .amatrix_abort_bad_arg("factor must be an amLU object")
   }

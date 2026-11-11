@@ -12,7 +12,7 @@ What it shows:
 - one classic algorithm (logistic regression via IRLS, the workhorse behind
   `glm(family = binomial)`) written **once**, with no backend-specific code;
 - the hot kernels expressed as `amatrix` helpers
-  (`crossprod_weighted()`, `xty_weighted()`, `solve()`);
+  (`am_crossprod_weighted()`, `am_xty_weighted()`, `solve()`);
 - CPU-correct behavior on plain base matrices, with acceleration obtained by
   the *caller* wrapping the design matrix: `adgeMatrix(X, mode = "fast")`;
 - tests that verify the result against `stats::glm.fit()` on every platform,

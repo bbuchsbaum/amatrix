@@ -21,7 +21,7 @@ object is downloaded and cached.
 }
 \examples{
 S <- crossprod(matrix(rnorm(20), 5, 4)) + diag(4)
-fac <- chol_factor(adgeMatrix(S))
+fac <- am_chol_factor(adgeMatrix(S))
 R <- as.matrix(fac)
 all.equal(crossprod(R), S, check.attributes = FALSE)
 

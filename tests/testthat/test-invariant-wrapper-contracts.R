@@ -20,8 +20,8 @@ test_that("reduction wrappers match host references across matrix classes", {
   reducers <- list(
     list(name = "rowSums", fn = rowSums, ref = function(x, na.rm) Matrix::rowSums(x, na.rm = na.rm)),
     list(name = "colSums", fn = colSums, ref = function(x, na.rm) Matrix::colSums(x, na.rm = na.rm)),
-    list(name = "rowMeans", fn = rowmeans, ref = function(x, na.rm) Matrix::rowMeans(x, na.rm = na.rm)),
-    list(name = "colMeans", fn = colmeans, ref = function(x, na.rm) Matrix::colMeans(x, na.rm = na.rm))
+    list(name = "rowMeans", fn = am_rowmeans, ref = function(x, na.rm) Matrix::rowMeans(x, na.rm = na.rm)),
+    list(name = "colMeans", fn = am_colmeans, ref = function(x, na.rm) Matrix::colMeans(x, na.rm = na.rm))
   )
 
   for (case in cases) {
@@ -84,7 +84,7 @@ test_that("distance and kernel wrappers reject non-finite contamination by type"
     x[2L, 3L] <- bad$value
     info <- paste("bad=", bad$name)
 
-    expect_error(dist_matrix(x), regexp = NULL, info = info)
-    expect_error(kernel_matrix(x, kernel = "rbf", sigma = 1), regexp = NULL, info = info)
+    expect_error(am_dist_matrix(x), regexp = NULL, info = info)
+    expect_error(am_kernel_matrix(x, kernel = "rbf", sigma = 1), regexp = NULL, info = info)
   }
 })

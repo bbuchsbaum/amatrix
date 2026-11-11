@@ -4,10 +4,10 @@
 # Benchmarks normalized spectral clustering (Ng-Jordan-Weiss) across backends.
 #
 # Algorithm:
-#   1. Affinity  W  = kernel_matrix(X, "rbf", sigma)       [n×n, GPU]
+#   1. Affinity  W  = am_kernel_matrix(X, "rbf", sigma)       [n×n, GPU]
 #   2. Degree    d  = rowSums(W)                            [GPU rowSums]
 #   3. Normalize L  = D^{-1/2} W D^{-1/2}                  [2× GPU sweep]
-#   4. Eigenvecs V  = rsvd(L, k=K)$u                        [GPU rsvd]
+#   4. Eigenvecs V  = am_rsvd(L, k=K)$u                        [GPU rsvd]
 #   5. Row-norm  Vn = V / ||V[i,:]||                        [GPU sweep]
 #   6. K-means on Vn via pairwise_sqdist_argmin + segment_mean
 #
@@ -75,7 +75,7 @@ spectral_cluster <- function(X_mat, K, sigma = NULL, n_iter_km = 30L,
   # Step 1: affinity matrix W [n×n] ──────────────────────────────────────────
   # kernel_matrix with preferred_backend returns a GPU-resident adgeMatrix and
   # zeros the diagonal on device — no CPU round-trip needed.
-  W_gpu  <- kernel_matrix(X_mat, kernel = "rbf", sigma = sigma,
+  W_gpu  <- am_kernel_matrix(X_mat, kernel = "rbf", sigma = sigma,
                           preferred_backend = backend, zero_diag = TRUE)
   if (!inherits(W_gpu, "adgeMatrix")) {
     diag(W_gpu) <- 0
@@ -90,7 +90,7 @@ spectral_cluster <- function(X_mat, K, sigma = NULL, n_iter_km = 30L,
 
   # Step 4: top-K eigenvectors via rsvd ──────────────────────────────────────
   # L_sym is symmetric PSD → leading left singular vectors = eigenvectors.
-  sv     <- rsvd(L_gpu, k = K)
+  sv     <- am_rsvd(L_gpu, k = K)
   V      <- sv$u                                # n×K, plain matrix after rsvd
 
   # Step 5: row-normalise V ──────────────────────────────────────────────────
@@ -119,11 +119,11 @@ spectral_cluster <- function(X_mat, K, sigma = NULL, n_iter_km = 30L,
 
   for (iter in seq_len(n_iter_km)) {
     # Use pairwise_sqdist_argmin for the assignment step
-    new_labels <- pairwise_sqdist_argmin(V_norm, t(centroids))
+    new_labels <- am_pairwise_sqdist_argmin(V_norm, t(centroids))
     if (identical(new_labels, labels_km)) break
     labels_km <- new_labels
     # Update centroids via segment_mean
-    cm <- segment_mean(
+    cm <- am_segment_mean(
       adgeMatrix(V_norm, preferred_backend = backend, precision = "fast"),
       labels_km, K
     )
@@ -230,13 +230,13 @@ cat("\n── Step profiling  (1500×20  K=5) ───────────�
   bk  <- active_backends[length(active_backends)]
 
   # Pre-compute intermediate results for isolated step timing
-  W_plain <- kernel_matrix(X, kernel = "rbf")
+  W_plain <- am_kernel_matrix(X, kernel = "rbf")
   diag(W_plain) <- 0
   W_gpu   <- adgeMatrix(W_plain, preferred_backend = bk, precision = "fast")
   d       <- rowSums(W_gpu)
   d_inv   <- 1 / sqrt(pmax(d, 1e-12))
   L_gpu   <- am_sweep(am_sweep(W_gpu, 1L, d_inv, "*"), 2L, d_inv, "*")
-  sv      <- rsvd(L_gpu, k = K)
+  sv      <- am_rsvd(L_gpu, k = K)
   V       <- sv$u
   V_n     <- V / pmax(sqrt(rowSums(V^2)), 1e-12)
   V_gpu   <- adgeMatrix(V_n, preferred_backend = bk, precision = "fast")
@@ -244,19 +244,19 @@ cat("\n── Step profiling  (1500×20  K=5) ───────────�
 
   steps <- bench::mark(
     # Old path: compute kernel → download → diag<-0 → re-upload
-    kernel_dl_upload = { w <- kernel_matrix(X, kernel="rbf");
+    kernel_dl_upload = { w <- am_kernel_matrix(X, kernel="rbf");
                          diag(w) <- 0;
                          adgeMatrix(w, preferred_backend=bk, precision="fast") },
     # New path: compute + zero_diag on GPU → one download (for host copy) → resident
-    kernel_resident  = kernel_matrix(X, kernel="rbf",
+    kernel_resident  = am_kernel_matrix(X, kernel="rbf",
                                      preferred_backend=bk, zero_diag=TRUE),
     # Laplacian sweep using already-warm resident W
     laplacian_sweep  = { dv <- 1/sqrt(pmax(rowSums(W_gpu), 1e-12));
                          am_sweep(am_sweep(W_gpu, 1L, dv, "*"), 2L, dv, "*") },
-    rsvd_L          = rsvd(L_gpu, k = K),
+    rsvd_L          = am_rsvd(L_gpu, k = K),
     row_normalize   = { rn <- sqrt(rowSums(V^2)); V / pmax(rn, 1e-12) },
-    km_assign       = pairwise_sqdist_argmin(V_n, t(cents)),
-    km_update       = segment_mean(V_gpu, sample(K, 1500L, replace=TRUE), K),
+    km_assign       = am_pairwise_sqdist_argmin(V_n, t(cents)),
+    km_update       = am_segment_mean(V_gpu, sample(K, 1500L, replace=TRUE), K),
     iterations = 5L, check = FALSE, memory = FALSE, time_unit = "ms"
   )
   print(steps[, c("expression", "median", "itr/sec")])

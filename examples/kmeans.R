@@ -74,7 +74,7 @@ kmeans_amatrix <- function(X, K, max_iter = 100L, tol = 1e-6,
     # D[i,k] = ‖x_i‖² + ‖c_k‖² − 2 (X C^T)[i,k]
     c_norms_sq <- rowSums(centroids^2)                  # K-vector (small, CPU)
     XCt_gpu    <- X_gpu %*% t(centroids)               # n×K gemm → GPU adgeMatrix
-    D_gpu      <- ewise("*", XCt_gpu, -2)              # −2 (X C^T)
+    D_gpu      <- am_ewise("*", XCt_gpu, -2)              # −2 (X C^T)
     D_gpu      <- am_sweep(D_gpu, 1L, x_norms_sq, "+") # + ‖x_i‖² per row
     D_gpu      <- am_sweep(D_gpu, 2L, c_norms_sq, "+") # + ‖c_k‖² per col
 

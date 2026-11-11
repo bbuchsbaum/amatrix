@@ -32,7 +32,7 @@ sync_coverage_main <- function(args = commandArgs(trailingOnly = TRUE)) {
     "^as\\.",
     "^ncol\\.", "^nrow\\.",
     "^resident_handle$",
-    "^rh_rowSums$", "^rh_colSums$",
+    "^am_rh_rowSums$", "^am_rh_colSums$",
     "^kron_matrix$"
   )
   is_excluded <- function(name) {
@@ -43,11 +43,11 @@ sync_coverage_main <- function(args = commandArgs(trailingOnly = TRUE)) {
   # either side are caught instead of silently ignored. Keep in lockstep with
   # group_plan() / sparse_iterative_ops() in tools/benchmark-regression.R.
   harness_map <- c(
-    matmul = "matmul", crossprod = "crossprod", covariance = "covariance",
-    dist = "dist_matrix", chol = "chol", solve_rhs = "solve",
-    eigen_sym = "eigh", many_lm = "many_lm", rsvd = "rsvd", svd = "svd",
-    sinkhorn = "sinkhorn", spmv = "sparse %*%", spmm = "sparse %*%",
-    block_lanczos = "block_lanczos", svd_factor_subspace = "svd_factor"
+    matmul = "am_matmul", crossprod = "crossprod", covariance = "am_covariance",
+    dist = "am_dist_matrix", chol = "chol", solve_rhs = "solve",
+    eigen_sym = "am_eigh", many_lm = "am_many_lm", rsvd = "am_rsvd", svd = "svd",
+    sinkhorn = "am_sinkhorn", spmv = "sparse %*%", spmm = "sparse %*%",
+    block_lanczos = "am_block_lanczos", svd_factor_subspace = "am_svd_factor"
   )
 
   lines <- readLines(doc_path, warn = FALSE, encoding = "UTF-8")

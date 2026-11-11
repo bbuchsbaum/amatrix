@@ -44,7 +44,7 @@ test_that("resident chol factors keep a usable host copy after resident release 
     B <- matrix(rnorm(8L), nrow = 4L, ncol = 2L)
     X <- adgeMatrix(A, preferred_backend = "mockcholrelease", precision = "fast")
 
-    fac <- chol_factor(X)
+    fac <- am_chol_factor(X)
     expect_identical(fac@backend, "mockcholrelease")
     expect_true(inherits(fac@factor_obj, "adgeMatrix"))
     expect_false(isTRUE(fac@factor_obj@finalizer_env$host_deferred))
@@ -53,7 +53,7 @@ test_that("resident chol factors keep a usable host copy after resident release 
 
     amatrix:::.amatrix_release_resident(fac@factor_obj)
     expect_null(amatrix:::.amatrix_live_resident_backend(fac@factor_obj))
-    expect_equal(chol_solve(fac, B), solve(A, B), tolerance = 1e-10)
+    expect_equal(am_chol_solve(fac, B), solve(A, B), tolerance = 1e-10)
     expect_equal(as.matrix(fac), chol(A), tolerance = 1e-10)
   })
 })

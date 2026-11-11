@@ -360,7 +360,7 @@ test_that("stress: repeated chol_factor does not leak cached factors", {
       set.seed(2026041500L + i)
       a <- crossprod(matrix(rnorm(16L), 4L, 4L)) + diag(4L)
       x <- as_adgeMatrix(a)
-      fac <- chol_factor(x)
+      fac <- am_chol_factor(x)
       as.matrix(fac)
     })
     if (i %% 50L == 0L) invisible(gc(verbose = FALSE))

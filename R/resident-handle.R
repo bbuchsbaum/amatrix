@@ -44,8 +44,8 @@
 #' # resident_handle requires a backend with residency support (e.g. MLX, OpenCL)
 #' }
 #'
-#' @seealso \code{\link{am_sweep_inplace}}, \code{\link{rh_rowSums}},
-#'   \code{\link{rh_colSums}}
+#' @seealso \code{\link{am_sweep_inplace}}, \code{\link{am_rh_rowSums}},
+#'   \code{\link{am_rh_colSums}}
 #' @export
 resident_handle <- function(x, backend = NULL) {
   reused_existing_key <- FALSE
@@ -380,9 +380,9 @@ am_ewise_inplace <- function(h, rhs, op) {
 #' # requires a backend with residency support (e.g. MLX, OpenCL)
 #' }
 #'
-#' @seealso \code{\link{rh_colSums}}, \code{\link{am_sweep_inplace}}
+#' @seealso \code{\link{am_rh_colSums}}, \code{\link{am_sweep_inplace}}
 #' @export
-rh_rowSums <- function(h) {
+am_rh_rowSums <- function(h) {
   .rh_check(h)
   backend <- .rh_backend(h)
   if (is.function(backend$rowSums_resident))
@@ -406,9 +406,9 @@ rh_rowSums <- function(h) {
 #' # requires a backend with residency support (e.g. MLX, OpenCL)
 #' }
 #'
-#' @seealso \code{\link{rh_rowSums}}, \code{\link{am_sweep_inplace}}
+#' @seealso \code{\link{am_rh_rowSums}}, \code{\link{am_sweep_inplace}}
 #' @export
-rh_colSums <- function(h) {
+am_rh_colSums <- function(h) {
   .rh_check(h)
   backend <- .rh_backend(h)
   if (is.function(backend$colSums_resident))

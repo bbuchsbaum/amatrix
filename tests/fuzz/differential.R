@@ -4,12 +4,12 @@
 #
 # Correct API:
 #   adgeMatrix(X, backend="cpu"|"mlx"|"arrayfire")  -> adgeMatrix object
-#   matmul(A, B), crossprod(A), tcrossprod(A)
+#   am_matmul(A, B), crossprod(A), tcrossprod(A)
 #   A + B, A - B, A * B, A / B
-#   rowsums(A), colsums(A), rowmeans(A), colmeans(A)   # lowercase, NOT rowSums()
+#   am_rowsums(A), am_colsums(A), am_rowmeans(A), am_colmeans(A)   # lowercase, NOT rowSums()
 #   log(A), exp(A), sqrt(A), abs(A)
 #   svd(A), chol(A)
-#   dist_matrix(A), kernel_matrix(A, kernel=, sigma=)
+#   am_dist_matrix(A), am_kernel_matrix(A, kernel=, sigma=)
 #   as.matrix(result)  -> plain R matrix
 
 suppressPackageStartupMessages({ library(amatrix) })
@@ -123,11 +123,11 @@ run_op <- function(op, X, backend, seed) {
       "matmul" = {
         B <- to_am(t(X), backend)
         if (inherits(B, "am_error")) return(NULL)
-        safe_matrix(matmul(A, B))
+        safe_matrix(am_matmul(A, B))
       },
       "matmul_square" = {
         # square: A %*% A
-        safe_matrix(matmul(A, A))
+        safe_matrix(am_matmul(A, A))
       },
       "crossprod" = safe_matrix(crossprod(A)),
       "tcrossprod" = safe_matrix(tcrossprod(A)),
@@ -146,10 +146,10 @@ run_op <- function(op, X, backend, seed) {
       "scalar_add" = safe_matrix(A + 2.71),
 
       # --- reductions ---
-      "rowsums"  = as.numeric(rowsums(A)),
-      "colsums"  = as.numeric(colsums(A)),
-      "rowmeans" = as.numeric(rowmeans(A)),
-      "colmeans" = as.numeric(colmeans(A)),
+      "rowsums"  = as.numeric(am_rowsums(A)),
+      "colsums"  = as.numeric(am_colsums(A)),
+      "rowmeans" = as.numeric(am_rowmeans(A)),
+      "colmeans" = as.numeric(am_colmeans(A)),
 
       # --- elementwise math (on positive values) ---
       "log"  = {
@@ -196,9 +196,9 @@ run_op <- function(op, X, backend, seed) {
       },
 
       # --- distance / kernel ---
-      "dist_eucl"     = safe_matrix(dist_matrix(A)),
-      "kernel_rbf"    = safe_matrix(kernel_matrix(A, kernel = "rbf", sigma = 1.0)),
-      "kernel_linear" = safe_matrix(kernel_matrix(A, kernel = "linear")),
+      "dist_eucl"     = safe_matrix(am_dist_matrix(A)),
+      "kernel_rbf"    = safe_matrix(am_kernel_matrix(A, kernel = "rbf", sigma = 1.0)),
+      "kernel_linear" = safe_matrix(am_kernel_matrix(A, kernel = "linear")),
 
       NULL
     )

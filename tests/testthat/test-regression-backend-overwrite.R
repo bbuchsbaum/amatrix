@@ -94,12 +94,12 @@ test_that("backend overwrite invalidates cached chol and svd factors", {
     {
       x <- adgeMatrix(spd, preferred_backend = backend_name)
 
-      fac_1 <- chol_factor(x)
-      svd_1 <- svd_factor(x, k = 2L)
+      fac_1 <- am_chol_factor(x)
+      svd_1 <- am_svd_factor(x, k = 2L)
       expect_true(length(ls(envir = cache_env, all.names = FALSE)) > 0L)
 
-      fac_cached <- chol_factor(x)
-      svd_cached <- svd_factor(x, k = 2L)
+      fac_cached <- am_chol_factor(x)
+      svd_cached <- am_svd_factor(x, k = 2L)
       expect_identical(fac_cached@backend, backend_name)
       expect_identical(svd_cached@backend, backend_name)
 
@@ -110,8 +110,8 @@ test_that("backend overwrite invalidates cached chol and svd factors", {
       )
       expect_length(ls(envir = cache_env, all.names = FALSE), 0L)
 
-      fac_2 <- chol_factor(x)
-      svd_2 <- svd_factor(x, k = 2L)
+      fac_2 <- am_chol_factor(x)
+      svd_2 <- am_svd_factor(x, k = 2L)
       expect_identical(counter_b$chol, 1L)
       expect_identical(counter_b$svd, 1L)
       expect_equal(as.matrix(fac_2), base::chol(spd), tolerance = 1e-10)

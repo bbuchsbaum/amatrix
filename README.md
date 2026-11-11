@@ -15,7 +15,7 @@ If your workflow already starts with matrices and ends in `%*%`, `crossprod()`, 
 - Matrix-compatible dense and sparse objects
 - predictable CPU fallback when no accelerator backend is available
 - optional fast backends such as MLX on Apple Silicon
-- shared-design workflows such as `many_lm()`
+- shared-design workflows such as `am_many_lm()`
 
 You do not need to adopt a new tensor framework or rewrite the analysis around a separate object model.
 
@@ -30,7 +30,7 @@ Y <- matrix(rnorm(120 * 8), nrow = 120, ncol = 8)
 
 # Safe default: strict CPU semantics
 X_am <- adgeMatrix(X)
-fit <- many_lm(X_am, Y, method = "qr", cache = TRUE,
+fit <- am_many_lm(X_am, Y, method = "qr", cache = TRUE,
                include_residuals = TRUE)
 
 dim(coef(fit))
@@ -41,7 +41,7 @@ On a machine with an available accelerator backend, the workflow stays the same 
 
 ```r
 X_fast <- adgeMatrix(X, mode = "fast")
-fit_fast <- many_lm(X_fast, Y, method = "qr", cache = TRUE)
+fit_fast <- am_many_lm(X_fast, Y, method = "qr", cache = TRUE)
 ```
 
 ## How does backend selection work?
@@ -60,7 +60,7 @@ For library code, the default per-object path is to wrap at the boundary with `m
 
 ```r
 X_am <- as_adgeMatrix(X, mode = "fast")
-fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+fit <- am_many_lm(X_am, Y, method = "qr", cache = TRUE)
 ```
 
 That asks `amatrix` to prefer an available fast-capable accelerator automatically and otherwise fall back to CPU. You do not need to hardcode `"mlx"` or set session-global defaults first.
@@ -70,7 +70,7 @@ If a caller wants to flip defaults for one local block instead of one object, us
 ```r
 with_amatrix(policy = "auto", precision = "fast", {
   X_am <- as_adgeMatrix(X)
-  fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+  fit <- am_many_lm(X_am, Y, method = "qr", cache = TRUE)
 })
 ```
 
@@ -220,7 +220,7 @@ builds, so use the links above until you have them installed.)
 Key help pages:
 
 - `?adgeMatrix` for matrix constructors
-- `?many_lm` for the flagship shared-design regression path
+- `?am_many_lm` for the flagship shared-design regression path
 - `?amatrix_backend_status` for backend availability and health
 - `?amatrix_benchmark_report` for cold/warm timings and calibrated thresholds
 - `?amatrix_fallback_log` for dispatch fallback telemetry

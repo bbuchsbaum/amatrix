@@ -9,7 +9,7 @@ test_that("ridge_path coefficients match direct formula", {
   y  <- rnorm(n)
   lambdas <- c(0.1, 1.0, 10.0)
 
-  rp <- ridge_path(X, y, lambdas = lambdas)
+  rp <- am_ridge_path(X, y, lambdas = lambdas)
 
   expect_s3_class(rp, "ridge_path")
   expect_equal(rp$lambdas, lambdas)
@@ -29,7 +29,7 @@ test_that("ridge_path coef() extracts single lambda slice", {
   set.seed(1)
   X  <- matrix(rnorm(30 * 5), 30, 5)
   y  <- rnorm(30)
-  rp <- ridge_path(X, y, lambdas = c(0.5, 2.0, 5.0))
+  rp <- am_ridge_path(X, y, lambdas = c(0.5, 2.0, 5.0))
 
   coef_all  <- coef(rp)
   coef_near <- coef(rp, lambda = 2.0)
@@ -44,7 +44,7 @@ test_that("ridge_path predict matches manual X %*% coef", {
   X    <- matrix(rnorm(40 * 4), 40, 4)
   y    <- rnorm(40)
   Xnew <- matrix(rnorm(10 * 4), 10, 4)
-  rp   <- ridge_path(X, y, lambdas = c(1.0, 5.0))
+  rp   <- am_ridge_path(X, y, lambdas = c(1.0, 5.0))
 
   pred_single <- predict(rp, Xnew, lambda = 1.0)
   ref_coef    <- coef(rp, lambda = 1.0)[,, 1L]
@@ -56,7 +56,7 @@ test_that("ridge_path multi-response Y works", {
   set.seed(3)
   X  <- matrix(rnorm(30 * 4), 30, 4)
   Y  <- matrix(rnorm(30 * 2), 30, 2)
-  rp <- ridge_path(X, Y, lambdas = c(0.1, 1.0))
+  rp <- am_ridge_path(X, Y, lambdas = c(0.1, 1.0))
 
   expect_equal(dim(rp$coef), c(4L, 2L, 2L))
 })
@@ -70,8 +70,8 @@ test_that("woodbury_solve matches direct solve for rank-1 update", {
   U <- matrix(rnorm(n * k), n, k)
   b <- matrix(rnorm(n * 2), n, 2)
 
-  fac <- chol_factor(as_adgeMatrix(A))
-  ws  <- woodbury_solve(fac, U, b)   # (A + U U^T)^{-1} b
+  fac <- am_chol_factor(as_adgeMatrix(A))
+  ws  <- am_woodbury_solve(fac, U, b)   # (A + U U^T)^{-1} b
 
   direct <- solve(A + U %*% t(U), b)
   expect_equal(ws, direct, tolerance = 1e-8)
@@ -87,8 +87,8 @@ test_that("woodbury_solve handles rank-k update and explicit V", {
   b <- rnorm(n)
 
   C <- solve(C_inv)
-  fac <- chol_factor(as_adgeMatrix(A))
-  ws  <- woodbury_solve(fac, U, matrix(b), V = V, C_inv = C_inv)
+  fac <- am_chol_factor(as_adgeMatrix(A))
+  ws  <- am_woodbury_solve(fac, U, matrix(b), V = V, C_inv = C_inv)
   direct <- solve(A + U %*% C %*% V, b)
   expect_equal(as.numeric(ws), direct, tolerance = 1e-8)
 })
@@ -100,7 +100,7 @@ test_that("woodbury_solve auto-factors plain matrix A", {
   U <- matrix(rnorm(n), n, 1L)
   b <- rnorm(n)
 
-  ws     <- woodbury_solve(A, U, matrix(b))
+  ws     <- am_woodbury_solve(A, U, matrix(b))
   direct <- solve(A + U %*% t(U), b)
   expect_equal(as.numeric(ws), direct, tolerance = 1e-8)
 })
@@ -113,8 +113,8 @@ test_that("woodbury_logdet matches log(det(A + UU^T))", {
   A <- crossprod(matrix(rnorm(n * n), n)) + diag(n)
   U <- matrix(rnorm(n * k), n, k)
 
-  fac <- chol_factor(as_adgeMatrix(A))
-  wl  <- woodbury_logdet(fac, U)
+  fac <- am_chol_factor(as_adgeMatrix(A))
+  wl  <- am_woodbury_logdet(fac, U)
   ref <- as.numeric(determinant(A + U %*% t(U), logarithm = TRUE)$modulus)
   expect_equal(wl, ref, tolerance = 1e-8)
 })
@@ -127,15 +127,15 @@ test_that("woodbury_logdet works with explicit C_inv", {
   C_inv <- diag(k) * 2.0
   C     <- solve(C_inv)
 
-  fac <- chol_factor(as_adgeMatrix(A))
-  wl  <- woodbury_logdet(fac, U, C_inv = C_inv)
+  fac <- am_chol_factor(as_adgeMatrix(A))
+  wl  <- am_woodbury_logdet(fac, U, C_inv = C_inv)
   ref <- as.numeric(determinant(A + U %*% C %*% t(U), logarithm = TRUE)$modulus)
   expect_equal(wl, ref, tolerance = 1e-8)
 })
 
 # ---- qr_downdate / lm_loo_cv ------------------------------------------------
 
-test_that("qr_downdate.amQR gives same R as am_qr on subset", {
+test_that("am_qr_downdate.amQR gives same R as am_qr on subset", {
   set.seed(31)
   n <- 20L; p <- 4L
   X    <- matrix(rnorm(n * p), n, p)
@@ -143,7 +143,7 @@ test_that("qr_downdate.amQR gives same R as am_qr on subset", {
   i    <- 7L
   qr_f <- am_qr(Xam)
 
-  qr_d <- qr_downdate(qr_f, i, X = X)
+  qr_d <- am_qr_downdate(qr_f, i, X = X)
 
   # Compare R matrices (upper triangular part)
   R_down <- qr.R(qr_d)
@@ -164,7 +164,7 @@ test_that("lm_loo_cv residuals match manual LOO loop", {
   X <- matrix(rnorm(n * p), n, p)
   y <- rnorm(n)
 
-  loo <- lm_loo_cv(X, y)
+  loo <- am_lm_loo_cv(X, y)
 
   ref_resid <- numeric(n)
   for (i in seq_len(n)) {
@@ -176,7 +176,7 @@ test_that("lm_loo_cv residuals match manual LOO loop", {
   expect_equal(loo$mse, mean(ref_resid^2), tolerance = 1e-10)
 })
 
-test_that("qr_downdate.default errors informatively", {
+test_that("am_qr_downdate.default errors informatively", {
   qr_base <- qr(matrix(rnorm(12), 4, 3))
-  expect_error(qr_downdate(qr_base, 1L), "amQR factor")
+  expect_error(am_qr_downdate(qr_base, 1L), "amQR factor")
 })

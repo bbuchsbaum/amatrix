@@ -150,13 +150,13 @@ library(bench)
 sinkhorn_handle <- function(A_mat, max_iter = 200L, tol = 1e-8, backend = "cpu") {
   h <- resident_handle(adgeMatrix(A_mat, preferred_backend = backend, precision = "fast"))
   for (iter in seq_len(max_iter)) {
-    rs <- rh_rowSums(h)
+    rs <- am_rh_rowSums(h)
     am_sweep_inplace(h, 1L, pmax(rs, 1e-15), "/")
-    cs <- rh_colSums(h)
+    cs <- am_rh_colSums(h)
     am_sweep_inplace(h, 2L, pmax(cs, 1e-15), "/")
     if (iter %% 5L == 0L || iter == max_iter) {
-      rs2 <- rh_rowSums(h)
-      cs2 <- rh_colSums(h)
+      rs2 <- am_rh_rowSums(h)
+      cs2 <- am_rh_colSums(h)
       err <- max(max(abs(rs2 - 1)), max(abs(cs2 - 1)))
       if (err < tol) break
     }

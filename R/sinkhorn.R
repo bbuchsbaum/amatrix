@@ -24,13 +24,13 @@
 #'
 #' @examples
 #' A <- abs(matrix(rnorm(16), nrow = 4)) + 0.1
-#' S <- sinkhorn(A, max_iter = 50L)
+#' S <- am_sinkhorn(A, max_iter = 50L)
 #' # Row sums should be close to 1
 #' rowSums(as.matrix(S))
 #'
-#' @seealso \code{\link{dist_matrix}}
+#' @seealso \code{\link{am_dist_matrix}}
 #' @export
-sinkhorn <- function(
+am_sinkhorn <- function(
   A,
   max_iter = 200L,
   tol = 1e-8,
@@ -315,17 +315,17 @@ sinkhorn <- function(
     }
 
     if (!isTRUE(row_done)) {
-      row_scale <- pmax(rh_rowSums(h), eps)
+      row_scale <- pmax(am_rh_rowSums(h), eps)
       am_sweep_inplace(h, 1L, row_scale, "/")
     }
     if (!isTRUE(col_done)) {
-      col_scale <- pmax(rh_colSums(h), eps)
+      col_scale <- pmax(am_rh_colSums(h), eps)
       am_sweep_inplace(h, 2L, col_scale, "/")
     }
 
     if (tol > 0 && ((iter %% check_every) == 0L || iter == max_iter)) {
-      row_error <- max(abs(rh_rowSums(h) - 1))
-      col_error <- max(abs(rh_colSums(h) - 1))
+      row_error <- max(abs(am_rh_rowSums(h) - 1))
+      col_error <- max(abs(am_rh_colSums(h) - 1))
       if (max(row_error, col_error) < tol) {
         converged <- TRUE
         break

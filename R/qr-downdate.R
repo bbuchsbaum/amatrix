@@ -27,15 +27,15 @@
 #' \dontrun{
 #' X <- adgeMatrix(matrix(rnorm(40), nrow = 8))
 #' qf <- am_qr(X)
-#' qf2 <- qr_downdate(qf, row_idx = 3L, X = X)
-#' qr_info(qf2)$dim
+#' qf2 <- am_qr_downdate(qf, row_idx = 3L, X = X)
+#' am_qr_info(qf2)$dim
 #' }
 #'
-#' @seealso \code{\link{am_qr}}, \code{\link{qr_info}},
-#'   \code{\link{lm_loo_cv}}
+#' @seealso \code{\link{am_qr}}, \code{\link{am_qr_info}},
+#'   \code{\link{am_lm_loo_cv}}
 #' @export
-qr_downdate <- function(qr_factor, row_idx, X = NULL) {
-  UseMethod("qr_downdate")
+am_qr_downdate <- function(qr_factor, row_idx, X = NULL) {
+  UseMethod("am_qr_downdate")
 }
 
 .amatrix_validate_row_idx <- function(row_idx, n_rows) {
@@ -52,12 +52,12 @@ qr_downdate <- function(qr_factor, row_idx, X = NULL) {
 }
 
 #' @export
-qr_downdate.amQR <- function(qr_factor, row_idx, X = NULL) {
+am_qr_downdate.amQR <- function(qr_factor, row_idx, X = NULL) {
   if (is.null(X)) {
     stop(
-      "qr_downdate.amQR requires the original matrix X as the third argument. ",
+      "am_qr_downdate.amQR requires the original matrix X as the third argument. ",
       "amQR factors do not store the source matrix. ",
-      "Call: qr_downdate(qr_factor, row_idx, X = your_matrix)",
+      "Call: am_qr_downdate(qr_factor, row_idx, X = your_matrix)",
       call. = FALSE
     )
   }
@@ -73,9 +73,9 @@ qr_downdate.amQR <- function(qr_factor, row_idx, X = NULL) {
 }
 
 #' @export
-qr_downdate.default <- function(qr_factor, row_idx, X = NULL) {
+am_qr_downdate.default <- function(qr_factor, row_idx, X = NULL) {
   stop(
-    "qr_downdate.default requires an amQR factor (from am_qr()). ",
+    "am_qr_downdate.default requires an amQR factor (from am_qr()). ",
     "Base R qr() objects do not store the original matrix. ",
     "Use am_qr(X) to obtain a downdatable factor.",
     call. = FALSE
@@ -117,12 +117,12 @@ qr_downdate.default <- function(qr_factor, row_idx, X = NULL) {
 #' @examples
 #' X <- adgeMatrix(matrix(rnorm(50), nrow = 10))
 #' y <- rnorm(10)
-#' cv <- lm_loo_cv(X, y)
+#' cv <- am_lm_loo_cv(X, y)
 #' cv$mse
 #'
-#' @seealso \code{\link{lm_fit}}, \code{\link{many_lm}}
+#' @seealso \code{\link{am_lm_fit}}, \code{\link{am_many_lm}}
 #' @export
-lm_loo_cv <- function(X, y, method = "qr", ...) {
+am_lm_loo_cv <- function(X, y, method = "qr", ...) {
   stopifnot(is.numeric(y) || is.matrix(y))
   if (!is.null(dim(y)) && ncol(as.matrix(y)) != 1L) {
     .amatrix_abort_bad_arg("lm_loo_cv supports a single response; y must be a vector or one-column matrix")

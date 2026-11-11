@@ -15,31 +15,31 @@ Initial public release.
 
 ## Dense linear algebra
 
-* `matmul`, `crossprod`, `tcrossprod`, `covariance`, `dist_matrix` —
+* `am_matmul`, `crossprod`, `tcrossprod`, `covariance`, `am_dist_matrix` —
   backend-dispatched with GPU-resident fast paths.
-* `chol_factor`, `lu_factor`, `svd_factor` — factorization caching with
+* `am_chol_factor`, `am_lu_factor`, `am_svd_factor` — factorization caching with
   solve, project, and reconstruct methods.
-* `eigh`, `am_svd`, `rsvd`, `block_lanczos` — eigendecomposition and
+* `am_eigh`, `am_svd`, `rsvd`, `am_block_lanczos` — eigendecomposition and
   randomized/iterative spectral methods.
-* `sinkhorn` — doubly-stochastic scaling with GPU-resident key-chain loop.
-* `ewise`, `am_sweep`, `segment_sum`, `segment_mean` — element-wise and
+* `am_sinkhorn` — doubly-stochastic scaling with GPU-resident key-chain loop.
+* `am_ewise`, `am_sweep`, `am_segment_sum`, `am_segment_mean` — element-wise and
   reduction operations.
-* `woodbury_solve`, `woodbury_logdet` — Woodbury matrix identity solvers.
+* `am_woodbury_solve`, `am_woodbury_logdet` — Woodbury matrix identity solvers.
 
 ## Statistical models
 
-* `many_lm` — fit multiple linear models via GPU-accelerated QR with
+* `am_many_lm` — fit multiple linear models via GPU-accelerated QR with
   coefficient caching.
-* `lm_fit`, `array_lm`, `wls_fit` — single and weighted least squares.
-* `ridge_path`, `ridge_fit` — ridge regression over lambda grids.
-* `lm_loo_cv` — leave-one-out cross-validation via QR downdate.
-* `pca_coef` — PCA coefficient extraction from cached SVD factors.
+* `am_lm_fit`, `am_array_lm`, `am_wls_fit` — single and weighted least squares.
+* `am_ridge_path`, `am_ridge_fit` — ridge regression over lambda grids.
+* `am_lm_loo_cv` — leave-one-out cross-validation via QR downdate.
+* `am_pca_coef` — PCA coefficient extraction from cached SVD factors.
 
 ## Sparse operations
 
 * `adgCMatrix` with backend-dispatched SpMV and SpMM via OpenCL, Metal,
   and MLX resident paths.
-* `block_lanczos` and `svd_factor` subspace iteration on sparse inputs.
+* `am_block_lanczos` and `am_svd_factor` subspace iteration on sparse inputs.
 
 ## Backend packages (separate installation)
 
@@ -91,31 +91,36 @@ Initial public release.
 * Identity-keyed caches can no longer return a factor of different data
   (after `-x`, `round()`, `signif()`, `zapsmall()`, or re-used weights), and
   cache entries are released when their source matrix is collected.
-* Loading the package, probing a backend and `trace_estim(seed = )` no longer
+* Loading the package, probing a backend and `am_trace_estim(seed = )` no longer
   touch the user's random-number stream.
-* `block_lanczos()` / `block_svd()` check residuals against a new `tol`
+* `am_block_lanczos()` / `am_block_svd()` check residuals against a new `tol`
   argument, extend the iteration automatically and warn
   (`amatrix_not_converged`) when the tolerance is not met.
-* `lm_fit()` / `wls_fit()` raise `amatrix_rank_deficient` for a singular
+* `am_lm_fit()` / `am_wls_fit()` raise `amatrix_rank_deficient` for a singular
   design and warn (`amatrix_ill_conditioned`) when the normal equations are
-  unreliable; `lm_loo_cv()` uses the exact leverage identity; `lu_factor()`
+  unreliable; `am_lm_loo_cv()` uses the exact leverage identity; `am_lu_factor()`
   stores a real LU factorization.
 * `amatrix_calibrate()` writes to the user cache directory only with
   `persist = TRUE`.
-* `dist_matrix(method = "cosine")` returns the cosine distance
-  (`1 - similarity`); the similarity is `kernel_matrix(kernel = "cosine")`.
+* `am_dist_matrix(method = "cosine")` returns the cosine distance
+  (`1 - similarity`); the similarity is `am_kernel_matrix(kernel = "cosine")`.
 * `sweep()` now dispatches on amatrix objects (it is exported as a standard
   generic with `base::sweep` as default); `am_sweep()` defaults to `FUN = "-"`
-  like base; `rowscale()`, `colscale()` and multiplicative sweeps keep sparse
+  like base; `am_rowscale()`, `am_colscale()` and multiplicative sweeps keep sparse
   input sparse. `mean()`, `which()` and `isSymmetric()` work with only
   amatrix attached. `dim(x) <- value` returns a valid, freshly identified
   object.
 * Much lower per-operation overhead and fewer data copies on the CPU path.
-* Attaching the package no longer masks other packages' functions: the
-  matrix trace is `mat_trace()` (was `trace`, which masked `base::trace`),
-  the truncated-SVD wrapper is `am_irlba()` (was `irlba`, which masked
-  `irlba::irlba`), and `svd` is a standard generic with `base::svd` as its
-  default.
+* Naming: the exported API uses two prefixes. `amatrix_*` covers session,
+  backend and diagnostic functions; `am_*` covers everything that computes
+  (`am_matmul()`, `am_chol_factor()`, `am_svd_factor()`, `am_many_lm()`,
+  `am_lm_fit()`, `am_rsvd()`, `am_irlba()`, `am_trace()`, `am_sqrtm()`, ...).
+  Class constructors and coercions (`adgeMatrix()`, `adgCMatrix()`,
+  `as_adgeMatrix()`, `kron_matrix()`, `resident_handle()`) and
+  `with_amatrix()` keep their names. Attaching the package masks nothing from
+  base R, the recommended packages, or packages such as 'irlba', 'rsvd' and
+  'rlang'; `svd`, `norm`, `sweep`, `mean`, `which` and `isSymmetric` are
+  exported only as standard generics whose default is the base function.
 
 ## Error handling and diagnostics
 

@@ -89,17 +89,17 @@ benchmark_sinkhorn_case <- function(n, fixed_iters = 50L, reps = 3L, seed = 1L) 
 
     if (identical(backend_name, "cpu")) {
       bench <- benchmark_elapsed(function() {
-        sinkhorn(A, max_iter = fixed_iters, tol = 0, mode = "fast", return_info = TRUE)
+        am_sinkhorn(A, max_iter = fixed_iters, tol = 0, mode = "fast", return_info = TRUE)
       }, reps = reps)
     } else {
       x_gpu <- adgeMatrix(A, preferred_backend = backend_name, precision = precision)
       bench <- benchmark_elapsed(
         function() {
-          sinkhorn(x_gpu, max_iter = fixed_iters, tol = 0, return_info = TRUE)
+          am_sinkhorn(x_gpu, max_iter = fixed_iters, tol = 0, return_info = TRUE)
         },
         reps = reps,
         warmup = function() {
-          invisible(sinkhorn(x_gpu, max_iter = 5L, tol = 0, return_info = TRUE))
+          invisible(am_sinkhorn(x_gpu, max_iter = 5L, tol = 0, return_info = TRUE))
         }
       )
     }

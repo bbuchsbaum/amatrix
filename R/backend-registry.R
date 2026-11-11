@@ -289,7 +289,7 @@
 #'   fields: \code{capabilities}, \code{features}, \code{precision_modes}
 #'   (each a zero-argument function returning a character vector),
 #'   \code{available} (zero-argument logical function), \code{supports},
-#'   \code{matmul}, \code{crossprod}, \code{tcrossprod}, \code{ewise},
+#'   \code{am_matmul}, \code{crossprod}, \code{tcrossprod}, \code{am_ewise},
 #'   \code{rowSums}, \code{colSums}.
 #' @param overwrite Logical. Allow replacement of an existing registration
 #'   with the same \code{name}. Default \code{FALSE}.

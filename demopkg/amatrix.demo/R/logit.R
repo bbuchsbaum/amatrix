@@ -5,8 +5,8 @@
 #' `glm(family = binomial())`. The per-iteration bottleneck, forming the
 #' weighted normal equations, is expressed with `amatrix` kernels:
 #'
-#' * `amatrix::crossprod_weighted(X, w)` — \eqn{X^\top W X}
-#' * `amatrix::xty_weighted(X, w, z)` — \eqn{X^\top W z}
+#' * `amatrix::am_crossprod_weighted(X, w)` — \eqn{X^\top W X}
+#' * `amatrix::am_xty_weighted(X, w, z)` — \eqn{X^\top W z}
 #' * `solve()` on the resulting \eqn{p \times p} system
 #'
 #' The function contains **no backend-specific code**. Passed a plain base
@@ -66,8 +66,8 @@ logit_fit <- function(X, y, max_iter = 25L, tol = 1e-8, weight_floor = 1e-10) {
 
     # Hot kernels: one weighted crossprod (p x p), one weighted xty (p x 1),
     # one small solve. On an accelerated input the first two run on the GPU.
-    xtwx <- amatrix::crossprod_weighted(X, w)
-    xtwz <- amatrix::xty_weighted(X, w, z)
+    xtwx <- amatrix::am_crossprod_weighted(X, w)
+    xtwz <- amatrix::am_xty_weighted(X, w, z)
     beta <- as.numeric(as.matrix(solve(xtwx, xtwz)))
     if (!all(is.finite(beta))) {
       stop("IRLS produced non-finite coefficients ",

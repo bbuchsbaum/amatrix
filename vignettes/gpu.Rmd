@@ -237,7 +237,7 @@ This is intentional: sharing the buffer is the whole point of a resident handle 
 
 ## Where next?
 
-- `vignette("amatrix")` -- the getting-started workflow (`adgeMatrix()`, `many_lm()`)
+- `vignette("amatrix")` -- the getting-started workflow (`adgeMatrix()`, `am_many_lm()`)
 - `vignette("performance")` -- when the GPU actually wins, and how to calibrate
 - `?amatrix_use_gpu` and `?amatrix_gpu_status` -- enablement and diagnostics
 - `?amatrix_explain` -- per-operation dispatch reasoning

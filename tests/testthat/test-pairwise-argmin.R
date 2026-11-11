@@ -11,7 +11,7 @@
 # `sweep(..., 2L, c_norms, "+")` is equivalent and also correct. Verified
 # against an independent double-loop reference for non-square n≠k≠p inputs.
 #
-# The bead probe `pairwise_sqdist_argmin(X, C)` returning c(1,1,1) is the
+# The bead probe `am_pairwise_sqdist_argmin(X, C)` returning c(1,1,1) is the
 # CORRECT answer: `Ct` is documented (and used by every caller) as p×K with
 # *columns* as centroids, and the probe passed C non-transposed. For the
 # square degenerate probe the columns of C are (0,5),(0,5), so c(1,1,1) is
@@ -41,14 +41,14 @@ test_that("bead probe: contract usage gives intuitive assignment [amatrix-p24]",
 
   # Documented contract: Ct is p×K (columns are centroids) -> pass t(C).
   expect_equal(
-    as.integer(pairwise_sqdist_argmin(X, t(C))),
+    as.integer(am_pairwise_sqdist_argmin(X, t(C))),
     c(1L, 1L, 2L)
   )
 
   # Untransposed C computes distances to C's COLUMNS (0,5),(0,5); c(1,1,1)
   # is correct for those identical centroids. Pinned so nobody "fixes" it.
   expect_equal(
-    as.integer(pairwise_sqdist_argmin(X, C)),
+    as.integer(am_pairwise_sqdist_argmin(X, C)),
     c(1L, 1L, 1L)
   )
 })
@@ -61,7 +61,7 @@ test_that("non-square n != k != p matches double-loop reference [amatrix-p24]", 
   Ct    <- t(cents)                     # p×K per contract
 
   expect_equal(
-    as.integer(pairwise_sqdist_argmin(X, Ct)),
+    as.integer(am_pairwise_sqdist_argmin(X, Ct)),
     as.integer(.argmin_ref(X, cents))
   )
 })
@@ -86,7 +86,7 @@ test_that("each= vs times= recycling: current code takes the correct branch [ama
 
   # The exported function must produce the CORRECT (each=/sweep) answer.
   expect_equal(
-    as.integer(pairwise_sqdist_argmin(X, Ct)),
+    as.integer(am_pairwise_sqdist_argmin(X, Ct)),
     as.integer(correct)
   )
   expect_equal(as.integer(correct), as.integer(.argmin_ref(X, cents)))
@@ -101,7 +101,7 @@ test_that("precomputed x_norms / c_norms path agrees with reference [amatrix-p24
   ref   <- .argmin_ref(X, cents)
 
   expect_equal(
-    as.integer(pairwise_sqdist_argmin(X, Ct,
+    as.integer(am_pairwise_sqdist_argmin(X, Ct,
                                       x_norms = rowSums(X^2),
                                       c_norms = colSums(Ct^2))),
     as.integer(ref)
@@ -116,11 +116,11 @@ test_that("dimension guard rejects non-square misuse with instructive message [a
   cents <- matrix(rnorm(k * p), k, p)   # k×p; nrow(cents)=4 != ncol(X)=3
 
   expect_error(
-    pairwise_sqdist_argmin(X, cents),          # forgot t(cents)
+    am_pairwise_sqdist_argmin(X, cents),          # forgot t(cents)
     regexp = "centroids in COLUMNS.*t\\(centroids\\)"
   )
   # Transposed (correct) shape must NOT error.
-  expect_no_error(pairwise_sqdist_argmin(X, t(cents)))
+  expect_no_error(am_pairwise_sqdist_argmin(X, t(cents)))
 })
 
 test_that("mlx backend nearest-centroid matches CPU reference [amatrix-p24]", {
@@ -137,6 +137,6 @@ test_that("mlx backend nearest-centroid matches CPU reference [amatrix-p24]", {
   ref    <- .argmin_ref(X_host, cents)
 
   X_mlx  <- adgeMatrix(X_host, preferred_backend = "mlx")
-  got    <- pairwise_sqdist_argmin(X_mlx, Ct)
+  got    <- am_pairwise_sqdist_argmin(X_mlx, Ct)
   expect_equal(as.integer(got), as.integer(ref))
 })

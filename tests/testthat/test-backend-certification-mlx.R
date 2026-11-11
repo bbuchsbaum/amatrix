@@ -65,8 +65,8 @@ test_that("MLX beta certification: safe auto startup and claimed fast paths", {
       chol_plan <- amatrix_backend_plan(spd_x, "chol")
 
       amatrix_fallback_log_reset()
-      fac <- chol_factor(spd_x)
-      sol <- chol_solve(fac, rhs)
+      fac <- am_chol_factor(spd_x)
+      sol <- am_chol_solve(fac, rhs)
       chol_log <- amatrix_fallback_log()
       ref_sol <- solve(spd, rhs)
 

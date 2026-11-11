@@ -19,7 +19,7 @@ local({
     "^as\\.",
     "^ncol\\.", "^nrow\\.",
     "^resident_handle$",
-    "^rh_rowSums$", "^rh_colSums$",
+    "^am_rh_rowSums$", "^am_rh_colSums$",
     "^kron_matrix$"
   )
 

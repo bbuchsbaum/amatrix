@@ -107,7 +107,7 @@ head(rep$calibration)
 - **> 2.0** means there's a significant cold-start cost — typically the
   first upload of the matrix to the backend, or the first call pulling in a
   JIT-compiled kernel. The warm runs are fast; the cold run is not.
-- For ops like `many_lm`, the ratio is close to 10× because the cache stores
+- For ops like `am_many_lm`, the ratio is close to 10× because the cache stores
   the QR factorization on the first call and reuses it on subsequent calls.
 
 ## When the GPU wins
@@ -125,15 +125,15 @@ on an `adgeMatrix`:
    memory-bound, not compute-bound.
 
 3. **Large matrices (> 10⁵ elements, dense).** The GPU wins decisively for
-   `%*%`, `crossprod`, `chol`, `svd`, `qr`. Factor caching (`chol_factor`,
-   `svd_factor`) amplifies this: the first call pays the upload + factorize
+   `%*%`, `crossprod`, `chol`, `svd`, `qr`. Factor caching (`am_chol_factor`,
+   `am_svd_factor`) amplifies this: the first call pays the upload + factorize
    cost, subsequent calls reuse the cached factor at memory speed.
 
 4. **Very large matrices (memory-pressure regime, 4K×4K+).** The baseline
    tracks these explicitly because cache effects dominate. The CPU's
    speedup-vs-GPU ratio gets worse as n grows.
 
-5. **Iterative algorithms** (`rsvd`, `block_lanczos`, `sinkhorn`,
+5. **Iterative algorithms** (`rsvd`, `am_block_lanczos`, `am_sinkhorn`,
    `irlba`). These do many sequential kernel invocations on resident data.
    If the input is already GPU-resident, they amortize the upload cost
    across hundreds of kernel launches. If the input is cold every time,

@@ -19,14 +19,14 @@ library(amatrix)
 test_that("amatrix-cng: chol_factor bad input throws classed condition", {
   # Plain matrix, not adgeMatrix — should throw amatrix_bad_arg (or similar)
   expect_error(
-    chol_factor(matrix(1:4, 2, 2)),
+    am_chol_factor(matrix(1:4, 2, 2)),
     class = "amatrix_bad_arg"
   )
 })
 
 test_that("amatrix-cng: svd_factor bad X throws classed condition", {
   expect_error(
-    svd_factor(matrix(1:6, 2, 3)),
+    am_svd_factor(matrix(1:6, 2, 3)),
     class = "amatrix_bad_arg"
   )
 })
@@ -34,7 +34,7 @@ test_that("amatrix-cng: svd_factor bad X throws classed condition", {
 test_that("amatrix-cng: svd_factor bad k throws classed condition", {
   m <- adgeMatrix(matrix(rnorm(6), 2, 3))
   expect_error(
-    svd_factor(m, k = 0L),
+    am_svd_factor(m, k = 0L),
     class = "amatrix_bad_arg"
   )
 })
@@ -42,21 +42,21 @@ test_that("amatrix-cng: svd_factor bad k throws classed condition", {
 test_that("amatrix-cng: svd_factor k > min(dim) throws classed condition", {
   m <- adgeMatrix(matrix(rnorm(6), 2, 3))
   expect_error(
-    svd_factor(m, k = 100L),
+    am_svd_factor(m, k = 100L),
     class = "amatrix_bad_arg"
   )
 })
 
 test_that("amatrix-cng: chol_solve bad factor throws classed condition", {
   expect_error(
-    chol_solve("not_a_chol", rnorm(3)),
+    am_chol_solve("not_a_chol", rnorm(3)),
     class = "amatrix_bad_arg"
   )
 })
 
 test_that("amatrix-cng: lu_factor non-square throws classed condition", {
   expect_error(
-    lu_factor(matrix(1:6, 2, 3)),
+    am_lu_factor(matrix(1:6, 2, 3)),
     class = "amatrix_bad_arg"
   )
 })
@@ -264,7 +264,7 @@ test_that("amatrix-hjj: resident path failure signals amatrix_fallback condition
 # .amatrix_subspace_svd() calls stop("subspace SVD did not discover a usable
 # range space") but its caller .amatrix_subspace_compile_operator wraps the
 # call in tryCatch(error = function(e) NULL). The stop is silently eaten and
-# svd_factor() falls back without any observable error signal.
+# am_svd_factor() falls back without any observable error signal.
 
 test_that("amatrix-833: svd_factor signals condition when subspace fails", {
   # The subspace path is now guarded by a classed error condition at the

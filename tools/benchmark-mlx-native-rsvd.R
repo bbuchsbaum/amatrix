@@ -131,9 +131,9 @@ benchmark_case <- function(case, reps = 3L) {
 
   x <- adgeMatrix(host, preferred_backend = "mlx", precision = "fast")
   mlx <- benchmark_elapsed(
-    function() rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter),
+    function() am_rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter),
     reps = reps,
-    warmup = function() invisible(rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter))
+    warmup = function() invisible(am_rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter))
   )
 
   rbind(

@@ -14,7 +14,7 @@ test_that("svd_factor does not silently fall back when subspace path signals an 
     am_svd = function(...) {
       stop("exact fallback should not run")
     },
-    rsvd = function(...) {
+    am_rsvd = function(...) {
       stop("rsvd fallback should not run")
     },
     .amatrix_subspace_svd = function(...) {
@@ -28,7 +28,7 @@ test_that("svd_factor does not silently fall back when subspace path signals an 
   )
 
   expect_error(
-    svd_factor(x, k = 2L, method = "subspace"),
+    am_svd_factor(x, k = 2L, method = "subspace"),
     class = "amatrix_subspace_error"
   )
 })

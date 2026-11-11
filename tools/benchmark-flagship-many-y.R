@@ -25,7 +25,7 @@ run_scenario <- function(n, p, k, label) {
 
   # Correctness check before timing
   coef_lm  <- do.call(cbind, lapply(seq_len(k), function(j) lm.fit(X_host, Y[, j])$coefficients))
-  fit_cpu  <- many_lm(X_cpu, Y, method = "qr", cache = TRUE)
+  fit_cpu  <- am_many_lm(X_cpu, Y, method = "qr", cache = TRUE)
   coef_am  <- as.matrix(fit_cpu$coefficients)
   max_diff <- max(abs(coef_am - coef_lm))
   if (max_diff >= 1e-8) {
@@ -36,7 +36,7 @@ run_scenario <- function(n, p, k, label) {
   # Check MLX availability
   mlx_available <- tryCatch({
     X_mlx_test <- adgeMatrix(X_host, preferred_backend = "mlx", precision = "fast")
-    many_lm(X_mlx_test, Y, method = "qr", cache = TRUE)
+    am_many_lm(X_mlx_test, Y, method = "qr", cache = TRUE)
     TRUE
   }, error = function(e) FALSE)
 
@@ -47,8 +47,8 @@ run_scenario <- function(n, p, k, label) {
         for (j in seq_len(k)) coefs[[j]] <- lm.fit(X_host, Y[, j])$coefficients
         invisible(coefs)
       },
-      amatrix_cpu = invisible(many_lm(X_cpu, Y, method = "qr", cache = TRUE)),
-      amatrix_mlx = invisible(many_lm(
+      amatrix_cpu = invisible(am_many_lm(X_cpu, Y, method = "qr", cache = TRUE)),
+      amatrix_mlx = invisible(am_many_lm(
         adgeMatrix(X_host, preferred_backend = "mlx", precision = "fast"),
         Y, method = "qr", cache = TRUE
       )),
@@ -64,7 +64,7 @@ run_scenario <- function(n, p, k, label) {
         for (j in seq_len(k)) coefs[[j]] <- lm.fit(X_host, Y[, j])$coefficients
         invisible(coefs)
       },
-      amatrix_cpu = invisible(many_lm(X_cpu, Y, method = "qr", cache = TRUE)),
+      amatrix_cpu = invisible(am_many_lm(X_cpu, Y, method = "qr", cache = TRUE)),
       iterations = 3,
       check      = FALSE,
       memory     = FALSE,

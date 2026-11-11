@@ -273,5 +273,5 @@ setMethod("determinant", "KronMatrix", function(x, logarithm = TRUE, ...) {
   structure(list(modulus = mod, sign = sgn), class = "det")
 })
 
-# kron(): eager wrapper lives in wrappers.R — handles aMatrix inputs via
+# am_kron(): eager wrapper lives in wrappers.R — handles aMatrix inputs via
 # .am_as_double_matrix(). kron_matrix() (above) is the lazy path.

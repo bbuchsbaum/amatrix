@@ -10,7 +10,7 @@ The intended promise is:
 
 > **Runnable proof:** `demopkg/amatrix.demo` in this repo is a complete
 > worked example of the hot-kernel swap — logistic regression via IRLS with
-> `crossprod_weighted()` / `xty_weighted()` / `solve()`, tested against
+> `am_crossprod_weighted()` / `am_xty_weighted()` / `solve()`, tested against
 > `stats::glm.fit()` and benchmarked CPU vs GPU. Start there.
 
 ## Adoption Levels
@@ -94,7 +94,7 @@ If the bottleneck is a repeated-fit pattern, adopt a flagship helper instead of 
 
 Preferred first workload swap:
 
-- `many_lm(..., method = "qr")`
+- `am_many_lm(..., method = "qr")`
 
 That is currently the strongest public path in the repo for shared-`X`, many-`Y` work.
 
@@ -112,7 +112,7 @@ After:
 ```r
 library(amatrix)
 
-fit <- many_lm(X, Y_many, method = "qr", cache = TRUE)
+fit <- am_many_lm(X, Y_many, method = "qr", cache = TRUE)
 coef(fit)
 fit$rss
 ```

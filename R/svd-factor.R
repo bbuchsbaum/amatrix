@@ -1,7 +1,7 @@
 #' Truncated SVD factorization result
 #'
 #' Stores the rank-\code{k} truncated singular value decomposition of
-#' an \code{aMatrix} as returned by \code{\link{svd_factor}}. Left and
+#' an \code{aMatrix} as returned by \code{\link{am_svd_factor}}. Left and
 #' right singular vectors are kept as base R matrices so they are
 #' always host-accessible; optional \code{adgeMatrix} copies of
 #' \code{t(u)} and \code{v} may be present for GPU-accelerated
@@ -31,8 +31,8 @@
 #'   matrix-multiply routing, or \code{NULL} on CPU paths.
 #'
 #' @exportClass amSVD
-#' @seealso \code{\link{svd_factor}}, \code{\link{svd_project}},
-#'   \code{\link{svd_reconstruct}}
+#' @seealso \code{\link{am_svd_factor}}, \code{\link{am_svd_project}},
+#'   \code{\link{am_svd_reconstruct}}
 setClass(
   "amSVD",
   slots = list(
@@ -562,11 +562,11 @@ setMethod("show", "amSVD", function(object) {
 #' @examples
 #' m <- matrix(rnorm(30), nrow = 6)
 #' A <- adgeMatrix(m)
-#' fac <- svd_factor(A, k = 3L)
+#' fac <- am_svd_factor(A, k = 3L)
 #' fac
 #'
 #' @export
-svd_factor <- function(X,
+am_svd_factor <- function(X,
                           k = min(dim(X)),
                           method = c("auto", "exact", "rsvd", "subspace"),
                           n_oversamples = .amatrix_svd_factor_default_oversamples(k),
@@ -616,7 +616,7 @@ svd_factor <- function(X,
       X,
       target_backend = plan$rsvd_backend
     )
-    rsvd(
+    am_rsvd(
       work_x,
       k = k,
       n_oversamples = plan$n_oversamples,
@@ -652,7 +652,7 @@ svd_factor <- function(X,
   engine <- .amatrix_svd_factor_engine(plan, svd_result)
   backend <- .amatrix_svd_factor_backend(X, plan, svd_result)
   use_gpu <- nzchar(backend) && backend != "cpu" && X@precision == "fast"
-  # Pre-transpose u so matmul(ut_am, Y) routes through the matmul path
+  # Pre-transpose u so am_matmul(ut_am, Y) routes through the matmul path
   # (min_dim threshold 128) instead of crossprod (threshold 2048).
   ut_am <- if (use_gpu) adgeMatrix(t(u), preferred_backend = backend, precision = X@precision) else NULL
   v_am  <- if (use_gpu) adgeMatrix(v,    preferred_backend = backend, precision = X@precision) else NULL
@@ -684,7 +684,7 @@ svd_factor <- function(X,
 #' a device copy of \code{t(U)} is available.
 #'
 #' @param factor An \code{\linkS4class{amSVD}} object from
-#'   \code{\link{svd_factor}}.
+#'   \code{\link{am_svd_factor}}.
 #' @param Y Numeric matrix or vector with \code{nrow(Y)} equal to
 #'   the number of rows of the original source matrix.
 #'
@@ -694,11 +694,11 @@ svd_factor <- function(X,
 #' @examples
 #' m <- matrix(rnorm(30), nrow = 6)
 #' A <- adgeMatrix(m)
-#' fac <- svd_factor(A, k = 2L)
-#' coords <- svd_project(fac, m)
+#' fac <- am_svd_factor(A, k = 2L)
+#' coords <- am_svd_project(fac, m)
 #'
 #' @export
-svd_project <- function(factor, Y) {
+am_svd_project <- function(factor, Y) {
   if (!methods::is(factor, "amSVD")) {
     stop("factor must be an amSVD object", call. = FALSE)
   }
@@ -714,7 +714,7 @@ svd_project <- function(factor, Y) {
         nrow(Y_mat), ncol(ut_am)
       ), call. = FALSE)
     }
-    as.matrix(matmul(ut_am, Y_mat))
+    as.matrix(am_matmul(ut_am, Y_mat))
   } else {
     u <- factor@u
     if (nrow(Y_mat) != nrow(u)) {
@@ -735,7 +735,7 @@ svd_project <- function(factor, Y) {
 #' \code{"fast"} precision and a device copy of \code{V} is available.
 #'
 #' @param factor An \code{\linkS4class{amSVD}} object from
-#'   \code{\link{svd_factor}}.
+#'   \code{\link{am_svd_factor}}.
 #' @param Z Numeric matrix or vector with \code{nrow(Z)} equal to
 #'   \code{factor@k}.
 #'
@@ -745,12 +745,12 @@ svd_project <- function(factor, Y) {
 #' @examples
 #' m <- matrix(rnorm(30), nrow = 6)
 #' A <- adgeMatrix(m)
-#' fac <- svd_factor(A, k = 2L)
-#' coords <- svd_project(fac, m)
-#' approx <- svd_reconstruct(fac, coords)
+#' fac <- am_svd_factor(A, k = 2L)
+#' coords <- am_svd_project(fac, m)
+#' approx <- am_svd_reconstruct(fac, coords)
 #'
 #' @export
-svd_reconstruct <- function(factor, Z) {
+am_svd_reconstruct <- function(factor, Z) {
   if (!methods::is(factor, "amSVD")) {
     stop("factor must be an amSVD object", call. = FALSE)
   }
@@ -769,7 +769,7 @@ svd_reconstruct <- function(factor, Z) {
   v_am <- factor@v_am
   if (!is.null(v_am)) {
     # GPU path: V %*% (Z / d) — scale Z rows by 1/d then matmul through backend
-    as.matrix(matmul(v_am, Z_mat * inv_d))
+    as.matrix(am_matmul(v_am, Z_mat * inv_d))
   } else {
     factor@v %*% (Z_mat * inv_d)
   }
@@ -777,8 +777,8 @@ svd_reconstruct <- function(factor, Z) {
 
 #' Principal-component regression coefficients from a truncated SVD
 #'
-#' Convenience wrapper that calls \code{\link{svd_project}} followed
-#' by \code{\link{svd_reconstruct}}, i.e. computes
+#' Convenience wrapper that calls \code{\link{am_svd_project}} followed
+#' by \code{\link{am_svd_reconstruct}}, i.e. computes
 #' \eqn{V D^{-1} U^\top Y}: the minimum-norm least-squares coefficients
 #' of \code{Y} on the rank-\code{k} approximation of the original matrix
 #' \code{X}. Multiply \code{X} by the result to obtain fitted values.
@@ -786,7 +786,7 @@ svd_reconstruct <- function(factor, Z) {
 #' (pseudo-inverse).
 #'
 #' @param factor An \code{\linkS4class{amSVD}} object from
-#'   \code{\link{svd_factor}}.
+#'   \code{\link{am_svd_factor}}.
 #' @param Y Numeric matrix or vector to project and reconstruct.
 #'   Must have \code{nrow(Y)} equal to the number of rows of the
 #'   original source matrix.
@@ -797,12 +797,12 @@ svd_reconstruct <- function(factor, Z) {
 #' @examples
 #' m <- matrix(rnorm(30), nrow = 6)
 #' A <- adgeMatrix(m)
-#' fac <- svd_factor(A, k = 2L)
+#' fac <- am_svd_factor(A, k = 2L)
 #' y <- rnorm(6)
-#' beta <- pca_coef(fac, y)
+#' beta <- am_pca_coef(fac, y)
 #' fitted <- m %*% beta
 #'
 #' @export
-pca_coef <- function(factor, Y) {
-  svd_reconstruct(factor, svd_project(factor, Y))
+am_pca_coef <- function(factor, Y) {
+  am_svd_reconstruct(factor, am_svd_project(factor, Y))
 }

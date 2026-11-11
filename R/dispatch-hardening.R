@@ -95,19 +95,19 @@ setMethod("crossprod",
 
 #' @noRd
 setMethod("%*%", signature(x = "matrix",     y = "adgCMatrix"), function(x, y) {
-  matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
+  am_matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
 })
 #' @noRd
 setMethod("%*%", signature(x = "numeric",    y = "adgCMatrix"), function(x, y) {
-  matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
+  am_matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
 })
 #' @noRd
 setMethod("%*%", signature(x = "dgeMatrix",  y = "adgCMatrix"), function(x, y) {
-  matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
+  am_matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
 })
 #' @noRd
 setMethod("%*%", signature(x = "dgCMatrix",  y = "adgCMatrix"), function(x, y) {
-  matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
+  am_matmul(.amatrix_wrap_for_sparse_rhs(x, y, vector_as = "row"), y)
 })
 #' @noRd
 setMethod("crossprod",  signature(x = "matrix",  y = "adgCMatrix"), function(x, y, ...) {
@@ -174,11 +174,11 @@ setMethod("tcrossprod", signature(x = "dgCMatrix", y = "adgCMatrix"), function(x
 
 #' @noRd
 setMethod("%*%", signature(x = "dgeMatrix", y = "adgeMatrix"), function(x, y) {
-  matmul(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y)
+  am_matmul(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y)
 })
 #' @noRd
 setMethod("%*%", signature(x = "dgCMatrix", y = "adgeMatrix"), function(x, y) {
-  matmul(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y)
+  am_matmul(.amatrix_wrap_for_dense_rhs(x, y, vector_as = "row"), y)
 })
 #' @noRd
 setMethod("crossprod", signature(x = "dgeMatrix", y = "adgeMatrix"), function(x, y, ...) {
@@ -215,7 +215,7 @@ setMethod("tcrossprod", signature(x = "dgCMatrix", y = "adgeMatrix"), function(x
 # Matrix's class on the other, which makes the amatrix method strictly closer.
 
 for (.cls in c("adgeMatrix", "adgCMatrix")) {
-  setMethod("%*%", signature(x = .cls, y = "vector"), function(x, y) matmul(x, y))
+  setMethod("%*%", signature(x = .cls, y = "vector"), function(x, y) am_matmul(x, y))
   setMethod("crossprod", signature(x = .cls, y = "vector"),
             function(x, y = NULL, ...) am_crossprod(x, y = y, ...))
   setMethod("tcrossprod", signature(x = .cls, y = "vector"),

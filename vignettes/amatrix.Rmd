@@ -51,7 +51,7 @@ library(amatrix)
 
 `amatrix` is for matrix-heavy code that already fits the `Matrix` idiom but needs a cleaner path to accelerated execution. You keep ordinary matrix inputs, wrap them once, and then use Matrix-compatible objects that carry backend preferences into linear algebra and model fitting.
 
-This vignette uses one common workload: one design matrix, many response columns. By the end, you will have a backend-aware design matrix, a shared-design QR fit from `many_lm()`, and a compact way to inspect where `amatrix` plans to run each operation.
+This vignette uses one common workload: one design matrix, many response columns. By the end, you will have a backend-aware design matrix, a shared-design QR fit from `am_many_lm()`, and a compact way to inspect where `amatrix` plans to run each operation.
 
 ## What do your inputs look like?
 
@@ -89,11 +89,11 @@ The design matrix `X` is an ordinary dense R matrix with one row per observation
 
 ```{r first-fit}
 X_am <- adgeMatrix(X)
-fit <- many_lm(X_am, Y, method = "qr", include_fitted = TRUE, include_residuals = TRUE)
+fit <- am_many_lm(X_am, Y, method = "qr", include_fitted = TRUE, include_residuals = TRUE)
 dim(coef(fit))
 ```
 
-`adgeMatrix()` is the main dense-matrix constructor. `many_lm()` then fits all response columns against the same design in one call and returns a coefficient matrix with one column per response.
+`adgeMatrix()` is the main dense-matrix constructor. `am_many_lm()` then fits all response columns against the same design in one call and returns a coefficient matrix with one column per response.
 
 ```{r first-fit-checks, include = FALSE}
 qr_ref <- qr.coef(qr(X), Y)
@@ -133,8 +133,8 @@ The main reason to use `amatrix` for repeated regression is that the design-matr
 
 ```{r cache-demo}
 X_cache_am <- adgeMatrix(X)
-fit_a <- many_lm(X_cache_am, Y[, 1:4, drop = FALSE], method = "qr", cache = TRUE)
-fit_b <- many_lm(X_cache_am, Y[, 5:8, drop = FALSE], method = "qr", cache = TRUE)
+fit_a <- am_many_lm(X_cache_am, Y[, 1:4, drop = FALSE], method = "qr", cache = TRUE)
+fit_b <- am_many_lm(X_cache_am, Y[, 5:8, drop = FALSE], method = "qr", cache = TRUE)
 
 c(first_call = fit_a$cache_reused, second_call = fit_b$cache_reused)
 ```
@@ -187,7 +187,7 @@ The CPU path above is the safest default because it runs everywhere. On a machin
 
 ```{r fast-backend-example, eval = FALSE}
 X_fast <- adgeMatrix(X, mode = "fast")
-fit_fast <- many_lm(X_fast, Y, method = "qr", cache = TRUE)
+fit_fast <- am_many_lm(X_fast, Y, method = "qr", cache = TRUE)
 
 coef(fit_fast)
 ```
@@ -196,7 +196,7 @@ If you are writing library code, the default path is still to wrap once at the b
 
 ```{r fast-library-path, eval = FALSE}
 X_am <- as_adgeMatrix(X, mode = "fast")
-fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+fit <- am_many_lm(X_am, Y, method = "qr", cache = TRUE)
 ```
 
 That per-object path does not require session-global setters or a hardcoded backend name. `amatrix` will prefer an available fast-capable accelerator automatically and fall back to CPU when none is available.
@@ -206,7 +206,7 @@ If a caller wants to flip defaults for one local block instead of one object, us
 ```{r with-amatrix-example, eval = FALSE}
 with_amatrix(policy = "auto", precision = "fast", {
   X_am <- as_adgeMatrix(X)
-  fit <- many_lm(X_am, Y, method = "qr", cache = TRUE)
+  fit <- am_many_lm(X_am, Y, method = "qr", cache = TRUE)
 })
 ```
 
@@ -214,4 +214,4 @@ Use `amatrix_bind_resident()` only when you need to optimize a particularly hot 
 
 ## Where next?
 
-The next functions to explore are `adgeMatrix()`, `many_lm()`, `amatrix_backend_status()`, and `amatrix_explain()`. If you want to audit a single operation more deeply, start with `amatrix_backend_plan()` and then compare that compact plan to the printed explanation from `amatrix_explain()`.
+The next functions to explore are `adgeMatrix()`, `am_many_lm()`, `amatrix_backend_status()`, and `amatrix_explain()`. If you want to audit a single operation more deeply, start with `amatrix_backend_plan()` and then compare that compact plan to the printed explanation from `amatrix_explain()`.

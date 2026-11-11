@@ -27,10 +27,10 @@ test_that("regression amatrix-6lg: dist/kernel never silently zero non-finite ro
   }
   X_nan <- matrix(c(1, 2, NaN, 4, 5, 6), 3, 2)
   X_inf <- matrix(c(1, 2, Inf, 4, 5, 6), 3, 2)
-  assert_not_silently_finite(function(A) dist_matrix(A, A), X_nan, 3L)
-  assert_not_silently_finite(function(A) dist_matrix(A, A), X_inf, 3L)
+  assert_not_silently_finite(function(A) am_dist_matrix(A, A), X_nan, 3L)
+  assert_not_silently_finite(function(A) am_dist_matrix(A, A), X_inf, 3L)
   assert_not_silently_finite(
-    function(A) kernel_matrix(A, kernel = "rbf", sigma = 1), X_nan, 3L
+    function(A) am_kernel_matrix(A, kernel = "rbf", sigma = 1), X_nan, 3L
   )
 })
 
@@ -74,12 +74,12 @@ test_that("regression amatrix-47w: Compare ops keep amatrix class, not bare Matr
 })
 
 test_that("regression amatrix-8oy: rbf self-kernel diagonal is exactly 1 on cpu", {
-  # Bug: kernel_matrix(Y, Y, 'rbf') left f32 self-distance drift in the
+  # Bug: am_kernel_matrix(Y, Y, 'rbf') left f32 self-distance drift in the
   # diagonal (values in [0.999999, 1]) instead of exactly 1. On the cpu
   # (float64) path the diagonal must be exactly 1.
   set.seed(8)
   Y <- matrix(rnorm(20), 5, 4)
-  K <- kernel_matrix(adgeMatrix(Y, preferred_backend = "cpu"), kernel = "rbf", sigma = 1)
+  K <- am_kernel_matrix(adgeMatrix(Y, preferred_backend = "cpu"), kernel = "rbf", sigma = 1)
   expect_equal(diag(as.matrix(K)), rep(1, 5), tolerance = 0)
 })
 

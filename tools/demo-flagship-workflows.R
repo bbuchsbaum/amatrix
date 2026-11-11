@@ -23,14 +23,14 @@ Y_small <- Y[, seq_len(4L), drop = FALSE]
 x_am <- adgeMatrix(X)
 
 w <- seq(1, n) / n
-many_fit <- many_lm(x_am, Y, method = "qr", include_residuals = TRUE, cache = TRUE)
-many_fit_reuse <- many_lm(x_am, Y, method = "qr", include_residuals = FALSE, cache = TRUE)
-many_weighted_fit <- many_lm(x_am, Y, weights = w, method = "qr", include_residuals = TRUE, cache = TRUE)
-array_fit <- array_lm(x_am, Y_array, weights = w, method = "qr", include_residuals = TRUE)
-wls <- wls_fit(x_am, Y_small, weights = w, method = "qr")
-single_fit <- lm_fit(x_am, Y_small, method = "qr")
-cov_mat <- covariance(x_am, weights = w)
-cor_mat <- correlation(x_am)
+many_fit <- am_many_lm(x_am, Y, method = "qr", include_residuals = TRUE, cache = TRUE)
+many_fit_reuse <- am_many_lm(x_am, Y, method = "qr", include_residuals = FALSE, cache = TRUE)
+many_weighted_fit <- am_many_lm(x_am, Y, weights = w, method = "qr", include_residuals = TRUE, cache = TRUE)
+array_fit <- am_array_lm(x_am, Y_array, weights = w, method = "qr", include_residuals = TRUE)
+wls <- am_wls_fit(x_am, Y_small, weights = w, method = "qr")
+single_fit <- am_lm_fit(x_am, Y_small, method = "qr")
+cov_mat <- am_covariance(x_am, weights = w)
+cor_mat <- am_correlation(x_am)
 
 cat("\nFlagship many-response QR fit\n")
 cat(sprintf("responses: %d\n", many_fit$responses))

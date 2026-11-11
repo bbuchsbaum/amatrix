@@ -711,15 +711,15 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
       op,
       matmul = function() { aX <- make_dense_operand(X, requested_backend); aB <- make_dense_operand(B_host, requested_backend); on.exit({ release_residency(aX); release_residency(aB) }, add = TRUE); invisible(aX %*% aB) },
       crossprod = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(crossprod(aX)) },
-      covariance = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(covariance(aX)) },
-      dist = function() { aXs <- make_dense_operand(Xs, requested_backend); on.exit(release_residency(aXs), add = TRUE); invisible(dist_matrix(aXs)) },
+      covariance = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(am_covariance(aX)) },
+      dist = function() { aXs <- make_dense_operand(Xs, requested_backend); on.exit(release_residency(aXs), add = TRUE); invisible(am_dist_matrix(aXs)) },
       chol = function() { aS <- make_dense_operand(SPD, requested_backend); on.exit(release_residency(aS), add = TRUE); invisible(chol(aS)) },
       solve_rhs = function() { aS <- make_dense_operand(SPD, requested_backend); aR <- make_dense_operand(SPD_rhs, requested_backend); on.exit({ release_residency(aS); release_residency(aR) }, add = TRUE); invisible(solve(aS, aR)) },
-      eigen_sym = function() { aS <- make_dense_operand(SPD, requested_backend); on.exit(release_residency(aS), add = TRUE); invisible(eigh(aS)) },
-      many_lm = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(many_lm(aX, Y, method = "qr", cache = FALSE)) },
-      rsvd = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(rsvd(aX, k = 10L)) },
+      eigen_sym = function() { aS <- make_dense_operand(SPD, requested_backend); on.exit(release_residency(aS), add = TRUE); invisible(am_eigh(aS)) },
+      many_lm = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(am_many_lm(aX, Y, method = "qr", cache = FALSE)) },
+      rsvd = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(am_rsvd(aX, k = 10L)) },
       svd = function() { aX <- make_dense_operand(X, requested_backend); on.exit(release_residency(aX), add = TRUE); invisible(svd(aX)) },
-      sinkhorn = function() { aSink <- make_dense_operand(sink_host, requested_backend); on.exit(release_residency(aSink), add = TRUE); invisible(sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE)) }
+      sinkhorn = function() { aSink <- make_dense_operand(sink_host, requested_backend); on.exit(release_residency(aSink), add = TRUE); invisible(am_sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE)) }
     ),
     warm = {
       aX <- if (op %in% c("chol", "solve_rhs", "eigen_sym")) NULL else make_dense_operand(X, requested_backend)
@@ -737,30 +737,30 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
       tryCatch({
         if (!is.null(aB)) invisible(aX %*% aB)
         if (identical(op, "crossprod")) invisible(crossprod(aX))
-        if (identical(op, "covariance")) invisible(covariance(aX))
-        if (identical(op, "dist")) invisible(dist_matrix(aXs))
+        if (identical(op, "covariance")) invisible(am_covariance(aX))
+        if (identical(op, "dist")) invisible(am_dist_matrix(aXs))
         if (identical(op, "chol")) invisible(chol(aS))
         if (identical(op, "solve_rhs")) invisible(solve(aS, aR))
-        if (identical(op, "eigen_sym")) invisible(eigh(aS))
-        if (identical(op, "many_lm")) invisible(many_lm(aX, Y, method = "qr", cache = TRUE))
-        if (identical(op, "rsvd")) invisible(rsvd(aX, k = 10L))
+        if (identical(op, "eigen_sym")) invisible(am_eigh(aS))
+        if (identical(op, "many_lm")) invisible(am_many_lm(aX, Y, method = "qr", cache = TRUE))
+        if (identical(op, "rsvd")) invisible(am_rsvd(aX, k = 10L))
         if (identical(op, "svd")) invisible(svd(aX))
-        if (identical(op, "sinkhorn")) invisible(sinkhorn(aSink, max_iter = 5L, tol = 0, return_info = FALSE))
+        if (identical(op, "sinkhorn")) invisible(am_sinkhorn(aSink, max_iter = 5L, tol = 0, return_info = FALSE))
       }, error = function(e) NULL)
 
       switch(
         op,
         matmul = function() invisible(aX %*% aB),
         crossprod = function() invisible(crossprod(aX)),
-        covariance = function() invisible(covariance(aX)),
-        dist = function() invisible(dist_matrix(aXs)),
+        covariance = function() invisible(am_covariance(aX)),
+        dist = function() invisible(am_dist_matrix(aXs)),
         chol = function() invisible(chol(aS)),
         solve_rhs = function() invisible(solve(aS, aR)),
-        eigen_sym = function() invisible(eigh(aS)),
-        many_lm = function() invisible(many_lm(aX, Y, method = "qr", cache = TRUE)),
-        rsvd = function() invisible(rsvd(aX, k = 10L)),
+        eigen_sym = function() invisible(am_eigh(aS)),
+        many_lm = function() invisible(am_many_lm(aX, Y, method = "qr", cache = TRUE)),
+        rsvd = function() invisible(am_rsvd(aX, k = 10L)),
         svd = function() invisible(svd(aX)),
-        sinkhorn = function() invisible(sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE))
+        sinkhorn = function() invisible(am_sinkhorn(aSink, max_iter = 25L, tol = 0, return_info = FALSE))
       )
     },
     stop(sprintf("unknown dense variant '%s'", variant), call. = FALSE)
@@ -793,7 +793,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
         op,
         matmul    = as.matrix(adgeMatrix(X, preferred_backend = "cpu") %*% adgeMatrix(B_host, preferred_backend = "cpu")),
         crossprod = as.matrix(crossprod(adgeMatrix(X, preferred_backend = "cpu"))),
-        rsvd      = { r <- rsvd(adgeMatrix(X, preferred_backend = "cpu"), k = 10L); r$u %*% diag(r$d) %*% t(r$v) },
+        rsvd      = { r <- am_rsvd(adgeMatrix(X, preferred_backend = "cpu"), k = 10L); r$u %*% diag(r$d) %*% t(r$v) },
         chol      = as.matrix(chol(adgeMatrix(SPD, preferred_backend = "cpu")))
       )
       if (identical(op, "rsvd")) {
@@ -803,7 +803,7 @@ run_dense_case <- function(requested_backend, op, size_label, variant) {
         op,
         matmul    = as.matrix(adgeMatrix(X, preferred_backend = requested_backend) %*% adgeMatrix(B_host, preferred_backend = requested_backend)),
         crossprod = as.matrix(crossprod(adgeMatrix(X, preferred_backend = requested_backend))),
-        rsvd      = { r <- rsvd(adgeMatrix(X, preferred_backend = requested_backend), k = 10L); r$u %*% diag(r$d) %*% t(r$v) },
+        rsvd      = { r <- am_rsvd(adgeMatrix(X, preferred_backend = requested_backend), k = 10L); r$u %*% diag(r$d) %*% t(r$v) },
         chol      = as.matrix(chol(adgeMatrix(SPD, preferred_backend = requested_backend)))
       )
       assert_backend_accuracy(ref, gpu_result, op)
@@ -1042,7 +1042,7 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
           x <- make_sparse_operand(case$X_host, requested_backend)
           on.exit(release_residency(x), add = TRUE)
           if (identical(op, "block_lanczos")) {
-            invisible(block_lanczos(
+            invisible(am_block_lanczos(
               x,
               nv = params$k,
               nu = params$k,
@@ -1050,7 +1050,7 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
               n_steps = params$n_steps
             ))
           } else {
-            invisible(svd_factor(
+            invisible(am_svd_factor(
               x,
               k = params$k,
               method = "subspace",
@@ -1069,7 +1069,7 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
         on.exit(release_residency(resident_x), add = TRUE)
 
         runner <- if (identical(op, "block_lanczos")) {
-          function() invisible(block_lanczos(
+          function() invisible(am_block_lanczos(
             resident_x,
             nv = params$k,
             nu = params$k,
@@ -1084,7 +1084,7 @@ run_sparse_iterative_case <- function(requested_backend, op, size_label, density
               n_oversamples = params$n_oversamples,
               n_iter = params$n_iter
             )
-            invisible(svd_factor(
+            invisible(am_svd_factor(
               resident_x,
               k = params$k,
               method = "subspace",

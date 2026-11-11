@@ -2,7 +2,7 @@ suppressPackageStartupMessages(library(amatrix))
 
 test_that("lu_factor returns amLU for plain matrix", {
   A   <- matrix(c(2, 1, 5, 3), 2, 2)
-  fac <- lu_factor(A)
+  fac <- am_lu_factor(A)
   expect_s4_class(fac, "amLU")
   expect_equal(dim(fac@A), c(2L, 2L))
 })
@@ -10,13 +10,13 @@ test_that("lu_factor returns amLU for plain matrix", {
 test_that("lu_factor accepts adgeMatrix input", {
   set.seed(1)
   A   <- crossprod(matrix(rnorm(25), 5)) + diag(5)
-  fac <- lu_factor(as_adgeMatrix(A))
+  fac <- am_lu_factor(as_adgeMatrix(A))
   expect_s4_class(fac, "amLU")
   expect_identical(nrow(fac@A), 5L)
 })
 
 test_that("lu_factor rejects non-square matrix", {
-  expect_error(lu_factor(matrix(1:6, 2, 3)), "square")
+  expect_error(am_lu_factor(matrix(1:6, 2, 3)), "square")
 })
 
 test_that("lu_solve matches base::solve for vector rhs", {
@@ -25,8 +25,8 @@ test_that("lu_solve matches base::solve for vector rhs", {
   A <- crossprod(matrix(rnorm(n * n), n)) + diag(n)
   b <- rnorm(n)
 
-  fac <- lu_factor(A)
-  x   <- lu_solve(fac, b)
+  fac <- am_lu_factor(A)
+  x   <- am_lu_solve(fac, b)
   ref <- base::solve(A, b)
 
   expect_equal(x, ref, tolerance = 1e-10)
@@ -40,8 +40,8 @@ test_that("lu_solve handles matrix rhs", {
   A <- crossprod(matrix(rnorm(n * n), n)) + diag(n)
   B <- matrix(rnorm(n * k), n, k)
 
-  fac <- lu_factor(A)
-  X   <- lu_solve(fac, B)
+  fac <- am_lu_factor(A)
+  X   <- am_lu_solve(fac, B)
   ref <- base::solve(A, B)
 
   expect_equal(X, ref, tolerance = 1e-10)
@@ -49,7 +49,7 @@ test_that("lu_solve handles matrix rhs", {
 })
 
 test_that("lu_solve errors on wrong factor type", {
-  expect_error(lu_solve(list(), rnorm(3)), "amLU")
+  expect_error(am_lu_solve(list(), rnorm(3)), "amLU")
 })
 
 test_that("lu_factor works on asymmetric (non-SPD) matrix", {
@@ -59,8 +59,8 @@ test_that("lu_factor works on asymmetric (non-SPD) matrix", {
   A <- matrix(rnorm(n * n), n, n) + diag(n) * n
   b <- rnorm(n)
 
-  fac <- lu_factor(A)
-  x   <- lu_solve(fac, b)
+  fac <- am_lu_factor(A)
+  x   <- am_lu_solve(fac, b)
   ref <- base::solve(A, b)
   expect_equal(x, ref, tolerance = 1e-10)
 })

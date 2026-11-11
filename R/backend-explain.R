@@ -194,7 +194,7 @@ amatrix_explain <- function(x, op, y = NULL) {
     add(sprintf(
       "      X <- amatrix_bind_resident(X, \"%s\")", chosen))
     add("  \u2192 For the many-Y QR workflow, use:")
-    add("      many_lm(X, Y, method=\"qr\", cache=TRUE)")
+    add("      am_many_lm(X, Y, method=\"qr\", cache=TRUE)")
   }
 
   # -- Resident path: already optimal ------------------------------------------

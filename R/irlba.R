@@ -16,7 +16,7 @@
 #'   Ignored if \code{A} is already an amatrix object.
 #' @param implementation Lanczos implementation to use. \code{"compat"}
 #'   preserves the current \code{irlba::irlba()} wrapper behavior. \code{"block"}
-#'   routes to \code{\link{block_lanczos}} for a GEMM-oriented approximation.
+#'   routes to \code{\link{am_block_lanczos}} for a GEMM-oriented approximation.
 #' @param block_size Block size passed to \code{am_block_lanczos()} when
 #'   \code{implementation = "block"}. Defaults to a small MLX-friendly block
 #'   size derived from the requested rank.
@@ -47,7 +47,7 @@
 #'   fit$d
 #' }
 #'
-#' @seealso \code{\link{adgeMatrix}}, \code{\link{svd_factor}}
+#' @seealso \code{\link{adgeMatrix}}, \code{\link{am_svd_factor}}
 #' @export
 am_irlba <- function(A,
                      nv = 5,
@@ -65,11 +65,11 @@ am_irlba <- function(A,
     if (length(dots) > 0L) {
       warning(
         "am_irlba(..., implementation = 'block') ignores irlba-specific arguments in ...; ",
-        "use block_lanczos() for the block implementation surface.",
+        "use am_block_lanczos() for the block implementation surface.",
         call. = FALSE
       )
     }
-    return(block_lanczos(
+    return(am_block_lanczos(
       A,
       nv = nv,
       nu = nu,
@@ -147,13 +147,13 @@ am_irlba <- function(A,
 #'   set.seed(1)
 #'   A <- matrix(rnorm(200), 20, 10)
 #'   # Falls back to am_irlba() when the ArrayFire backend is not available
-#'   fit <- suppressMessages(irlba_native(A, nv = 2L))
+#'   fit <- suppressMessages(am_irlba_native(A, nv = 2L))
 #'   fit$d
 #' }
 #'
 #' @seealso \code{\link{am_irlba}}, \code{\link{adgeMatrix}}
 #' @export
-irlba_native <- function(A,
+am_irlba_native <- function(A,
                              nv    = 5L,
                              nu    = nv,
                              tol   = sqrt(.Machine$double.eps),
@@ -808,12 +808,12 @@ irlba_native <- function(A,
 #'
 #' @examples
 #' A <- matrix(rnorm(200), nrow = 20)
-#' res <- block_lanczos(A, nv = 3L)
+#' res <- am_block_lanczos(A, nv = 3L)
 #' length(res$d)
 #'
-#' @seealso \code{\link{rsvd}}, \code{\link{block_svd}}
+#' @seealso \code{\link{am_rsvd}}, \code{\link{am_block_svd}}
 #' @export
-block_lanczos <- function(A,
+am_block_lanczos <- function(A,
                              nv = 5L,
                              nu = nv,
                              block_size = NULL,
@@ -1010,17 +1010,17 @@ block_lanczos <- function(A,
   )
 }
 
-#' @rdname block_lanczos
+#' @rdname am_block_lanczos
 #' @param k Number of singular values/vectors. Alias for \code{nv = nu = k}.
 #' @export
-block_svd <- function(A,
+am_block_svd <- function(A,
                          k,
                          block_size = NULL,
                          n_steps = NULL,
                          mode = "fast",
                          backend = NULL,
                          tol = 1e-5) {
-  block_lanczos(
+  am_block_lanczos(
     A,
     nv = as.integer(k),
     nu = as.integer(k),

@@ -7,16 +7,16 @@ test_that("dist_matrix cosine is a distance, not a similarity", {
   ref <- 1 - tcrossprod(X) / outer(nx, nx)
   diag(ref) <- 0
 
-  D <- as.matrix(dist_matrix(X, method = "cosine"))
+  D <- as.matrix(am_dist_matrix(X, method = "cosine"))
   expect_equal(D, ref, ignore_attr = TRUE, tolerance = 1e-10)
   expect_true(all(diag(D) == 0))
   expect_true(all(D >= 0 & D <= 2))
 
-  Dxy <- as.matrix(dist_matrix(adgeMatrix(X), X[1:2, ], method = "cosine"))
+  Dxy <- as.matrix(am_dist_matrix(adgeMatrix(X), X[1:2, ], method = "cosine"))
   expect_equal(Dxy, 1 - tcrossprod(X, X[1:2, ]) / outer(nx, nx[1:2]),
                ignore_attr = TRUE, tolerance = 1e-10)
   # The similarity remains available as a kernel.
-  expect_equal(as.matrix(kernel_matrix(X, kernel = "cosine")), 1 - ref,
+  expect_equal(as.matrix(am_kernel_matrix(X, kernel = "cosine")), 1 - ref,
                ignore_attr = TRUE, tolerance = 1e-10)
 })
 
@@ -71,10 +71,10 @@ test_that("sweep() dispatches on amatrix objects and keeps sparse scaling sparse
   expect_equal(hv(am_sweep(A, 2, c(1, 2, 4))), base::sweep(m, 2, c(1, 2, 4)), ignore_attr = TRUE)
   expect_s4_class(sweep(A, 2, c(1, 2, 4)), "adgeMatrix")
   expect_s4_class(sweep(S, 2, c(1, 2, 4), "*"), "adgCMatrix")
-  expect_s4_class(colscale(S, c(1, 2, 4)), "adgCMatrix")
-  expect_s4_class(rowscale(S, c(2, 4)), "adgCMatrix")
-  expect_equal(hv(colscale(S, c(1, 2, 4))), t(t(m) * c(1, 2, 4)), ignore_attr = TRUE)
-  expect_equal(hv(rowscale(S, c(2, 4))), m * c(2, 4), ignore_attr = TRUE)
+  expect_s4_class(am_colscale(S, c(1, 2, 4)), "adgCMatrix")
+  expect_s4_class(am_rowscale(S, c(2, 4)), "adgCMatrix")
+  expect_equal(hv(am_colscale(S, c(1, 2, 4))), t(t(m) * c(1, 2, 4)), ignore_attr = TRUE)
+  expect_equal(hv(am_rowscale(S, c(2, 4))), m * c(2, 4), ignore_attr = TRUE)
   # Non-amatrix inputs are untouched.
   expect_identical(sweep(m, 2, c(1, 2, 4)), base::sweep(m, 2, c(1, 2, 4)))
 })

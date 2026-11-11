@@ -6,7 +6,7 @@
 \title{Truncated SVD factorization result}
 \description{
 Stores the rank-\code{k} truncated singular value decomposition of
-an \code{aMatrix} as returned by \code{\link{svd_factor}}. Left and
+an \code{aMatrix} as returned by \code{\link{am_svd_factor}}. Left and
 right singular vectors are kept as base R matrices so they are
 always host-accessible; optional \code{adgeMatrix} copies of
 \code{t(u)} and \code{v} may be present for GPU-accelerated
@@ -50,6 +50,6 @@ matrix-multiply routing, or \code{NULL} on CPU paths.}
 }}
 
 \seealso{
-\code{\link{svd_factor}}, \code{\link{svd_project}},
-  \code{\link{svd_reconstruct}}
+\code{\link{am_svd_factor}}, \code{\link{am_svd_project}},
+  \code{\link{am_svd_reconstruct}}
 }

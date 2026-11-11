@@ -49,7 +49,7 @@ test_that("amatrix-8kj: crossprod_weighted drops resident temp keys after wrap f
         .package = "amatrix"
       )
 
-      expect_error(crossprod_weighted(x, c(1, 4, 9)), "weighted wrap boom")
+      expect_error(am_crossprod_weighted(x, c(1, 4, 9)), "weighted wrap boom")
       expect_identical(sort(ls(envir = resident, all.names = FALSE)), x_key)
       expect_true(counter$crossprod_resident >= 1L)
       expect_true(counter$resident_drop >= 1L)
@@ -99,7 +99,7 @@ test_that("amatrix-8kj: tcrossprod_weighted drops resident temp keys after wrap 
         .package = "amatrix"
       )
 
-      expect_error(tcrossprod_weighted(x, c(1, 4, 9)), "weighted wrap boom")
+      expect_error(am_tcrossprod_weighted(x, c(1, 4, 9)), "weighted wrap boom")
       expect_identical(sort(ls(envir = resident, all.names = FALSE)), x_key)
       expect_true(counter$tcrossprod_resident >= 1L)
       expect_true(counter$resident_drop >= 1L)

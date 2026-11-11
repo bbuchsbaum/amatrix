@@ -1,4 +1,4 @@
-# test-gemm-dist.R — tests for gemm() and dist_matrix(tile_size)
+# test-gemm-dist.R — tests for am_gemm() and am_dist_matrix(tile_size)
 
 # ── gemm ───────────────────────────────────────────────────────────────────
 
@@ -9,7 +9,7 @@ test_that("gemm(A, B) matches A %*% B", {
   A <- adgeMatrix(A_r, preferred_backend = "cpu")
   B <- adgeMatrix(B_r, preferred_backend = "cpu")
 
-  res  <- gemm(A, B)
+  res  <- am_gemm(A, B)
   ref  <- A_r %*% B_r
   expect_true(inherits(res, "adgeMatrix"))
   expect_equal(dim(res), c(8L, 7L))
@@ -23,7 +23,7 @@ test_that("gemm(A, B, alpha=2) matches 2 * A %*% B", {
   A <- adgeMatrix(A_r, preferred_backend = "cpu")
   B <- adgeMatrix(B_r, preferred_backend = "cpu")
 
-  res <- gemm(A, B, alpha = 2.0)
+  res <- am_gemm(A, B, alpha = 2.0)
   expect_equal(as.matrix(res), 2 * A_r %*% B_r, tolerance = 1e-10)
 })
 
@@ -36,7 +36,7 @@ test_that("gemm(A, B, C, alpha=2, beta=0.5) matches 2*A%*%B + 0.5*C", {
   B <- adgeMatrix(B_r, preferred_backend = "cpu")
   C <- adgeMatrix(C_r, preferred_backend = "cpu")
 
-  res <- gemm(A, B, C, alpha = 2.0, beta = 0.5)
+  res <- am_gemm(A, B, C, alpha = 2.0, beta = 0.5)
   ref <- 2 * A_r %*% B_r + 0.5 * C_r
   expect_equal(as.matrix(res), ref, tolerance = 1e-10)
 })
@@ -48,7 +48,7 @@ test_that("gemm transA=TRUE routes through crossprod", {
   A <- adgeMatrix(A_r, preferred_backend = "cpu")
   B <- adgeMatrix(B_r, preferred_backend = "cpu")
 
-  res <- gemm(A, B, transA = TRUE)    # t(A) %*% B → 4×3
+  res <- am_gemm(A, B, transA = TRUE)    # t(A) %*% B → 4×3
   ref <- t(A_r) %*% B_r
   expect_equal(dim(res), c(4L, 3L))
   expect_equal(as.matrix(res), ref, tolerance = 1e-10)
@@ -61,7 +61,7 @@ test_that("gemm transB=TRUE routes through tcrossprod", {
   A <- adgeMatrix(A_r, preferred_backend = "cpu")
   B <- adgeMatrix(B_r, preferred_backend = "cpu")
 
-  res <- gemm(A, B, transB = TRUE)    # A %*% t(B) → 6×4
+  res <- am_gemm(A, B, transB = TRUE)    # A %*% t(B) → 6×4
   ref <- A_r %*% t(B_r)
   expect_equal(dim(res), c(6L, 4L))
   expect_equal(as.matrix(res), ref, tolerance = 1e-10)
@@ -74,7 +74,7 @@ test_that("gemm transA=TRUE transB=TRUE matches t(A) %*% t(B)", {
   A <- adgeMatrix(A_r, preferred_backend = "cpu")
   B <- adgeMatrix(B_r, preferred_backend = "cpu")
 
-  res <- gemm(A, B, transA = TRUE, transB = TRUE)  # t(A) %*% t(B) → 4×6
+  res <- am_gemm(A, B, transA = TRUE, transB = TRUE)  # t(A) %*% t(B) → 4×6
   ref <- t(A_r) %*% t(B_r)
   expect_equal(dim(res), c(4L, 6L))
   expect_equal(as.matrix(res), ref, tolerance = 1e-10)
@@ -86,8 +86,8 @@ test_that("dist_matrix tiled self-distance matches untiled on small matrix", {
   set.seed(61)
   X_r <- matrix(rnorm(50 * 8), 50, 8)
 
-  ref   <- dist_matrix(X_r, method = "euclidean")
-  tiled <- dist_matrix(X_r, method = "euclidean", tile_size = 15L)
+  ref   <- am_dist_matrix(X_r, method = "euclidean")
+  tiled <- am_dist_matrix(X_r, method = "euclidean", tile_size = 15L)
 
   expect_equal(dim(tiled), c(50L, 50L))
   expect_equal(tiled, ref, tolerance = 1e-6)
@@ -97,8 +97,8 @@ test_that("dist_matrix tiled sqeuclidean matches untiled", {
   set.seed(62)
   X_r <- matrix(rnorm(40 * 5), 40, 5)
 
-  ref   <- dist_matrix(X_r, method = "sqeuclidean")
-  tiled <- dist_matrix(X_r, method = "sqeuclidean", tile_size = 12L)
+  ref   <- am_dist_matrix(X_r, method = "sqeuclidean")
+  tiled <- am_dist_matrix(X_r, method = "sqeuclidean", tile_size = 12L)
 
   expect_equal(tiled, ref, tolerance = 1e-6)
 })
@@ -106,14 +106,14 @@ test_that("dist_matrix tiled sqeuclidean matches untiled", {
 test_that("dist_matrix tiled diagonal is zero", {
   set.seed(63)
   X_r <- matrix(rnorm(30 * 6), 30, 6)
-  tiled <- dist_matrix(X_r, method = "euclidean", tile_size = 11L)
+  tiled <- am_dist_matrix(X_r, method = "euclidean", tile_size = 11L)
   expect_equal(diag(tiled), rep(0, 30))
 })
 
 test_that("dist_matrix tiled result is symmetric", {
   set.seed(64)
   X_r <- matrix(rnorm(25 * 4), 25, 4)
-  tiled <- dist_matrix(X_r, method = "euclidean", tile_size = 8L)
+  tiled <- am_dist_matrix(X_r, method = "euclidean", tile_size = 8L)
   expect_equal(tiled, t(tiled), tolerance = 1e-10)
 })
 
@@ -122,8 +122,8 @@ test_that("dist_matrix tiled X,Y matches untiled", {
   X_r <- matrix(rnorm(20 * 5), 20, 5)
   Y_r <- matrix(rnorm(15 * 5), 15, 5)
 
-  ref   <- dist_matrix(X_r, Y_r, method = "euclidean")
-  tiled <- dist_matrix(X_r, Y_r, method = "euclidean", tile_size = 7L)
+  ref   <- am_dist_matrix(X_r, Y_r, method = "euclidean")
+  tiled <- am_dist_matrix(X_r, Y_r, method = "euclidean", tile_size = 7L)
 
   expect_equal(dim(tiled), c(20L, 15L))
   expect_equal(tiled, ref, tolerance = 1e-6)
@@ -141,6 +141,6 @@ test_that("metric helpers respect cpu-tagged dense inputs", {
   spec <- .am_metric_backend_spec(X_cpu)
   expect_identical(spec$name, "cpu")
   expect_equal(.am_metric_tcrossprod_backend(X_cpu, spec = spec), tcrossprod(X_r), tolerance = 1e-10)
-  expect_equal(dist_matrix(X_cpu, method = "euclidean"), ref_dist, tolerance = 1e-10)
-  expect_equal(kernel_matrix(X_cpu, kernel = "linear"), ref_kernel, tolerance = 1e-10)
+  expect_equal(am_dist_matrix(X_cpu, method = "euclidean"), ref_dist, tolerance = 1e-10)
+  expect_equal(am_kernel_matrix(X_cpu, kernel = "linear"), ref_kernel, tolerance = 1e-10)
 })

@@ -31,7 +31,7 @@ test_that("OpenCL normal-equation lm_fit matches lm.fit", {
     XtX <- am_crossprod(X_arg)
     XtY <- am_crossprod(X_arg, Y_arg)
 
-    fit <- lm_fit(
+    fit <- am_lm_fit(
       X_arg,
       Y_host,
       method = "normal",
@@ -64,7 +64,7 @@ test_that("OpenCL normal-equation lm_fit seeds reusable Cholesky cache on XtX", 
     X_host <- matrix(rnorm(240 * 20), nrow = 240, ncol = 20)
     Y_host <- matrix(rnorm(240 * 2), nrow = 240, ncol = 2)
 
-    fit <- lm_fit(
+    fit <- am_lm_fit(
       adgeMatrix(X_host, preferred_backend = "opencl", precision = "fast"),
       Y_host,
       method = "normal",
@@ -92,7 +92,7 @@ test_that("OpenCL ridge_fit matches penalized normal equations", {
     Y_host <- X_host %*% beta_host + matrix(rnorm(180 * 2, sd = 1e-6), nrow = 180, ncol = 2)
     lambda <- 0.75
 
-    fit <- ridge_fit(
+    fit <- am_ridge_fit(
       adgeMatrix(X_host, preferred_backend = "opencl", precision = "fast"),
       Y_host,
       lambda = lambda,
@@ -134,12 +134,12 @@ test_that("OpenCL narrow ridge intermediates do not promote into resident solve"
       penalize_intercept = FALSE,
       has_intercept = FALSE
     )
-    penalized <- ewise("+", XtX, penalty)
+    penalized <- am_ewise("+", XtX, penalty)
 
     expect_false(amatrix_residency_info(XtX)$live[[1]])
     expect_false(amatrix_residency_info(penalty)$live[[1]])
     expect_false(amatrix_residency_info(penalized)$live[[1]])
-    fit <- ridge_fit(
+    fit <- am_ridge_fit(
       X_arg,
       Y_host,
       lambda = 0.5,
@@ -168,7 +168,7 @@ test_that("OpenCL wls_fit normal path matches weighted normal equations", {
     Y_host <- X_host %*% beta_host + matrix(rnorm(160 * 2, sd = 1e-6), nrow = 160, ncol = 2)
     weights <- runif(nrow(X_host), min = 0.2, max = 1.5)
 
-    fit <- wls_fit(
+    fit <- am_wls_fit(
       adgeMatrix(X_host, preferred_backend = "opencl", precision = "fast"),
       Y_host,
       weights = weights,
@@ -202,7 +202,7 @@ test_that("OpenCL covariance uses the backend path and matches stats::cov", {
 
     expect_identical(amatrix_backend_plan(X_arg, "covariance")$chosen, "opencl")
 
-    fit <- covariance(X_arg)
+    fit <- am_covariance(X_arg)
     .expect_opencl_fast_equal(fit, stats::cov(X_host))
   })
 })
@@ -310,7 +310,7 @@ test_that("OpenCL explicit QR honors pivoting when host QR fallback pivots colum
     qr_ref <- qr(X_host)
 
     expect_false(identical(qr_ref$pivot, seq_len(ncol(X_host))))
-    expect_true(isTRUE(qr_info(qr_fit)$pivoted))
+    expect_true(isTRUE(am_qr_info(qr_fit)$pivoted))
     expect_equal(
       as.matrix(qr.coef(qr_fit, Y_host)),
       qr.coef(qr_ref, Y_host),

@@ -20,11 +20,11 @@ test_that("lm wrappers reject non-finite X with a classed bad-arg error [amatrix
   dat <- .model_nonfinite_fixture()
   dat$X[2L, 3L] <- NaN
 
-  expect_error(lm_fit(dat$X, dat$y, method = "qr"), class = "amatrix_bad_arg")
-  expect_error(lm_fit(dat$X, dat$y, method = "normal"), class = "amatrix_bad_arg")
-  expect_error(many_lm(dat$X, dat$Y, method = "qr"), class = "amatrix_bad_arg")
-  expect_error(many_lm(dat$X, dat$Y, method = "normal"), class = "amatrix_bad_arg")
-  expect_error(lm_loo_cv(dat$X, dat$y), class = "amatrix_bad_arg")
+  expect_error(am_lm_fit(dat$X, dat$y, method = "qr"), class = "amatrix_bad_arg")
+  expect_error(am_lm_fit(dat$X, dat$y, method = "normal"), class = "amatrix_bad_arg")
+  expect_error(am_many_lm(dat$X, dat$Y, method = "qr"), class = "amatrix_bad_arg")
+  expect_error(am_many_lm(dat$X, dat$Y, method = "normal"), class = "amatrix_bad_arg")
+  expect_error(am_lm_loo_cv(dat$X, dat$y), class = "amatrix_bad_arg")
 })
 
 test_that("lm wrappers reject non-finite Y with a classed bad-arg error [amatrix-aqm]", {
@@ -32,9 +32,9 @@ test_that("lm wrappers reject non-finite Y with a classed bad-arg error [amatrix
   dat$y[4L] <- Inf
   dat$Y[1L, 2L] <- NA_real_
 
-  expect_error(lm_fit(dat$X, dat$y, method = "qr"), class = "amatrix_bad_arg")
-  expect_error(lm_fit(dat$X, dat$y, method = "normal"), class = "amatrix_bad_arg")
-  expect_error(many_lm(dat$X, dat$Y, method = "qr"), class = "amatrix_bad_arg")
-  expect_error(many_lm(dat$X, dat$Y, method = "normal"), class = "amatrix_bad_arg")
-  expect_error(lm_loo_cv(dat$X, dat$y), class = "amatrix_bad_arg")
+  expect_error(am_lm_fit(dat$X, dat$y, method = "qr"), class = "amatrix_bad_arg")
+  expect_error(am_lm_fit(dat$X, dat$y, method = "normal"), class = "amatrix_bad_arg")
+  expect_error(am_many_lm(dat$X, dat$Y, method = "qr"), class = "amatrix_bad_arg")
+  expect_error(am_many_lm(dat$X, dat$Y, method = "normal"), class = "amatrix_bad_arg")
+  expect_error(am_lm_loo_cv(dat$X, dat$y), class = "amatrix_bad_arg")
 })

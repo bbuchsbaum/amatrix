@@ -13,7 +13,7 @@
 #' Woodbury matrix identity, avoiding an \eqn{O(n^3)} refactorisation of
 #' the updated matrix.
 #'
-#' @param A_factor An \code{amChol} object from \code{chol_factor()}, or a
+#' @param A_factor An \code{amChol} object from \code{am_chol_factor()}, or a
 #'   square numeric matrix that is automatically Cholesky-factored.
 #' @param U Numeric matrix of shape \code{[n, k]}; low-rank left factor.
 #' @param b Numeric matrix of shape \code{[n, rhs]}; right-hand side(s).
@@ -30,13 +30,13 @@
 #' A <- crossprod(matrix(rnorm(25), 5)) + diag(5)
 #' U <- matrix(rnorm(10), 5, 2)
 #' b <- rnorm(5)
-#' x <- woodbury_solve(A, U, b)
+#' x <- am_woodbury_solve(A, U, b)
 #' length(x)
 #'
-#' @seealso \code{\link{woodbury_logdet}}, \code{\link{chol_factor}}
+#' @seealso \code{\link{am_woodbury_logdet}}, \code{\link{am_chol_factor}}
 #' @export
-woodbury_solve <- function(A_factor, U, b, V = NULL, C_inv = NULL) {
-  # A_factor : amChol (from chol_factor()) or a square matrix (auto-factored)
+am_woodbury_solve <- function(A_factor, U, b, V = NULL, C_inv = NULL) {
+  # A_factor : amChol (from am_chol_factor()) or a square matrix (auto-factored)
   # U        : n x k matrix (low-rank left factor)
   # b        : n x rhs right-hand sides
   # V        : k x n matrix; default t(U)  (symmetric case)
@@ -46,7 +46,7 @@ woodbury_solve <- function(A_factor, U, b, V = NULL, C_inv = NULL) {
 
   # Auto-factor plain matrix input
   if (!inherits(A_factor, "amChol")) {
-    A_factor <- chol_factor(as_adgeMatrix(as.matrix(A_factor)))
+    A_factor <- am_chol_factor(as_adgeMatrix(as.matrix(A_factor)))
   }
 
   U <- as.matrix(U)
@@ -63,8 +63,8 @@ woodbury_solve <- function(A_factor, U, b, V = NULL, C_inv = NULL) {
             nrow(C_inv) == k, ncol(C_inv) == k)
 
   # Step 1-2: A^{-1} b  and  A^{-1} U
-  Ainv_b <- chol_solve(A_factor, b)   # n x rhs
-  Ainv_U <- chol_solve(A_factor, U)   # n x k
+  Ainv_b <- am_chol_solve(A_factor, b)   # n x rhs
+  Ainv_U <- am_chol_solve(A_factor, U)   # n x k
 
   # Step 3: k x k inner matrix
   M <- C_inv + V %*% Ainv_U           # k x k
@@ -82,7 +82,7 @@ woodbury_solve <- function(A_factor, U, b, V = NULL, C_inv = NULL) {
 #' in \eqn{O(nk^2 + k^3)} time, reusing an existing Cholesky factor of
 #' \eqn{A}.
 #'
-#' @param A_factor An \code{amChol} object from \code{chol_factor()}, or a
+#' @param A_factor An \code{amChol} object from \code{am_chol_factor()}, or a
 #'   square numeric matrix that is automatically Cholesky-factored.
 #' @param U Numeric matrix of shape \code{[n, k]}; low-rank left factor.
 #' @param V Numeric matrix of shape \code{[k, n]}; low-rank right factor.
@@ -95,18 +95,18 @@ woodbury_solve <- function(A_factor, U, b, V = NULL, C_inv = NULL) {
 #' @examples
 #' A <- crossprod(matrix(rnorm(25), 5)) + diag(5)
 #' U <- matrix(rnorm(10), 5, 2)
-#' ld <- woodbury_logdet(A, U)
+#' ld <- am_woodbury_logdet(A, U)
 #' is.finite(ld)
 #'
-#' @seealso \code{\link{woodbury_solve}}, \code{\link{chol_factor}}
+#' @seealso \code{\link{am_woodbury_solve}}, \code{\link{am_chol_factor}}
 #' @export
-woodbury_logdet <- function(A_factor, U, V = NULL, C_inv = NULL) {
+am_woodbury_logdet <- function(A_factor, U, V = NULL, C_inv = NULL) {
   # Returns log|A + UCV| using the matrix determinant lemma:
   #   log|A + UCV| = log|A| + log|C^{-1}| + log|C^{-1} + V A^{-1} U|
   # (signs chosen so the result is the log-determinant of the updated matrix)
 
   if (!inherits(A_factor, "amChol")) {
-    A_factor <- chol_factor(as_adgeMatrix(as.matrix(A_factor)))
+    A_factor <- am_chol_factor(as_adgeMatrix(as.matrix(A_factor)))
   }
 
   U <- as.matrix(U)
@@ -119,10 +119,10 @@ woodbury_logdet <- function(A_factor, U, V = NULL, C_inv = NULL) {
   C_inv <- as.matrix(C_inv)
 
   # log|A| from existing Cholesky
-  logdet_A <- chol_logdet(A_factor)
+  logdet_A <- am_chol_logdet(A_factor)
 
   # A^{-1} U  [n x k]
-  Ainv_U <- chol_solve(A_factor, U)
+  Ainv_U <- am_chol_solve(A_factor, U)
 
   # Inner matrix: C^{-1} + V A^{-1} U  [k x k]
   M <- C_inv + V %*% Ainv_U

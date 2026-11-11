@@ -24,13 +24,13 @@ test_that("zero-dimension metric wrappers do not crash in auto mode", {
       x0c <- matrix(numeric(0), nrow = 2L, ncol = 0L)
 
       list(
-        dist_0r = dim(dist_matrix(x0r)),
-        dist_0r_cross = dim(dist_matrix(x0r, y0r)),
-        kernel_0r = dim(kernel_matrix(x0r)),
-        kernel_0r_cross = dim(kernel_matrix(x0r, y0r)),
-        dist_0c = dist_matrix(x0c),
-        kernel_0c_linear = kernel_matrix(x0c, kernel = "linear"),
-        kernel_0c_cosine = kernel_matrix(x0c, kernel = "cosine")
+        dist_0r = dim(am_dist_matrix(x0r)),
+        dist_0r_cross = dim(am_dist_matrix(x0r, y0r)),
+        kernel_0r = dim(am_kernel_matrix(x0r)),
+        kernel_0r_cross = dim(am_kernel_matrix(x0r, y0r)),
+        dist_0c = am_dist_matrix(x0c),
+        kernel_0c_linear = am_kernel_matrix(x0c, kernel = "linear"),
+        kernel_0c_cosine = am_kernel_matrix(x0c, kernel = "cosine")
       )
     },
     args = list(getwd()),

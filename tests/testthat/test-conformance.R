@@ -527,7 +527,7 @@ test_that("lm_fit matches least-squares coefficients for shared-X many-Y", {
   beta_host <- matrix(rnorm(15), nrow = 5, ncol = 3)
   Y_host <- X_host %*% beta_host + matrix(rnorm(30, sd = 1e-6), nrow = 10, ncol = 3)
 
-  fit <- lm_fit(adgeMatrix(X_host), Y_host)
+  fit <- am_lm_fit(adgeMatrix(X_host), Y_host)
   coef_host <- solve(crossprod(X_host), crossprod(X_host, Y_host))
 
   expect_s3_class(fit, "lm_fit")
@@ -544,7 +544,7 @@ test_that("lm_fit supports a qr-backed path", {
   beta_host <- matrix(rnorm(15), nrow = 5, ncol = 3)
   Y_host <- X_host %*% beta_host + matrix(rnorm(30, sd = 1e-6), nrow = 10, ncol = 3)
 
-  fit <- lm_fit(adgeMatrix(X_host), Y_host, method = "qr")
+  fit <- am_lm_fit(adgeMatrix(X_host), Y_host, method = "qr")
   coef_host <- base::qr.coef(base::qr(X_host), Y_host)
 
   expect_s3_class(fit, "lm_fit")
@@ -578,7 +578,7 @@ test_that("lm_fit routes hot kernels through a preferred backend in fast mode", 
       X <- adgeMatrix(matrix(rnorm(30), nrow = 10, ncol = 3), preferred_backend = "fit_backend", precision = "fast")
       Y <- matrix(rnorm(20), nrow = 10, ncol = 2)
 
-      fit <- lm_fit(X, Y)
+      fit <- am_lm_fit(X, Y)
 
       expect_s3_class(fit, "lm_fit")
       expect_true(counter$crossprod >= 2L)
@@ -611,8 +611,8 @@ test_that("lm_fit reuses cached shared-X work across repeated fits", {
       Y1 <- matrix(rnorm(24), nrow = 12, ncol = 2)
       Y2 <- matrix(rnorm(24), nrow = 12, ncol = 2)
 
-      fit1 <- lm_fit(X, Y1, include_fitted = FALSE, include_residuals = FALSE)
-      fit2 <- lm_fit(X, Y2, include_fitted = FALSE, include_residuals = FALSE)
+      fit1 <- am_lm_fit(X, Y1, include_fitted = FALSE, include_residuals = FALSE)
+      fit2 <- am_lm_fit(X, Y2, include_fitted = FALSE, include_residuals = FALSE)
 
       expect_false(fit1$cache_reused)
       expect_true(fit2$cache_reused)
@@ -630,8 +630,8 @@ test_that("lm_fit reuses cached qr work across repeated fits", {
   Y1 <- matrix(rnorm(24), nrow = 12, ncol = 2)
   Y2 <- matrix(rnorm(24), nrow = 12, ncol = 2)
 
-  fit1 <- lm_fit(X, Y1, include_fitted = FALSE, include_residuals = FALSE, method = "qr")
-  fit2 <- lm_fit(X, Y2, include_fitted = FALSE, include_residuals = FALSE, method = "qr")
+  fit1 <- am_lm_fit(X, Y1, include_fitted = FALSE, include_residuals = FALSE, method = "qr")
+  fit2 <- am_lm_fit(X, Y2, include_fitted = FALSE, include_residuals = FALSE, method = "qr")
 
   expect_false(fit1$cache_reused)
   expect_true(fit2$cache_reused)
@@ -650,7 +650,7 @@ test_that("many_lm provides a repeated-response workflow surface", {
   beta_host <- matrix(rnorm(15), nrow = 5, ncol = 3)
   Y_host <- X_host %*% beta_host + matrix(rnorm(30, sd = 1e-6), nrow = 10, ncol = 3)
 
-  fit <- many_lm(adgeMatrix(X_host), Y_host, include_residuals = TRUE, method = "qr")
+  fit <- am_many_lm(adgeMatrix(X_host), Y_host, include_residuals = TRUE, method = "qr")
   coef_host <- base::qr.coef(base::qr(X_host), Y_host)
   resid_host <- base::qr.resid(base::qr(X_host), Y_host)
   rss_host <- colSums(resid_host^2)
@@ -675,13 +675,13 @@ test_that("many_lm batched Y path matches per-column fits exactly", {
   Y_host <- matrix(rnorm(40 * 8), nrow = 40, ncol = 8)
 
   X_arg <- adgeMatrix(X_host)
-  batched <- many_lm(X_arg, Y_host, method = "qr")
+  batched <- am_many_lm(X_arg, Y_host, method = "qr")
   coef_batched <- as.matrix(coef(batched))
 
   coef_per_col <- vapply(
     seq_len(ncol(Y_host)),
     function(j) {
-      fit_j <- many_lm(X_arg, Y_host[, j, drop = FALSE], method = "qr")
+      fit_j <- am_many_lm(X_arg, Y_host[, j, drop = FALSE], method = "qr")
       as.matrix(coef(fit_j))[, 1L]
     },
     numeric(ncol(X_host))
@@ -703,7 +703,7 @@ test_that("many_lm supports weighted repeated-response fits", {
   resid_host <- Y_host - X_host %*% base::qr.coef(base::qr(Xw), Yw)
   rss_host <- colSums(resid_host^2 * weights)
 
-  fit <- many_lm(
+  fit <- am_many_lm(
     adgeMatrix(X_host),
     Y_host,
     weights = weights,
@@ -726,7 +726,7 @@ test_that("array_lm restores array-shaped response outputs", {
   Y_mat <- X_host %*% beta_host + matrix(rnorm(40, sd = 1e-6), nrow = 10, ncol = 4)
   Y_array <- array(Y_mat, dim = c(10, 2, 2))
 
-  fit <- array_lm(
+  fit <- am_array_lm(
     adgeMatrix(X_host),
     Y_array,
     include_fitted = TRUE,
@@ -760,7 +760,7 @@ test_that("array_lm supports weighted array-response fits", {
   sqrt_w <- sqrt(weights)
   coef_host <- base::qr.coef(base::qr(X_host * sqrt_w), Y_mat * sqrt_w)
 
-  fit <- array_lm(
+  fit <- am_array_lm(
     adgeMatrix(X_host),
     Y_array,
     weights = weights,
@@ -785,7 +785,7 @@ test_that("ridge_fit matches penalized least-squares coefficients", {
   Y_host <- X_host %*% beta_host + matrix(rnorm(36, sd = 1e-6), nrow = 12, ncol = 3)
   lambda <- 0.75
 
-  fit <- ridge_fit(adgeMatrix(X_host), Y_host, lambda = lambda, penalize_intercept = FALSE)
+  fit <- am_ridge_fit(adgeMatrix(X_host), Y_host, lambda = lambda, penalize_intercept = FALSE)
   penalty <- diag(c(0, rep(lambda, ncol(X_host) - 1L)))
   coef_host <- solve(crossprod(X_host) + penalty, crossprod(X_host, Y_host))
 
@@ -804,7 +804,7 @@ test_that("ridge_fit penalizes the first predictor when no intercept column is p
   Y_host <- X_host %*% beta_host + matrix(rnorm(36, sd = 1e-6), nrow = 12, ncol = 3)
   lambda <- 0.75
 
-  fit <- ridge_fit(adgeMatrix(X_host), Y_host, lambda = lambda, intercept = FALSE, penalize_intercept = FALSE)
+  fit <- am_ridge_fit(adgeMatrix(X_host), Y_host, lambda = lambda, intercept = FALSE, penalize_intercept = FALSE)
   coef_host <- solve(crossprod(X_host) + diag(lambda, ncol(X_host)), crossprod(X_host, Y_host))
 
   expect_equal(as.matrix(coef(fit)), coef_host, tolerance = 1e-8)
@@ -818,7 +818,7 @@ test_that("ridge_fit leaves only the explicit intercept column unpenalized", {
   Y_host <- X_design %*% beta_host + matrix(rnorm(36, sd = 1e-6), nrow = 12, ncol = 3)
   lambda <- 0.5
 
-  fit <- ridge_fit(adgeMatrix(X_host), Y_host, lambda = lambda, intercept = TRUE, penalize_intercept = FALSE)
+  fit <- am_ridge_fit(adgeMatrix(X_host), Y_host, lambda = lambda, intercept = TRUE, penalize_intercept = FALSE)
   penalty <- diag(c(0, rep(lambda, ncol(X_host))))
   coef_host <- solve(crossprod(X_design) + penalty, crossprod(X_design, Y_host))
 
@@ -832,7 +832,7 @@ test_that("ridge_fit detects an explicit intercept column without adding one", {
   Y_host <- X_host %*% beta_host + matrix(rnorm(36, sd = 1e-6), nrow = 12, ncol = 3)
   lambda <- 0.5
 
-  fit <- ridge_fit(
+  fit <- am_ridge_fit(
     adgeMatrix(X_host),
     Y_host,
     lambda = lambda,
@@ -893,8 +893,8 @@ test_that("ridge_fit reuses cached shared-X work across repeated fits", {
       Y1 <- matrix(rnorm(30), nrow = 15, ncol = 2)
       Y2 <- matrix(rnorm(30), nrow = 15, ncol = 2)
 
-      fit1 <- ridge_fit(X, Y1, lambda = 0.5, include_fitted = FALSE, include_residuals = FALSE)
-      fit2 <- ridge_fit(X, Y2, lambda = 1.0, include_fitted = FALSE, include_residuals = FALSE)
+      fit1 <- am_ridge_fit(X, Y1, lambda = 0.5, include_fitted = FALSE, include_residuals = FALSE)
+      fit2 <- am_ridge_fit(X, Y2, lambda = 1.0, include_fitted = FALSE, include_residuals = FALSE)
 
       expect_false(fit1$cache_reused)
       expect_true(fit2$cache_reused)
@@ -916,7 +916,7 @@ test_that("wls_fit matches weighted least-squares coefficients", {
   Xw <- X_host * sqrt_w
   Yw <- Y_host * sqrt_w
 
-  fit <- wls_fit(adgeMatrix(X_host), Y_host, weights = weights, method = "qr")
+  fit <- am_wls_fit(adgeMatrix(X_host), Y_host, weights = weights, method = "qr")
   coef_host <- base::qr.coef(base::qr(Xw), Yw)
 
   expect_s3_class(fit, "wls_fit")
@@ -936,8 +936,8 @@ test_that("wls_fit reuses cached weighted shared-X work across repeated fits", {
   Y2 <- matrix(rnorm(30), nrow = 15, ncol = 2)
   weights <- rep(1, nrow(X))
 
-  fit1 <- wls_fit(X, Y1, weights = weights, include_fitted = FALSE, include_residuals = FALSE, method = "qr")
-  fit2 <- wls_fit(X, Y2, weights = weights, include_fitted = FALSE, include_residuals = FALSE, method = "qr")
+  fit1 <- am_wls_fit(X, Y1, weights = weights, include_fitted = FALSE, include_residuals = FALSE, method = "qr")
+  fit2 <- am_wls_fit(X, Y2, weights = weights, include_fitted = FALSE, include_residuals = FALSE, method = "qr")
 
   expect_false(fit1$cache_reused)
   expect_true(fit2$cache_reused)
@@ -950,7 +950,7 @@ test_that("wls_fit reuses cached weighted shared-X work across repeated fits", {
 test_that("covariance matches stats::cov on dense inputs", {
   set.seed(23)
   X_host <- matrix(rnorm(72), nrow = 12, ncol = 6)
-  fit <- covariance(adgeMatrix(X_host))
+  fit <- am_covariance(adgeMatrix(X_host))
 
   expect_s4_class(fit, "adgeMatrix")
   expect_equal(as.matrix(fit), stats::cov(X_host), tolerance = 1e-8)
@@ -964,7 +964,7 @@ test_that("covariance supports weighted covariance", {
   centered <- sweep(X_host, 2L, means, FUN = "-")
   cov_host <- crossprod(centered * sqrt(weights)) / (sum(weights) - 1)
 
-  fit <- covariance(adgeMatrix(X_host), weights = weights)
+  fit <- am_covariance(adgeMatrix(X_host), weights = weights)
 
   expect_s4_class(fit, "adgeMatrix")
   expect_equal(as.matrix(fit), cov_host, tolerance = 1e-8)
@@ -974,8 +974,8 @@ test_that("covariance supports blockwise evaluation", {
   set.seed(241)
   X_host <- matrix(rnorm(96), nrow = 12, ncol = 8)
 
-  fit_full <- covariance(adgeMatrix(X_host))
-  fit_block <- covariance(adgeMatrix(X_host), block_size = 3L)
+  fit_full <- am_covariance(adgeMatrix(X_host))
+  fit_block <- am_covariance(adgeMatrix(X_host), block_size = 3L)
 
   expect_s4_class(fit_block, "adgeMatrix")
   expect_equal(as.matrix(fit_block), as.matrix(fit_full), tolerance = 1e-8)
@@ -986,8 +986,8 @@ test_that("covariance supports weighted blockwise evaluation", {
   X_host <- matrix(rnorm(96), nrow = 12, ncol = 8)
   weights <- seq_len(nrow(X_host)) / nrow(X_host)
 
-  fit_full <- covariance(adgeMatrix(X_host), weights = weights)
-  fit_block <- covariance(adgeMatrix(X_host), weights = weights, block_size = 3L)
+  fit_full <- am_covariance(adgeMatrix(X_host), weights = weights)
+  fit_block <- am_covariance(adgeMatrix(X_host), weights = weights, block_size = 3L)
 
   expect_s4_class(fit_block, "adgeMatrix")
   expect_equal(as.matrix(fit_block), as.matrix(fit_full), tolerance = 1e-8)
@@ -996,7 +996,7 @@ test_that("covariance supports weighted blockwise evaluation", {
 test_that("correlation matches stats::cor on dense inputs", {
   set.seed(25)
   X_host <- matrix(rnorm(72), nrow = 12, ncol = 6)
-  fit <- correlation(adgeMatrix(X_host))
+  fit <- am_correlation(adgeMatrix(X_host))
 
   expect_s4_class(fit, "adgeMatrix")
   expect_equal(as.matrix(fit), stats::cor(X_host), tolerance = 1e-8)
@@ -1006,8 +1006,8 @@ test_that("correlation supports blockwise evaluation", {
   set.seed(251)
   X_host <- matrix(rnorm(96), nrow = 12, ncol = 8)
 
-  fit_full <- correlation(adgeMatrix(X_host))
-  fit_block <- correlation(adgeMatrix(X_host), block_size = 3L)
+  fit_full <- am_correlation(adgeMatrix(X_host))
+  fit_block <- am_correlation(adgeMatrix(X_host), block_size = 3L)
 
   expect_s4_class(fit_block, "adgeMatrix")
   expect_equal(as.matrix(fit_block), as.matrix(fit_full), tolerance = 1e-8)
@@ -1032,7 +1032,7 @@ test_that("qr returns an amQR object with QR helper methods", {
   expect_false(fac$q_materialized)
   expect_false(fac$r_materialized)
 
-  info <- qr_info(fac)
+  info <- am_qr_info(fac)
   expect_identical(info$rank, 2L)
   expect_identical(info$dim, c(3L, 2L))
   expect_true(info$thin)
@@ -1128,7 +1128,7 @@ test_that("qr_info reports explicit backend QR metadata", {
 
   x_host <- matrix(rnorm(30), nrow = 6, ncol = 5)
   fac <- qr(adgeMatrix(x_host, preferred_backend = "mlx", precision = "fast"))
-  info_before <- qr_info(fac)
+  info_before <- am_qr_info(fac)
   expect_identical(info_before$representation, "explicit_qr")
   expect_true(info_before$compact_factor_available)
   expect_identical(info_before$compact_factor_source, "reconstructable")
@@ -1138,7 +1138,7 @@ test_that("qr_info reports explicit backend QR metadata", {
   expect_true(info_before$r_materialized)
 
   invisible(qr.qty(fac, matrix(1, nrow = 6, ncol = 1)))
-  info_after <- qr_info(fac)
+  info_after <- am_qr_info(fac)
 
   expect_s3_class(fac, "amQR")
   expect_identical(info_after$representation, "explicit_qr")
@@ -1166,7 +1166,7 @@ test_that("qr_info reports compact MLX QR representation when requested", {
 
   x_host <- matrix(rnorm(30), nrow = 6, ncol = 5)
   fac <- qr(adgeMatrix(x_host, preferred_backend = "mlx", precision = "fast"))
-  info <- qr_info(fac)
+  info <- am_qr_info(fac)
 
   expect_identical(info$representation, "mlx_compact_qr")
   expect_identical(info$helper_path, "compact_mlx_factor")
@@ -1178,7 +1178,7 @@ test_that("qr_info reports compact MLX QR representation when requested", {
   expect_equal(as.matrix(qr.coef(fac, x_host)), base::qr.coef(base::qr(x_host), x_host), tolerance = 1e-8)
   expect_equal(as.matrix(qr.qty(fac, x_host)), base::qr.qty(base::qr(x_host), x_host), tolerance = 1e-8)
 
-  info_after <- qr_info(fac)
+  info_after <- am_qr_info(fac)
   expect_true(info_after$compact_factor_materialized)
 })
 
@@ -1199,9 +1199,9 @@ test_that("qr-backed fits report bridge-compact provenance for explicit backend 
   Y_array <- array(Y_host, dim = c(6, 3, 1))
   X <- adgeMatrix(X_host, preferred_backend = "mlx", precision = "fast")
 
-  lm_fit <- lm_fit(X, Y_host, method = "qr")
-  many_fit <- many_lm(X, Y_host, method = "qr")
-  array_fit <- array_lm(X, Y_array, method = "qr")
+  lm_fit <- am_lm_fit(X, Y_host, method = "qr")
+  many_fit <- am_many_lm(X, Y_host, method = "qr")
+  array_fit <- am_array_lm(X, Y_array, method = "qr")
 
   expect_identical(lm_fit$qr_representation, "explicit_qr")
   expect_identical(lm_fit$qr_helper_path, "native_resident_backend")
@@ -1241,8 +1241,8 @@ test_that("tall-skinny compact MLX QR uses tsqr-blocked provenance", {
   X <- adgeMatrix(X_host, preferred_backend = "mlx", precision = "fast")
 
   fac <- qr(X)
-  info <- qr_info(fac)
-  many_fit <- many_lm(X, Y_host, method = "qr", cache = TRUE)
+  info <- am_qr_info(fac)
+  many_fit <- am_many_lm(X, Y_host, method = "qr", cache = TRUE)
   fac_base <- base::qr(X_host)
 
   expect_identical(info$representation, "mlx_compact_qr")
@@ -1291,13 +1291,13 @@ test_that("MLX QR cache keys distinguish native and compact strategies", {
   ))
 
   withr::local_options(list(amatrix.mlx.qr_helper_mode = "native"))
-  fit_native <- many_lm(X, Y_host, method = "qr", cache = TRUE, include_residuals = FALSE)
+  fit_native <- am_many_lm(X, Y_host, method = "qr", cache = TRUE, include_residuals = FALSE)
 
   withr::local_options(list(
     amatrix.mlx.qr_helper_mode = "compact",
     amatrix.mlx.qr_compact_method = "tsqr"
   ))
-  fit_compact <- many_lm(X, Y_host, method = "qr", cache = TRUE, include_residuals = FALSE)
+  fit_compact <- am_many_lm(X, Y_host, method = "qr", cache = TRUE, include_residuals = FALSE)
 
   expect_identical(fit_native$qr_helper_path, "native_resident_backend")
   expect_identical(fit_native$qr_compact_factor_source, "reconstructable")

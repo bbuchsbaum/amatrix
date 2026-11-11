@@ -9,7 +9,7 @@ test_that("addmm: A + alpha*(B %*% C) returns correct result [amatrix-lcn]", {
   A <- matrix(1:4, 2, 2) * 1.0
   B <- matrix(c(1, 0, 0, 1), 2, 2)
   C <- matrix(c(2, 0, 0, 3), 2, 2)
-  result <- addmm(adgeMatrix(A), B, C, alpha = 1.0, beta = 1.0)
+  result <- am_addmm(adgeMatrix(A), B, C, alpha = 1.0, beta = 1.0)
   expected <- A + 1.0 * (B %*% C)
   expect_equal(as.matrix(result), expected, tolerance = 1e-10)
 })
@@ -157,7 +157,7 @@ test_that("as.matrix.resident_handle materializes to host matrix [amatrix-doj]",
 test_that("colsums returns column sums matching base R [amatrix-doj]", {
   m <- matrix(1:6 * 1.0, 2, 3)
   x <- adgeMatrix(m)
-  result <- colsums(x)
+  result <- am_colsums(x)
   expect_equal(result, colSums(m), tolerance = 1e-10)
 })
 
@@ -165,7 +165,7 @@ test_that("irlba_native returns nv singular values [amatrix-doj]", {
   skip_if_not_installed("irlba")
   set.seed(42)
   m <- matrix(rnorm(50), 10, 5)
-  result <- irlba_native(m, nv = 3L)
+  result <- am_irlba_native(m, nv = 3L)
   expect_true(!is.null(result$d))
   expect_equal(length(result$d), 3L)
   ref <- base::svd(m)$d[1:3]
@@ -199,13 +199,13 @@ test_that("pairwise_sqdist_argmin returns nearest centroid index [amatrix-doj]",
   # causing incorrect centroid distance broadcast -> wrong assignments.
   X <- matrix(c(1, 9, 0, 0), nrow = 2, ncol = 2, byrow = FALSE)  # P1=(1,0),P2=(9,0)
   Ct <- cbind(c(0, 0), c(10, 0))  # C1=(0,0), C2=(10,0)
-  result <- pairwise_sqdist_argmin(X, Ct)
+  result <- am_pairwise_sqdist_argmin(X, Ct)
   expect_equal(as.integer(result), c(1L, 2L))
 })
 
 test_that("rowsums returns row sums matching base R [amatrix-doj]", {
   m <- matrix(1:6 * 1.0, 2, 3)
   x <- adgeMatrix(m)
-  result <- rowsums(x)
+  result <- am_rowsums(x)
   expect_equal(result, rowSums(m), tolerance = 1e-10)
 })

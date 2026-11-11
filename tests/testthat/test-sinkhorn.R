@@ -93,7 +93,7 @@
 
 test_that("sinkhorn returns a doubly stochastic adgeMatrix on the host path", {
   A <- .sinkhorn_positive_matrix(n = 20L, seed = 101L)
-  fit <- sinkhorn(A, tol = 1e-10, return_info = TRUE)
+  fit <- am_sinkhorn(A, tol = 1e-10, return_info = TRUE)
 
   expect_true(inherits(fit$result, "adgeMatrix"))
   expect_identical(fit$backend, "cpu")
@@ -109,16 +109,16 @@ test_that("sinkhorn returns a doubly stochastic adgeMatrix on the host path", {
 test_that("sinkhorn is invariant to positive scalar rescaling", {
   A <- .sinkhorn_positive_matrix(n = 18L, seed = 202L)
 
-  fit_a <- sinkhorn(A, tol = 1e-10)
-  fit_b <- sinkhorn(7 * A, tol = 1e-10)
+  fit_a <- am_sinkhorn(A, tol = 1e-10)
+  fit_b <- am_sinkhorn(7 * A, tol = 1e-10)
 
   expect_equal(as.matrix(fit_a), as.matrix(fit_b), tolerance = 1e-10)
 })
 
 test_that("sinkhorn validates shape and positivity constraints", {
-  expect_error(sinkhorn(matrix(1:6, nrow = 2L)), "square matrix")
-  expect_error(sinkhorn(matrix(c(1, -1, 2, 3), nrow = 2L)), "non-negative")
-  expect_error(sinkhorn(matrix(c(1, 0, 0, 0), nrow = 2L)), "strictly positive row sums and column sums")
+  expect_error(am_sinkhorn(matrix(1:6, nrow = 2L)), "square matrix")
+  expect_error(am_sinkhorn(matrix(c(1, -1, 2, 3), nrow = 2L)), "non-negative")
+  expect_error(am_sinkhorn(matrix(c(1, 0, 0, 0), nrow = 2L)), "strictly positive row sums and column sums")
 })
 
 test_that("sinkhorn uses resident sweep kernels when the backend supports them", {
@@ -129,7 +129,7 @@ test_that("sinkhorn uses resident sweep kernels when the backend supports them",
     A_host <- .sinkhorn_positive_matrix(n = 12L, seed = 303L)
     A <- adgeMatrix(A_host, preferred_backend = "sinkhorn_resident_backend", precision = "fast")
 
-    fit <- sinkhorn(A, tol = 1e-10, return_info = TRUE)
+    fit <- am_sinkhorn(A, tol = 1e-10, return_info = TRUE)
 
     expect_identical(fit$backend, "sinkhorn_resident_backend")
     expect_identical(fit$method, "resident")
@@ -155,7 +155,7 @@ test_that("sinkhorn runs on OpenCL fast matrices when the backend is available",
 
     A_host <- .sinkhorn_positive_matrix(n = 24L, seed = 404L)
     A <- adgeMatrix(A_host, preferred_backend = "opencl", precision = "fast")
-    fit <- sinkhorn(A, tol = 1e-5, return_info = TRUE)
+    fit <- am_sinkhorn(A, tol = 1e-5, return_info = TRUE)
 
     expect_identical(fit$backend, "opencl")
     expect_identical(fit$method, "resident")
@@ -179,7 +179,7 @@ test_that("sinkhorn runs on MLX fast matrices when the backend is available", {
 
     A_host <- .sinkhorn_positive_matrix(n = 24L, seed = 505L)
     A <- adgeMatrix(A_host, preferred_backend = "mlx", precision = "fast")
-    fit <- sinkhorn(A, tol = 1e-5, return_info = TRUE)
+    fit <- am_sinkhorn(A, tol = 1e-5, return_info = TRUE)
 
     expect_identical(fit$backend, "mlx")
     expect_identical(fit$method, "resident")

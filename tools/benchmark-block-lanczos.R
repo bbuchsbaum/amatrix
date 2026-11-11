@@ -52,7 +52,7 @@ benchmark_dense_case <- function(n, p, k, block_size, n_steps, seed) {
     am_irlba(cpu_x, nv = k, nu = k, work = max(3L * k, k + 20L))
   })
   cpu_block <- benchmark_elapsed(function() {
-    block_lanczos(cpu_x, nv = k, nu = k, block_size = block_size, n_steps = n_steps)
+    am_block_lanczos(cpu_x, nv = k, nu = k, block_size = block_size, n_steps = n_steps)
   })
 
   cpu_results <- list(
@@ -92,7 +92,7 @@ benchmark_dense_case <- function(n, p, k, block_size, n_steps, seed) {
     )
     block_bench <- benchmark_elapsed(
       function() {
-        block_lanczos(
+        am_block_lanczos(
           x_gpu,
           nv = k,
           nu = k,
@@ -101,7 +101,7 @@ benchmark_dense_case <- function(n, p, k, block_size, n_steps, seed) {
         )
       },
       warmup = function() {
-        invisible(block_lanczos(
+        invisible(am_block_lanczos(
           x_gpu,
           nv = k,
           nu = k,
@@ -147,7 +147,7 @@ benchmark_sparse_case <- function(n, p, k, block_size, n_steps, density, seed) {
   rows <- list()
 
   cpu_block <- benchmark_elapsed(function() {
-    block_lanczos(cpu_x, nv = k, nu = k, block_size = block_size, n_steps = n_steps)
+    am_block_lanczos(cpu_x, nv = k, nu = k, block_size = block_size, n_steps = n_steps)
   })
 
   rows[[length(rows) + 1L]] <- data.frame(
@@ -171,7 +171,7 @@ benchmark_sparse_case <- function(n, p, k, block_size, n_steps, density, seed) {
     x_gpu <- adgCMatrix(host, preferred_backend = backend_spec$name, precision = backend_spec$precision)
     block_bench <- benchmark_elapsed(
       function() {
-        block_lanczos(
+        am_block_lanczos(
           x_gpu,
           nv = k,
           nu = k,
@@ -180,7 +180,7 @@ benchmark_sparse_case <- function(n, p, k, block_size, n_steps, density, seed) {
         )
       },
       warmup = function() {
-        invisible(block_lanczos(
+        invisible(am_block_lanczos(
           x_gpu,
           nv = k,
           nu = k,
@@ -275,8 +275,8 @@ print_block_lanczos_benchmark <- function(cases = NULL) {
   cat("- `matrix_type` distinguishes the legacy dense benchmark path from the new sparse block-Krylov path.\n")
   cat("- `backend` indicates where the amatrix wrapper/block path was run; `irlba::irlba` is the host baseline.\n")
   cat("- `irlba()` is the compatibility wrapper around `irlba::irlba(..., fastpath = FALSE)`.\n")
-  cat("- `block_lanczos()` is the GEMM-oriented block Krylov surface; the default cases here use the current mildly oversampled block heuristic.\n")
-  cat("- Sparse cases benchmark `block_lanczos()` directly, because that is the path that now uses compiled repeated-product plans.\n")
+  cat("- `am_block_lanczos()` is the GEMM-oriented block Krylov surface; the default cases here use the current mildly oversampled block heuristic.\n")
+  cat("- Sparse cases benchmark `am_block_lanczos()` directly, because that is the path that now uses compiled repeated-product plans.\n")
   cat("- `max_rel_sv_err` is measured against `La.svd()` on the same host matrix.\n\n")
   print(rows, row.names = FALSE)
   invisible(rows)

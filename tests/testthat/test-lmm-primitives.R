@@ -8,10 +8,10 @@ test_that("chol_logdet matches log(det(K))", {
   A <- matrix(rnorm(25), 5, 5)
   K <- A %*% t(A) + 5 * diag(5)
   K_am <- adgeMatrix(K)
-  L <- chol_factor(K_am)
+  L <- am_chol_factor(K_am)
 
   expected <- as.double(determinant(K, logarithm = TRUE)$modulus)
-  expect_equal(chol_logdet(L), expected, tolerance = 1e-10)
+  expect_equal(am_chol_logdet(L), expected, tolerance = 1e-10)
 })
 
 test_that("chol_logdet matches 2*sum(log(diag(chol(K))))", {
@@ -19,14 +19,14 @@ test_that("chol_logdet matches 2*sum(log(diag(chol(K))))", {
   A <- matrix(rnorm(36), 6, 6)
   K <- A %*% t(A) + diag(6)
   K_am <- adgeMatrix(K)
-  L <- chol_factor(K_am)
+  L <- am_chol_factor(K_am)
 
   expected <- 2 * sum(log(diag(chol(K))))
-  expect_equal(chol_logdet(L), expected, tolerance = 1e-10)
+  expect_equal(am_chol_logdet(L), expected, tolerance = 1e-10)
 })
 
 test_that("chol_logdet rejects non-amChol", {
-  expect_error(chol_logdet(matrix(1:4, 2, 2)), "amChol")
+  expect_error(am_chol_logdet(matrix(1:4, 2, 2)), "amChol")
 })
 
 # ── chol_diag ─────────────────────────────────────────────────────────────
@@ -36,9 +36,9 @@ test_that("chol_diag returns diagonal of upper triangular factor", {
   A <- matrix(rnorm(16), 4, 4)
   K <- A %*% t(A) + 4 * diag(4)
   K_am <- adgeMatrix(K)
-  L <- chol_factor(K_am)
+  L <- am_chol_factor(K_am)
 
-  expect_equal(chol_diag(L), diag(chol(K)), tolerance = 1e-10)
+  expect_equal(am_chol_diag(L), diag(chol(K)), tolerance = 1e-10)
 })
 
 # ── quad_form ──────────────────────────────────────────────────────────────
@@ -49,10 +49,10 @@ test_that("quad_form(L, v) returns v' K^{-1} v (scalar)", {
   K <- A %*% t(A) + 5 * diag(5)
   v <- rnorm(5)
   K_am <- adgeMatrix(K)
-  L <- chol_factor(K_am)
+  L <- am_chol_factor(K_am)
 
   expected <- as.double(t(v) %*% solve(K, v))
-  expect_equal(quad_form(L, v), expected, tolerance = 1e-8)
+  expect_equal(am_quad_form(L, v), expected, tolerance = 1e-8)
 })
 
 test_that("quad_form(L, V) returns V' K^{-1} V (matrix)", {
@@ -61,10 +61,10 @@ test_that("quad_form(L, V) returns V' K^{-1} V (matrix)", {
   K <- A %*% t(A) + 5 * diag(5)
   V <- matrix(rnorm(10), 5, 2)
   K_am <- adgeMatrix(K)
-  L <- chol_factor(K_am)
+  L <- am_chol_factor(K_am)
 
   expected <- t(V) %*% solve(K, V)
-  expect_equal(quad_form(L, V), expected, tolerance = 1e-8)
+  expect_equal(am_quad_form(L, V), expected, tolerance = 1e-8)
 })
 
 test_that("quad_form result is positive for nonzero v", {
@@ -72,9 +72,9 @@ test_that("quad_form result is positive for nonzero v", {
   A <- matrix(rnorm(16), 4, 4)
   K <- A %*% t(A) + 4 * diag(4)
   v <- rnorm(4)
-  L <- chol_factor(adgeMatrix(K))
+  L <- am_chol_factor(adgeMatrix(K))
 
-  expect_gt(quad_form(L, v), 0)
+  expect_gt(am_quad_form(L, v), 0)
 })
 
 # ── eigh ───────────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ test_that("eigh returns named list with values and vectors", {
   set.seed(7)
   A <- matrix(rnorm(25), 5, 5)
   K <- A %*% t(A) + diag(5)
-  res <- eigh(adgeMatrix(K))
+  res <- am_eigh(adgeMatrix(K))
 
   expect_named(res, c("values", "vectors"))
   expect_length(res$values, 5)
@@ -94,7 +94,7 @@ test_that("eigh eigenvalues are positive for SPD matrix", {
   set.seed(8)
   A <- matrix(rnorm(25), 5, 5)
   K <- A %*% t(A) + 5 * diag(5)
-  res <- eigh(adgeMatrix(K))
+  res <- am_eigh(adgeMatrix(K))
 
   expect_true(all(res$values > 0))
 })
@@ -104,7 +104,7 @@ test_that("eigh reconstruction K ≈ Q diag(lambda) Q'", {
   A <- matrix(rnorm(25), 5, 5)
   K <- A %*% t(A) + 5 * diag(5)
   K_am <- adgeMatrix(K)
-  res <- eigh(K_am)
+  res <- am_eigh(K_am)
 
   Q <- res$vectors
   lam <- res$values
@@ -116,7 +116,7 @@ test_that("eigh eigenvectors are orthonormal: Q'Q ≈ I", {
   set.seed(10)
   A <- matrix(rnorm(36), 6, 6)
   K <- A %*% t(A) + diag(6)
-  res <- eigh(adgeMatrix(K))
+  res <- am_eigh(adgeMatrix(K))
 
   QtQ <- t(res$vectors) %*% res$vectors
   expect_equal(QtQ, diag(6), tolerance = 1e-8)
@@ -131,7 +131,7 @@ test_that("crossprod_weighted matches manual X' diag(w) X", {
   X_am <- adgeMatrix(X)
 
   expected <- t(X) %*% diag(w) %*% X
-  result <- as.matrix(crossprod_weighted(X_am, w))
+  result <- as.matrix(am_crossprod_weighted(X_am, w))
   expect_equal(result, expected, tolerance = 1e-10)
 })
 
@@ -139,14 +139,14 @@ test_that("crossprod_weighted result is symmetric", {
   set.seed(12)
   X <- matrix(rnorm(40), 8, 5)
   w <- runif(8) + 0.1
-  result <- as.matrix(crossprod_weighted(adgeMatrix(X), w))
+  result <- as.matrix(am_crossprod_weighted(adgeMatrix(X), w))
 
   expect_equal(result, t(result), tolerance = 1e-12)
 })
 
 test_that("crossprod_weighted errors on length mismatch", {
   X_am <- adgeMatrix(matrix(1:12, 4, 3))
-  expect_error(crossprod_weighted(X_am, rep(1, 5)), "nrow")
+  expect_error(am_crossprod_weighted(X_am, rep(1, 5)), "nrow")
 })
 
 # ── xty_weighted ───────────────────────────────────────────────────────────
@@ -159,7 +159,7 @@ test_that("xty_weighted matches manual X' diag(w) y", {
   X_am <- adgeMatrix(X)
 
   expected <- t(X) %*% diag(w) %*% y
-  result <- as.double(xty_weighted(X_am, w, y))
+  result <- as.double(am_xty_weighted(X_am, w, y))
   expect_equal(result, as.double(expected), tolerance = 1e-10)
 })
 
@@ -171,7 +171,7 @@ test_that("xty_weighted handles matrix y", {
   X_am <- adgeMatrix(X)
 
   expected <- t(X) %*% diag(w) %*% Y
-  result <- as.matrix(xty_weighted(X_am, w, Y))
+  result <- as.matrix(am_xty_weighted(X_am, w, Y))
   expect_equal(result, expected, tolerance = 1e-10)
 })
 
@@ -184,7 +184,7 @@ test_that("rowscale matches diag(d) %*% X", {
   X_am <- adgeMatrix(X)
 
   expected <- diag(d) %*% X
-  result <- as.matrix(rowscale(X_am, d))
+  result <- as.matrix(am_rowscale(X_am, d))
   expect_equal(result, expected, tolerance = 1e-12)
 })
 
@@ -195,23 +195,23 @@ test_that("colscale matches X %*% diag(d)", {
   X_am <- adgeMatrix(X)
 
   expected <- X %*% diag(d)
-  result <- as.matrix(colscale(X_am, d))
+  result <- as.matrix(am_colscale(X_am, d))
   expect_equal(result, expected, tolerance = 1e-12)
 })
 
 test_that("rowscale errors on length mismatch", {
   X_am <- adgeMatrix(matrix(1:12, 4, 3))
-  expect_error(rowscale(X_am, rep(1, 3)), "nrow")
+  expect_error(am_rowscale(X_am, rep(1, 3)), "nrow")
 })
 
 test_that("colscale errors on length mismatch", {
   X_am <- adgeMatrix(matrix(1:12, 4, 3))
-  expect_error(colscale(X_am, rep(1, 4)), "ncol")
+  expect_error(am_colscale(X_am, rep(1, 4)), "ncol")
 })
 
 test_that("rowscale result has same dims as input", {
   X_am <- adgeMatrix(matrix(rnorm(20), 4, 5))
-  result <- rowscale(X_am, rep(2, 4))
+  result <- am_rowscale(X_am, rep(2, 4))
   expect_equal(dim(result), c(4L, 5L))
 })
 
@@ -221,13 +221,13 @@ test_that("rowscale followed by crossprod equals crossprod_weighted", {
   w <- runif(10) + 0.1
   X_am <- adgeMatrix(X)
 
-  via_rowscale  <- as.matrix(crossprod(rowscale(X_am, sqrt(w))))
-  via_weighted  <- as.matrix(crossprod_weighted(X_am, w))
+  via_rowscale  <- as.matrix(crossprod(am_rowscale(X_am, sqrt(w))))
+  via_weighted  <- as.matrix(am_crossprod_weighted(X_am, w))
   expect_equal(via_rowscale, via_weighted, tolerance = 1e-10)
 })
 
-test_that("EMMA rotation pattern: rowscale(X_star, 1/d) then crossprod", {
-  # Simulate the EMMA inner loop: X*' D^{-1} X* = crossprod(rowscale(X*, 1/sqrt(d)))
+test_that("EMMA rotation pattern: am_rowscale(X_star, 1/d) then crossprod", {
+  # Simulate the EMMA inner loop: X*' D^{-1} X* = crossprod(am_rowscale(X*, 1/sqrt(d)))
   set.seed(18)
   n <- 20; p <- 3
   X_star <- matrix(rnorm(n * p), n, p)
@@ -236,8 +236,8 @@ test_that("EMMA rotation pattern: rowscale(X_star, 1/d) then crossprod", {
   d       <- lambda + delta
 
   X_am  <- adgeMatrix(X_star)
-  XtDX  <- as.matrix(crossprod_weighted(X_am, 1 / d))
-  XtDX2 <- as.matrix(crossprod(rowscale(X_am, 1 / sqrt(d))))
+  XtDX  <- as.matrix(am_crossprod_weighted(X_am, 1 / d))
+  XtDX2 <- as.matrix(crossprod(am_rowscale(X_am, 1 / sqrt(d))))
   expect_equal(XtDX, XtDX2, tolerance = 1e-10)
 })
 
@@ -246,13 +246,13 @@ test_that("EMMA rotation pattern: rowscale(X_star, 1/d) then crossprod", {
 test_that("rowmeans matches base rowMeans", {
   set.seed(19)
   X <- matrix(rnorm(30), 6, 5)
-  expect_equal(rowmeans(adgeMatrix(X)), rowMeans(X), tolerance = 1e-12)
+  expect_equal(am_rowmeans(adgeMatrix(X)), rowMeans(X), tolerance = 1e-12)
 })
 
 test_that("colmeans matches base colMeans", {
   set.seed(20)
   X <- matrix(rnorm(30), 6, 5)
-  expect_equal(colmeans(adgeMatrix(X)), colMeans(X), tolerance = 1e-12)
+  expect_equal(am_colmeans(adgeMatrix(X)), colMeans(X), tolerance = 1e-12)
 })
 
 test_that("rowMeans S4 dispatch works on adgeMatrix", {
@@ -272,18 +272,18 @@ test_that("colMeans S4 dispatch works on adgeMatrix", {
 test_that("trace matches sum(diag(A)) for square matrix", {
   set.seed(23)
   A <- matrix(rnorm(25), 5, 5)
-  expect_equal(mat_trace(adgeMatrix(A)), sum(diag(A)), tolerance = 1e-12)
+  expect_equal(am_trace(adgeMatrix(A)), sum(diag(A)), tolerance = 1e-12)
 })
 
 test_that("trace of identity matrix equals n", {
-  expect_equal(mat_trace(adgeMatrix(diag(7))), 7, tolerance = 1e-12)
+  expect_equal(am_trace(adgeMatrix(diag(7))), 7, tolerance = 1e-12)
 })
 
 test_that("trace of SPD matrix equals sum of eigenvalues", {
   set.seed(24)
   A <- matrix(rnorm(25), 5, 5)
   K <- A %*% t(A) + diag(5)
-  expect_equal(mat_trace(adgeMatrix(K)), sum(eigen(K, only.values = TRUE)$values),
+  expect_equal(am_trace(adgeMatrix(K)), sum(eigen(K, only.values = TRUE)$values),
                tolerance = 1e-8)
 })
 
@@ -292,7 +292,7 @@ test_that("trace of SPD matrix equals sum of eigenvalues", {
 test_that("sym result is exactly symmetric", {
   set.seed(25)
   A <- matrix(rnorm(25), 5, 5)
-  S <- sym(adgeMatrix(A))
+  S <- am_sym(adgeMatrix(A))
   expect_equal(as.matrix(S), t(as.matrix(S)), tolerance = 1e-14)
 })
 
@@ -300,14 +300,14 @@ test_that("sym matches manual (A + t(A)) / 2", {
   set.seed(26)
   A <- matrix(rnorm(16), 4, 4)
   expected <- (A + t(A)) / 2
-  expect_equal(as.matrix(sym(adgeMatrix(A))), expected, tolerance = 1e-12)
+  expect_equal(as.matrix(am_sym(adgeMatrix(A))), expected, tolerance = 1e-12)
 })
 
 test_that("sym is idempotent", {
   set.seed(27)
   A <- matrix(rnorm(16), 4, 4)
   A_am <- adgeMatrix(A)
-  expect_equal(as.matrix(sym(sym(A_am))), as.matrix(sym(A_am)), tolerance = 1e-14)
+  expect_equal(as.matrix(am_sym(am_sym(A_am))), as.matrix(am_sym(A_am)), tolerance = 1e-14)
 })
 
 # ── dot ───────────────────────────────────────────────────────────────────────
@@ -315,20 +315,20 @@ test_that("sym is idempotent", {
 test_that("dot(x, y) matches sum(x * y) for vectors", {
   set.seed(28)
   x <- rnorm(10); y <- rnorm(10)
-  expect_equal(dot(x, y), sum(x * y), tolerance = 1e-12)
+  expect_equal(am_dot(x, y), sum(x * y), tolerance = 1e-12)
 })
 
 test_that("dot(X, Y) matches sum(X * Y) for matrices (Frobenius inner product)", {
   set.seed(29)
   X <- matrix(rnorm(20), 4, 5)
   Y <- matrix(rnorm(20), 4, 5)
-  expect_equal(dot(adgeMatrix(X), adgeMatrix(Y)), sum(X * Y), tolerance = 1e-12)
+  expect_equal(am_dot(adgeMatrix(X), adgeMatrix(Y)), sum(X * Y), tolerance = 1e-12)
 })
 
 test_that("dot(x, x) equals squared norm", {
   set.seed(30)
   x <- rnorm(8)
-  expect_equal(dot(x, x), sum(x^2), tolerance = 1e-12)
+  expect_equal(am_dot(x, x), sum(x^2), tolerance = 1e-12)
 })
 
 # ── crossprod_add_diag ────────────────────────────────────────────────────────
@@ -338,7 +338,7 @@ test_that("crossprod_add_diag(X, lambda) matches crossprod(X) + lambda*I", {
   X <- matrix(rnorm(30), 6, 5)
   lambda <- 0.5
   expected <- t(X) %*% X + lambda * diag(5)
-  result <- as.matrix(crossprod_add_diag(adgeMatrix(X), lambda))
+  result <- as.matrix(am_crossprod_add_diag(adgeMatrix(X), lambda))
   expect_equal(result, expected, tolerance = 1e-10)
 })
 
@@ -347,25 +347,25 @@ test_that("crossprod_add_diag(X, d) matches crossprod(X) + diag(d)", {
   X <- matrix(rnorm(30), 6, 5)
   d <- runif(5) + 0.1
   expected <- t(X) %*% X + diag(d)
-  result <- as.matrix(crossprod_add_diag(adgeMatrix(X), d))
+  result <- as.matrix(am_crossprod_add_diag(adgeMatrix(X), d))
   expect_equal(result, expected, tolerance = 1e-10)
 })
 
 test_that("crossprod_add_diag result is symmetric", {
   set.seed(33)
   X <- matrix(rnorm(24), 8, 3)
-  R <- as.matrix(crossprod_add_diag(adgeMatrix(X), 1.0))
+  R <- as.matrix(am_crossprod_add_diag(adgeMatrix(X), 1.0))
   expect_equal(R, t(R), tolerance = 1e-12)
 })
 
 # ── mat_sqrt / mat_pow / mat_log ──────────────────────────────────────────────
 
-test_that("mat_sqrt(K) %*% mat_sqrt(K) ≈ K", {
+test_that("mat_sqrt(K) %*% am_sqrtm(K) ≈ K", {
   set.seed(34)
   A <- matrix(rnorm(25), 5, 5)
   K <- crossprod(A) + 5 * diag(5)
   K_am <- adgeMatrix(K)
-  S <- as.matrix(mat_sqrt(K_am))
+  S <- as.matrix(am_sqrtm(K_am))
   expect_equal(S %*% S, K, tolerance = 1e-8)
 })
 
@@ -374,26 +374,26 @@ test_that("mat_pow(K, 2) ≈ K %*% K", {
   A <- matrix(rnorm(16), 4, 4)
   K <- crossprod(A) + 4 * diag(4)
   K_am <- adgeMatrix(K)
-  expect_equal(as.matrix(mat_pow(K_am, 2)), K %*% K, tolerance = 1e-8)
+  expect_equal(as.matrix(am_powm(K_am, 2)), K %*% K, tolerance = 1e-8)
 })
 
-test_that("mat_pow(K, 0.5) matches mat_sqrt(K)", {
+test_that("mat_pow(K, 0.5) matches am_sqrtm(K)", {
   set.seed(36)
   A <- matrix(rnorm(16), 4, 4)
   K <- crossprod(A) + 4 * diag(4)
   K_am <- adgeMatrix(K)
-  expect_equal(as.matrix(mat_pow(K_am, 0.5)), as.matrix(mat_sqrt(K_am)),
+  expect_equal(as.matrix(am_powm(K_am, 0.5)), as.matrix(am_sqrtm(K_am)),
                tolerance = 1e-8)
 })
 
-test_that("mat_log roundtrip: exp(mat_log(K)) ≈ K via eigenvalues", {
+test_that("mat_log roundtrip: exp(am_logm(K)) ≈ K via eigenvalues", {
   set.seed(37)
   A <- matrix(rnorm(16), 4, 4)
   K <- crossprod(A) + 4 * diag(4)
   K_am <- adgeMatrix(K)
-  logK <- mat_log(K_am)
-  res <- eigh(logK)
-  expect_equal(exp(res$values), eigh(K_am)$values, tolerance = 1e-6)
+  logK <- am_logm(K_am)
+  res <- am_eigh(logK)
+  expect_equal(exp(res$values), am_eigh(K_am)$values, tolerance = 1e-6)
 })
 
 # ── solve_triangular ──────────────────────────────────────────────────────────
@@ -404,7 +404,7 @@ test_that("solve_triangular upper recovers x from R %*% x", {
   K <- crossprod(A) + 5 * diag(5)
   R <- chol(K)
   x <- rnorm(5)
-  expect_equal(solve_triangular(R, R %*% x), x, tolerance = 1e-10)
+  expect_equal(am_solve_triangular(R, R %*% x), x, tolerance = 1e-10)
 })
 
 test_that("solve_triangular lower recovers x from L %*% x", {
@@ -413,7 +413,7 @@ test_that("solve_triangular lower recovers x from L %*% x", {
   K <- crossprod(A) + 5 * diag(5)
   L <- t(chol(K))
   x <- rnorm(5)
-  expect_equal(solve_triangular(L, L %*% x, lower = TRUE), x, tolerance = 1e-10)
+  expect_equal(am_solve_triangular(L, L %*% x, lower = TRUE), x, tolerance = 1e-10)
 })
 
 test_that("solve_triangular handles multiple RHS", {
@@ -422,7 +422,7 @@ test_that("solve_triangular handles multiple RHS", {
   K <- crossprod(A) + 5 * diag(5)
   R <- chol(K)
   X <- matrix(rnorm(15), 5, 3)
-  expect_equal(solve_triangular(R, R %*% X), X, tolerance = 1e-10)
+  expect_equal(am_solve_triangular(R, R %*% X), X, tolerance = 1e-10)
 })
 
 # ── trace_estim ───────────────────────────────────────────────────────────────
@@ -432,17 +432,17 @@ test_that("trace_estim converges to true trace with large k", {
   A <- matrix(rnorm(25), 5, 5)
   K <- crossprod(A) + 5 * diag(5)
   K_am <- adgeMatrix(K)
-  est <- trace_estim(K_am, k = 500, seed = 42)
-  expect_equal(est, mat_trace(K_am), tolerance = 1.0)  # stochastic, generous tol
+  est <- am_trace_estim(K_am, k = 500, seed = 42)
+  expect_equal(est, am_trace(K_am), tolerance = 1.0)  # stochastic, generous tol
 })
 
 test_that("trace_estim via solve_fn estimates tr(K^{-1})", {
   set.seed(42)
   A <- matrix(rnorm(16), 4, 4)
   K <- crossprod(A) + 4 * diag(4)
-  L <- chol_factor(adgeMatrix(K))
+  L <- am_chol_factor(adgeMatrix(K))
   true_val <- sum(diag(solve(K)))
-  est <- trace_estim(solve_fn = function(v) chol_solve(L, v), n = 4L,
+  est <- am_trace_estim(solve_fn = function(v) am_chol_solve(L, v), n = 4L,
                      k = 500L, seed = 1L)
   expect_equal(est, true_val, tolerance = 0.5)  # stochastic
 })
@@ -451,8 +451,8 @@ test_that("trace_estim is reproducible with seed", {
   set.seed(43)
   K <- crossprod(matrix(rnorm(25), 5, 5)) + 5 * diag(5)
   K_am <- adgeMatrix(K)
-  e1 <- trace_estim(K_am, k = 20, seed = 99)
-  e2 <- trace_estim(K_am, k = 20, seed = 99)
+  e1 <- am_trace_estim(K_am, k = 20, seed = 99)
+  e2 <- am_trace_estim(K_am, k = 20, seed = 99)
   expect_equal(e1, e2)
 })
 
@@ -466,7 +466,7 @@ test_that("batch_chol returns a list of amChol objects", {
   mats <- lapply(seq_len(B), function(i) {
     A <- matrix(rnorm(n * n), n, n); crossprod(A) + diag(n)
   })
-  Ls <- batch_chol(mats)
+  Ls <- am_batch_chol(mats)
   expect_length(Ls, B)
   expect_true(all(vapply(Ls, inherits, logical(1), "amChol")))
 })
@@ -476,7 +476,7 @@ test_that("batch_chol accepts a 3-D array", {
   B <- 3L; n <- 4L
   arr <- array(0, c(n, n, B))
   for (b in seq_len(B)) { A <- matrix(rnorm(n*n), n, n); arr[,,b] <- crossprod(A) + diag(n) }
-  Ls <- batch_chol(arr)
+  Ls <- am_batch_chol(arr)
   expect_length(Ls, B)
 })
 
@@ -485,10 +485,10 @@ test_that("batch_solve recovers RHS", {
   B <- 5L; n <- 6L; k <- 2L
   mats <- lapply(seq_len(B), function(i) { A <- matrix(rnorm(n*n), n, n); crossprod(A) + diag(n) })
   Xs   <- lapply(seq_len(B), function(i) matrix(rnorm(n * k), n, k))
-  Ls   <- batch_chol(mats)
+  Ls   <- am_batch_chol(mats)
   # compute RHS = A_b %*% x_b for each b
   rhs  <- Map(function(m, x) m %*% x, mats, Xs)
-  sols <- batch_solve(Ls, rhs)
+  sols <- am_batch_solve(Ls, rhs)
   for (b in seq_len(B)) {
     expect_equal(sols[[b]], Xs[[b]], tolerance = 1e-9)
   }
@@ -498,9 +498,9 @@ test_that("batch_solve works with 3-D B array", {
   set.seed(4)
   B <- 3L; n <- 4L; k <- 2L
   mats <- lapply(seq_len(B), function(i) { A <- matrix(rnorm(n*n), n, n); crossprod(A) + diag(n) })
-  Ls   <- batch_chol(mats)
+  Ls   <- am_batch_chol(mats)
   rhs_arr <- array(rnorm(n * k * B), c(n, k, B))
-  sols <- batch_solve(Ls, rhs_arr)
+  sols <- am_batch_solve(Ls, rhs_arr)
   expect_length(sols, B)
 })
 
@@ -508,7 +508,7 @@ test_that("batch_crossprod returns list of p x p matrices", {
   set.seed(5)
   B <- 4L; n <- 8L; p <- 3L
   mats <- lapply(seq_len(B), function(i) matrix(rnorm(n * p), n, p))
-  XtXs <- batch_crossprod(mats)
+  XtXs <- am_batch_crossprod(mats)
   expect_length(XtXs, B)
   for (b in seq_len(B)) {
     expect_equal(dim(XtXs[[b]]), c(p, p))
@@ -549,12 +549,12 @@ test_that("norm max modulus matches base::norm", {
 })
 
 # ---------------------------------------------------------------------------
-# kron()
+# am_kron()
 # ---------------------------------------------------------------------------
 test_that("kron matches base::kronecker", {
   A <- matrix(1:4, 2, 2)
   B <- matrix(1:9, 3, 3)
-  K <- kron(adgeMatrix(A + 0.0), adgeMatrix(B + 0.0))
+  K <- am_kron(adgeMatrix(A + 0.0), adgeMatrix(B + 0.0))
   expect_equal(as.matrix(K), base::kronecker(A + 0.0, B + 0.0), tolerance = 1e-12)
   expect_equal(dim(K), c(6L, 6L))
 })
@@ -563,7 +563,7 @@ test_that("kron(I_m, A) gives block diagonal identity", {
   n <- 3L; m <- 2L
   Im <- diag(m)
   A  <- matrix(rnorm(n * n), n, n)
-  K  <- kron(adgeMatrix(Im), adgeMatrix(A))
+  K  <- am_kron(adgeMatrix(Im), adgeMatrix(A))
   expect_equal(dim(K), c(m * n, m * n))
   # top-left block should equal A
   expect_equal(as.matrix(K)[seq_len(n), seq_len(n)], A, tolerance = 1e-12)
@@ -578,9 +578,9 @@ test_that("lu_solve recovers RHS", {
   A <- matrix(rnorm(n * n), n, n)
   X <- adgeMatrix(A)
   b <- rnorm(n)
-  fac <- lu_factor(X)
+  fac <- am_lu_factor(X)
   expect_s4_class(fac, "amLU")
-  expect_equal(lu_solve(fac, b), base::solve(A, b), tolerance = 1e-10)
+  expect_equal(am_lu_solve(fac, b), base::solve(A, b), tolerance = 1e-10)
 })
 
 test_that("lu_solve works with multiple RHS columns", {
@@ -588,20 +588,20 @@ test_that("lu_solve works with multiple RHS columns", {
   n <- 5L; k <- 3L
   A <- matrix(rnorm(n * n), n, n)
   B <- matrix(rnorm(n * k), n, k)
-  fac <- lu_factor(adgeMatrix(A))
-  expect_equal(lu_solve(fac, B), base::solve(A, B), tolerance = 1e-10)
+  fac <- am_lu_factor(adgeMatrix(A))
+  expect_equal(am_lu_solve(fac, B), base::solve(A, B), tolerance = 1e-10)
 })
 
 test_that("lu_factor rejects non-square matrix", {
-  expect_error(lu_factor(adgeMatrix(matrix(1:6, 2, 3))), "square")
+  expect_error(am_lu_factor(adgeMatrix(matrix(1:6, 2, 3))), "square")
 })
 
 test_that("lu_solve drops to vector for single-column RHS", {
   set.seed(22)
   n <- 4L
   A <- matrix(rnorm(n * n), n, n); b <- rnorm(n)
-  fac <- lu_factor(adgeMatrix(A))
-  x <- lu_solve(fac, b)
+  fac <- am_lu_factor(adgeMatrix(A))
+  x <- am_lu_solve(fac, b)
   expect_null(dim(x))
   expect_length(x, n)
 })

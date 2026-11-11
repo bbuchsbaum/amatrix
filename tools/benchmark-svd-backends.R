@@ -273,9 +273,9 @@ benchmark_backend_case <- function(case, backend_spec, reps = 3L) {
   rsvd_status <- svd_support_status(x, backend_name, "rsvd")
   if (isTRUE(rsvd_status$ok)) {
     rsvd_bench <- benchmark_elapsed(
-      function() rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter),
+      function() am_rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter),
       reps = reps,
-      warmup = if (!identical(backend_name, "cpu")) function() invisible(rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter)) else NULL
+      warmup = if (!identical(backend_name, "cpu")) function() invisible(am_rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter)) else NULL
     )
     selected_backend <- if (identical(backend_name, "cpu")) {
       "cpu"
@@ -331,10 +331,10 @@ mlx_single_cell_expr <- function(case, algorithm, out_path, reps = 3L, native_sp
     mprod_expr <- "NA_integer_"
   } else {
     run_expr <- sprintf(
-      "bench_eval(function() rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter), reps = %dL)",
+      "bench_eval(function() am_rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter), reps = %dL)",
       reps
     )
-    warmup_expr <- "invisible(rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter))"
+    warmup_expr <- "invisible(am_rsvd(x, k = case$k, n_oversamples = case$n_oversamples, n_iter = case$n_iter))"
     iter_expr <- "as.integer(bench$result$iter %||% NA_integer_)"
     mprod_expr <- "as.integer(bench$result$mprod %||% NA_integer_)"
   }

@@ -22,9 +22,9 @@ test_that("dense matmul is bit-identical across repetitions", {
   x <- adgeMatrix(x_host)
   y <- adgeMatrix(y_host)
 
-  ref <- as.matrix(matmul(x, y))
+  ref <- as.matrix(am_matmul(x, y))
   for (i in seq_len(.td_repeat)) {
-    this <- as.matrix(matmul(x, y))
+    this <- as.matrix(am_matmul(x, y))
     expect_identical(this, ref, info = paste("matmul iteration", i))
   }
 })
@@ -51,14 +51,14 @@ test_that("reductions are bit-identical across repetitions", {
 
   ref_row <- rowSums(x)
   ref_col <- colSums(x)
-  ref_rm  <- rowmeans(x)
-  ref_cm  <- colmeans(x)
+  ref_rm  <- am_rowmeans(x)
+  ref_cm  <- am_colmeans(x)
 
   for (i in seq_len(.td_repeat)) {
     expect_identical(rowSums(x), ref_row, info = paste("rowSums", i))
     expect_identical(colSums(x), ref_col, info = paste("colSums", i))
-    expect_identical(rowmeans(x), ref_rm, info = paste("rowmeans", i))
-    expect_identical(colmeans(x), ref_cm, info = paste("colmeans", i))
+    expect_identical(am_rowmeans(x), ref_rm, info = paste("rowmeans", i))
+    expect_identical(am_colmeans(x), ref_cm, info = paste("colmeans", i))
   }
 })
 
@@ -70,12 +70,12 @@ test_that("solve and chol_factor are bit-identical across repetitions", {
 
   rhs <- rnorm(n)
   ref_solve <- solve(x, rhs)
-  ref_chol <- as.matrix(chol_factor(x))
+  ref_chol <- as.matrix(am_chol_factor(x))
 
   for (i in seq_len(.td_repeat)) {
     expect_identical(solve(x, rhs), ref_solve,
                      info = paste("solve iteration", i))
-    expect_identical(as.matrix(chol_factor(x)), ref_chol,
+    expect_identical(as.matrix(am_chol_factor(x)), ref_chol,
                      info = paste("chol_factor iteration", i))
   }
 })
@@ -89,7 +89,7 @@ test_that("seeded iterative algorithms are deterministic at fixed seed", {
 
   run_rsvd <- function() {
     set.seed(42L)
-    rsvd(x_host, k = 3L)
+    am_rsvd(x_host, k = 3L)
   }
   ref <- run_rsvd()
   for (i in seq_len(.td_repeat)) {

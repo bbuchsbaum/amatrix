@@ -18,7 +18,7 @@ test_that("mlx rsvd bridge and factor path smoke test on native backend", {
     n_iter = n_iter
   )
 
-  factor_fit <- amatrix::svd_factor(
+  factor_fit <- amatrix::am_svd_factor(
     amatrix::adgeMatrix(x, preferred_backend = "mlx", precision = "fast"),
     k = k,
     method = "rsvd",

@@ -19,25 +19,25 @@
 #'
 #' @rdname matmul-sparse-methods
 #' @aliases %*%,adgCMatrix,ANY-method
-setMethod("%*%", signature(x = "adgCMatrix", y = "ANY"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "ANY"), function(x, y) am_matmul(x, y))
 #' @rdname matmul-sparse-methods
 #' @aliases %*%,adgCMatrix,matrix-method
-setMethod("%*%", signature(x = "adgCMatrix", y = "matrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "matrix"), function(x, y) am_matmul(x, y))
 #' @rdname matmul-sparse-methods
 #' @aliases %*%,adgCMatrix,Matrix-method
-setMethod("%*%", signature(x = "adgCMatrix", y = "Matrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "Matrix"), function(x, y) am_matmul(x, y))
 #' @rdname matmul-sparse-methods
 #' @aliases %*%,adgCMatrix,dgeMatrix-method
-setMethod("%*%", signature(x = "adgCMatrix", y = "dgeMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "dgeMatrix"), function(x, y) am_matmul(x, y))
 #' @rdname matmul-sparse-methods
 #' @aliases %*%,adgCMatrix,dgCMatrix-method
-setMethod("%*%", signature(x = "adgCMatrix", y = "dgCMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "dgCMatrix"), function(x, y) am_matmul(x, y))
 #' @rdname matmul-sparse-methods
 #' @aliases %*%,adgCMatrix,adgeMatrix-method
-setMethod("%*%", signature(x = "adgCMatrix", y = "adgeMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "adgeMatrix"), function(x, y) am_matmul(x, y))
 #' @rdname matmul-sparse-methods
 #' @aliases %*%,adgCMatrix,adgCMatrix-method
-setMethod("%*%", signature(x = "adgCMatrix", y = "adgCMatrix"), function(x, y) matmul(x, y))
+setMethod("%*%", signature(x = "adgCMatrix", y = "adgCMatrix"), function(x, y) am_matmul(x, y))
 
 #' @noRd
 setMethod("t", "adgCMatrix", function(x) am_transpose(x))
@@ -130,16 +130,16 @@ setMethod("tcrossprod", signature(x = "adgCMatrix", y = "adgCMatrix"), function(
 #'
 #' @rdname rowcol-summary-sparse-methods
 #' @aliases rowSums,adgCMatrix-method
-setMethod("rowSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) rowsums(x, na.rm = na.rm, dims = dims))
+setMethod("rowSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_rowsums(x, na.rm = na.rm, dims = dims))
 #' @rdname rowcol-summary-sparse-methods
 #' @aliases colSums,adgCMatrix-method
-setMethod("colSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) colsums(x, na.rm = na.rm, dims = dims))
+setMethod("colSums", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_colsums(x, na.rm = na.rm, dims = dims))
 #' @rdname rowcol-summary-sparse-methods
 #' @aliases rowMeans,adgCMatrix-method
-setMethod("rowMeans", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) rowmeans(x, na.rm = na.rm))
+setMethod("rowMeans", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_rowmeans(x, na.rm = na.rm))
 #' @rdname rowcol-summary-sparse-methods
 #' @aliases colMeans,adgCMatrix-method
-setMethod("colMeans", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) colmeans(x, na.rm = na.rm))
+setMethod("colMeans", "adgCMatrix", function(x, na.rm = FALSE, dims = 1L) am_colmeans(x, na.rm = na.rm))
 
 #' @noRd
 setMethod("[", signature(x = "adgCMatrix", i = "ANY", j = "ANY", drop = "ANY"), function(x, i, j, ..., drop = TRUE) {
@@ -382,79 +382,79 @@ setReplaceMethod("diag", "adgCMatrix", function(x, value) {
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "ANY"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 # Explicit same-class signature: adgCMatrix extends dgCMatrix, so without this
 # Matrix's Ops(dgCMatrix, dgCMatrix) would win by distance 1+1 vs (adgCMatrix, ANY).
 #' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "adgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "numeric"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "integer"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "logical"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "matrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "Matrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "adgCMatrix", e2 = "dgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "ANY", e2 = "adgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "numeric", e2 = "adgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "integer", e2 = "adgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "logical", e2 = "adgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "matrix", e2 = "adgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "Matrix", e2 = "adgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd
 setMethod("Ops", signature(e1 = "dgCMatrix", e2 = "adgCMatrix"), function(e1, e2) {
-  ewise(.Generic, e1, e2)
+  am_ewise(.Generic, e1, e2)
 })
 
 #' @noRd

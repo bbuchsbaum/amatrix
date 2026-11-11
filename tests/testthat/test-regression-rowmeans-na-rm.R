@@ -22,7 +22,7 @@ test_that("rowmeans(adgeMatrix, na.rm=TRUE) matches base rowMeans", {
   )
 
   expect_equal(
-    rowmeans(x, na.rm = TRUE),
+    am_rowmeans(x, na.rm = TRUE),
     base::rowMeans(host, na.rm = TRUE),
     tolerance = 1e-12
   )

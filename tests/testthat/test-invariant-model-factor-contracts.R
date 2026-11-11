@@ -31,14 +31,14 @@ suppressPackageStartupMessages(library(amatrix))
 
 .model_contract_lm_ref <- function(X, Y, method) {
   do.call(cbind, lapply(seq_len(ncol(Y)), function(j) {
-    as.matrix(coef(lm_fit(X, Y[, j, drop = FALSE], method = method)))
+    as.matrix(coef(am_lm_fit(X, Y[, j, drop = FALSE], method = method)))
   }))
 }
 
 .model_contract_loo_ref <- function(X, y) {
   n <- nrow(X)
   residuals <- vapply(seq_len(n), function(i) {
-    fit <- lm_fit(X[-i, , drop = FALSE], y[-i], method = "qr")
+    fit <- am_lm_fit(X[-i, , drop = FALSE], y[-i], method = "qr")
     coef_i <- as.numeric(coef(fit))
     y[[i]] - sum(X[i, ] * coef_i)
   }, numeric(1))
@@ -84,7 +84,7 @@ test_that("many_lm matches column-wise lm_fit across solver paths", {
 
     for (method in c("normal", "qr")) {
       info <- sprintf("seed=%d method=%s", seed, method)
-      fit_many <- many_lm(dat$X, dat$Y, method = method)
+      fit_many <- am_many_lm(dat$X, dat$Y, method = method)
       fit_ref <- .model_contract_lm_ref(dat$X, dat$Y, method = method)
 
       expect_equal(
@@ -104,7 +104,7 @@ test_that("ridge_fit matches direct penalized normal-equation reference", {
     penalty <- diag(lambda, ncol(dat$X))
     ref <- solve(crossprod(dat$X) + penalty, crossprod(dat$X, dat$Y))
 
-    fit <- ridge_fit(dat$X, dat$Y, lambda = lambda)
+    fit <- am_ridge_fit(dat$X, dat$Y, lambda = lambda)
     expect_equal(
       as.matrix(coef(fit)),
       ref,
@@ -120,7 +120,7 @@ test_that("lm_loo_cv matches explicit leave-one-out refits", {
     y <- dat$Y[, 1L]
 
     expect_equal(
-      lm_loo_cv(dat$X, y),
+      am_lm_loo_cv(dat$X, y),
       .model_contract_loo_ref(dat$X, y),
       tolerance = 1e-10,
       info = sprintf("seed=%d", seed)
@@ -138,14 +138,14 @@ test_that("chol_factor preserves backend provenance and survives resident releas
     B <- matrix(rnorm(10L), nrow = 5L, ncol = 2L)
     X <- adgeMatrix(A, preferred_backend = "mockchol", precision = "fast")
 
-    fac <- chol_factor(X)
+    fac <- am_chol_factor(X)
     expect_identical(fac@backend, "mockchol")
     expect_true(inherits(fac@factor_obj, "adgeMatrix"))
     expect_identical(amatrix:::.amatrix_live_resident_backend(fac@factor_obj), "mockchol")
-    expect_equal(chol_solve(fac, B), solve(A, B), tolerance = 1e-10)
+    expect_equal(am_chol_solve(fac, B), solve(A, B), tolerance = 1e-10)
 
     amatrix:::.amatrix_release_resident(fac@factor_obj)
     expect_null(amatrix:::.amatrix_live_resident_backend(fac@factor_obj))
-    expect_equal(chol_solve(fac, B), solve(A, B), tolerance = 1e-10)
+    expect_equal(am_chol_solve(fac, B), solve(A, B), tolerance = 1e-10)
   })
 })

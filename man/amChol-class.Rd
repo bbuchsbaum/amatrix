@@ -7,9 +7,9 @@
 \description{
 Stores the upper-triangular Cholesky factor \code{R} of a
 symmetric positive-definite \code{adgeMatrix}, as returned by
-\code{\link{chol_factor}}. When the factor is resident on a GPU
+\code{\link{am_chol_factor}}. When the factor is resident on a GPU
 backend the host-side \code{@factor} slot may be an empty
-zero-row matrix; use \code{\link{chol_solve}} rather than
+zero-row matrix; use \code{\link{am_chol_solve}} rather than
 accessing slots directly.
 }
 \section{Slots}{
@@ -33,6 +33,6 @@ factorization.}
 }}
 
 \seealso{
-\code{\link{chol_factor}}, \code{\link{chol_solve}},
-  \code{\link{chol_logdet}}
+\code{\link{am_chol_factor}}, \code{\link{am_chol_solve}},
+  \code{\link{am_chol_logdet}}
 }

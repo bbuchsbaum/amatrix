@@ -7,7 +7,7 @@
 # R/platform: R version 4.5.1 (2025-06-13) | aarch64-apple-darwin20
 # Issue: amatrix-4rt
 #
-# block_lanczos() uploads the source operator (A_left) to a resident backend
+# am_block_lanczos() uploads the source operator (A_left) to a resident backend
 # BEFORE it registers the on.exit that drops it. If building the right operator
 # (A_right) throws, the source operator's device buffer leaks because the
 # cleanup on.exit was never reached. The fix registers the source-drop on.exit
@@ -51,7 +51,7 @@ test_that("amatrix-4rt: source operator key is dropped when right operator build
         0, 0, 1, 4
       ), nrow = 4L), preferred_backend = "lanczos_leak_backend")
 
-      expect_error(block_lanczos(A, nv = 1L), "right operator boom")
+      expect_error(am_block_lanczos(A, nv = 1L), "right operator boom")
 
       # The source operator upload must not leak: after the failed build the
       # recording backend's resident environment must hold no buffers.
