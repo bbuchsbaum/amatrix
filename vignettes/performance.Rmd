@@ -118,7 +118,9 @@ Apple Silicon machine) contains two regimes. Between 2 July and 24 July 2026
 the CPU timings on that machine became roughly 100 times faster while the MLX
 timings barely moved, which is the signature of R being switched from its
 reference BLAS to an optimized one. The history did not record the BLAS at
-the time, so this is an inference; the harness now records it.
+the time, so this is an inference; the harness now records it, and a run on
+12 November 2026 confirmed the machine is linked to Accelerate
+(`libBLAS.dylib`) with timings matching the later regime.
 
 | 4096 x 1024, warm | CPU before | CPU after | MLX | MLX vs before | MLX vs after |
 |---|---:|---:|---:|---:|---:|
@@ -186,7 +188,9 @@ When no calibration has been run, amatrix therefore keeps two kinds of cold
 work on the CPU for the accelerator backends: matrices with fewer than 32768
 elements, and element-wise operations and row/column reductions on data that
 is not already on a device (they are memory-bound, so a round trip cannot
-win). Data that is already resident stays on the device. Run
+win). When R is linked to an optimized BLAS the rule is stricter, following
+the table above: cold products and solves need at least about two million
+elements, and cold `chol` and `svd` stay on the CPU. Data that is already resident stays on the device. Run
 `amatrix_calibrate()` to replace this rule with thresholds measured on your
 machine, or set `options(amatrix.uncalibrated_min_elements = 0)` to switch it
 off.

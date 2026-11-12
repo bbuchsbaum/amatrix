@@ -481,6 +481,35 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
 .amatrix_transfer_bound_ops <- c("ewise", "broadcast_ewise", "rowSums", "colSums", "diag")
 .amatrix_accelerator_backend_names <- c("mlx", "opencl", "arrayfire", "metal")
 
+# Is R linked to an optimized BLAS (Accelerate, OpenBLAS, MKL, ...) or to the
+# reference implementation? The answer moves the break-even point of an
+# accelerator by about two orders of magnitude: recorded timings on one Apple
+# Silicon machine show MLX ~50x faster than the reference BLAS for a
+# 4096 x 1024 product but only ~1x-1.5x faster than Accelerate, and slower
+# than Accelerate for everything below a few million elements.
+# options(amatrix.host_blas = "optimized" | "reference") overrides detection.
+.amatrix_host_blas_class <- function() {
+  forced <- getOption("amatrix.host_blas", NULL)
+  if (is.character(forced) && length(forced) == 1L && forced %in% c("optimized", "reference")) {
+    return(forced)
+  }
+  cached <- .amatrix_state$host_blas_class
+  if (!is.null(cached)) return(cached)
+  paths <- c(
+    tryCatch(unname(extSoftVersion()[["BLAS"]]), error = function(e) ""),
+    tryCatch(La_library(), error = function(e) "")
+  )
+  paths <- paths[nzchar(paths)]
+  resolved <- tryCatch(normalizePath(paths, mustWork = FALSE), error = function(e) paths)
+  optimized <- any(grepl(
+    "openblas|mkl|accelerate|veclib|libBLAS\\.dylib|blis|atlas|flexiblas|armpl|nvpl|essl",
+    c(paths, resolved), ignore.case = TRUE
+  ))
+  out <- if (optimized) "optimized" else "reference"
+  .amatrix_state$host_blas_class <- out
+  out
+}
+
 .amatrix_uncalibrated_ok <- function(x, op, backend_name) {
   if (!(backend_name %in% .amatrix_accelerator_backend_names)) {
     return(TRUE)
@@ -496,6 +525,17 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
   }
   if (op %in% .amatrix_transfer_bound_ops) {
     return(FALSE)
+  }
+  if (identical(.amatrix_host_blas_class(), "optimized")) {
+    # Against an optimized BLAS the recorded timings never show a cold dense
+    # factorization winning, and single products only win at the largest size
+    # measured (4096 x 1024, about 4.2 million elements).
+    if (op %in% c("svd", "chol")) {
+      return(FALSE)
+    }
+    if (op %in% c("matmul", "crossprod", "tcrossprod", "solve")) {
+      min_elements <- max(min_elements, 2097152)
+    }
   }
   as.numeric(nrow(x)) * as.numeric(ncol(x)) >= min_elements
 }

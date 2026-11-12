@@ -137,7 +137,7 @@ test_that("uncalibrated accelerators keep small and transfer-bound cold work on 
   old_calibration <- state$calibration
   old_key <- state$calibration_absent_key
   withr::local_envvar(R_USER_CACHE_DIR = withr::local_tempdir())
-  withr::local_options(amatrix.uncalibrated_min_elements = NULL)
+  withr::local_options(amatrix.uncalibrated_min_elements = NULL, amatrix.host_blas = "reference")
   on.exit({
     state$calibration <- old_calibration
     state$calibration_absent_key <- old_key
@@ -247,4 +247,37 @@ test_that("products keep base dimnames on backend and deferred paths", {
   expect_identical(out$mm, dimnames(m %*% b))
   expect_identical(out$cp, dimnames(crossprod(m)))
   expect_identical(out$tc, dimnames(tcrossprod(m)))
+})
+
+test_that("the uncalibrated rule is stricter when R has an optimized BLAS", {
+  state <- amatrix:::.amatrix_state
+  old_calibration <- state$calibration
+  old_key <- state$calibration_absent_key
+  withr::local_envvar(R_USER_CACHE_DIR = withr::local_tempdir())
+  withr::local_options(amatrix.uncalibrated_min_elements = NULL)
+  on.exit({
+    state$calibration <- old_calibration
+    state$calibration_absent_key <- old_key
+  }, add = TRUE)
+  state$calibration <- NULL
+  ok <- amatrix:::.amatrix_calibration_ok
+
+  mid <- adgeMatrix(matrix(0, 512, 256))     # 131072 elements
+  huge <- adgeMatrix(matrix(0, 2048, 1024))  # 2097152 elements
+
+  withr::with_options(list(amatrix.host_blas = "reference"), {
+    expect_identical(amatrix:::.amatrix_host_blas_class(), "reference")
+    expect_true(ok(mid, "matmul", "mlx", y = mid))
+    expect_true(ok(mid, "chol", "mlx"))
+  })
+  withr::with_options(list(amatrix.host_blas = "optimized"), {
+    expect_identical(amatrix:::.amatrix_host_blas_class(), "optimized")
+    expect_false(ok(mid, "matmul", "mlx", y = mid))
+    expect_false(ok(mid, "crossprod", "mlx"))
+    expect_true(ok(huge, "matmul", "mlx", y = huge))
+    expect_false(ok(huge, "chol", "mlx"))
+    expect_false(ok(huge, "svd", "mlx"))
+    expect_true(ok(mid, "qr", "mlx"))
+  })
+  expect_true(amatrix:::.amatrix_host_blas_class() %in% c("optimized", "reference"))
 })
