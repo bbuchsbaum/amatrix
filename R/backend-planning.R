@@ -418,7 +418,19 @@ amatrix_dispatch_op <- function(x, op, method = op, y = NULL, args = list(), fal
   if (!is.null(resident_backend_name)) {
     backend <- .amatrix_get_backend(resident_backend_name)
     resident_op_name <- paste0(method, "_resident")
-    if (is.function(backend[[resident_op_name]]) &&
+    # This generic branch calls the kernel as f(x_key, out_key), so it is only
+    # valid for unary resident ops with exactly that signature. Binary kernels
+    # such as matmul_resident(x_key, y_key, out_key) have their own callers;
+    # invoking them here raised an argument error that was then mistaken for a
+    # backend fault.
+    resident_fn <- backend[[resident_op_name]]
+    unary_key_form <- is.function(resident_fn) && is.null(y) && local({
+      fm <- formals(resident_fn)
+      nm <- names(fm)
+      length(nm) >= 2L && identical(nm[[2L]], "out_key") &&
+        all(vapply(fm[-(1:2)], function(d) !(is.symbol(d) && !nzchar(as.character(d))), logical(1)))
+    })
+    if (unary_key_form &&
         .amatrix_backend_supports_resident_op(backend, method, x = x, y = y)) {
       lhs <- .amatrix_prepare_resident_arg(x, resident_backend_name)
       if (!is.null(lhs)) {

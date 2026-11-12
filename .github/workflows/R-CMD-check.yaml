@@ -243,3 +243,60 @@ jobs:
             fi
             echo "::endgroup::"
           done
+
+  # ---------------------------------------------------------------------------
+  # OpenCL backend correctness on a CPU OpenCL device (PoCL). GitHub runners have
+  # no GPU, so this says nothing about speed; it exercises the real OpenCL +
+  # CLBlast code path (uploads, kernels, resident keys, downloads) end to end
+  # and checks the results against the CPU reference, in both the default mode
+  # and with results kept on the device.
+  # ---------------------------------------------------------------------------
+  opencl-pocl-conformance:
+    runs-on: ubuntu-latest
+    name: opencl backend conformance (PoCL)
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      AMATRIX_OPENCL_PROBE_GPU: "1"
+      AMATRIX_OPENCL_ALLOW_CPU_DEVICE: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PoCL, the OpenCL loader and CLBlast
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pocl-opencl-icd ocl-icd-opencl-dev libclblast-dev
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install amatrix and the OpenCL backend
+        shell: Rscript {0}
+        run: |
+          install.packages(c("Matrix", "testthat", "withr", "callr", "irlba"))
+          install.packages(".", repos = NULL, type = "source")
+          install.packages("backends/amatrix.opencl", repos = NULL, type = "source")
+
+      - name: Conformance against the CPU reference
+        shell: Rscript {0}
+        run: |
+          library(testthat)
+          library(amatrix)
+          # Register the backend without amatrix_use_gpu(): that call also
+          # switches the session defaults to float32, which would change the
+          # meaning of every test written for the default (double) mode.
+          invisible(amatrix_backend_names())
+          stopifnot(isTRUE(amatrix_backend_status("opencl")$available))
+          filter <- "cross-backend-conformance|sinkhorn|chol-factor|svd-factor|block-lanczos|regression-review-batch4"
+          for (defer in c(FALSE, TRUE)) {
+            options(amatrix.defer_host = defer)
+            res <- as.data.frame(test_dir("tests/testthat", filter = filter,
+                                          reporter = "summary", stop_on_failure = FALSE,
+                                          package = "amatrix", load_package = "installed"))
+            if (any(res$failed > 0L) || any(res$error)) {
+              stop(sprintf("OpenCL conformance failed (defer_host = %s)", defer))
+            }
+          }

@@ -635,11 +635,17 @@
     }
     .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
   }, add = TRUE)
+  # With defer = TRUE a successful resident op returns NULL (the result stays
+  # on the device), so "NULL" alone must not be read as failure.
+  failed <- FALSE
   value <- tryCatch(
     backend$matmul_resident(lhs$key, rhs$key, out_key, defer = defer),
-    error = function(e) NULL
+    error = function(e) {
+      failed <<- TRUE
+      NULL
+    }
   )
-  if (is.null(value)) return(NULL)
+  if (failed || (is.null(value) && !isTRUE(defer))) return(NULL)
 
   release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
@@ -668,13 +674,17 @@
     }
     .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
   }, add = TRUE)
+  # With defer = TRUE a successful resident op returns NULL (the result stays
+  # on the device), so "NULL" alone must not be read as failure.
+  failed <- FALSE
   value <- tryCatch(
     backend$dense_sparse_matmul_resident_key(lhs$key, rhs$key, out_key, defer = defer),
-    error = function(e) NULL
+    error = function(e) {
+      failed <<- TRUE
+      NULL
+    }
   )
-  if (is.null(value)) {
-    return(NULL)
-  }
+  if (failed || (is.null(value) && !isTRUE(defer))) return(NULL)
 
   release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
@@ -747,11 +757,17 @@
     }
     .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
   }, add = TRUE)
+  # With defer = TRUE a successful resident op returns NULL (the result stays
+  # on the device), so "NULL" alone must not be read as failure.
+  failed <- FALSE
   value <- tryCatch(
     backend$crossprod_resident(lhs$key, rhs_key, out_key, defer = defer),
-    error = function(e) NULL
+    error = function(e) {
+      failed <<- TRUE
+      NULL
+    }
   )
-  if (is.null(value)) return(NULL)
+  if (failed || (is.null(value) && !isTRUE(defer))) return(NULL)
 
   release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
@@ -825,11 +841,17 @@
     }
     .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
   }, add = TRUE)
+  # With defer = TRUE a successful resident op returns NULL (the result stays
+  # on the device), so "NULL" alone must not be read as failure.
+  failed <- FALSE
   value <- tryCatch(
     backend$tcrossprod_resident(lhs$key, rhs_key, out_key, defer = defer),
-    error = function(e) NULL
+    error = function(e) {
+      failed <<- TRUE
+      NULL
+    }
   )
-  if (is.null(value)) return(NULL)
+  if (failed || (is.null(value) && !isTRUE(defer))) return(NULL)
 
   release_output <- FALSE
   list(value = value, backend = backend_name, resident_key = out_key)
@@ -881,12 +903,17 @@
     }
     .amatrix_cleanup_temp_resident_safe(list(lhs, rhs), backend_name)
   }, add = TRUE)
+  failed <- FALSE
   value <- tryCatch(
     backend$ewise_resident(lhs$key, rhs_payload, op, out_key, defer = defer),
-    error = function(e) NULL
+    error = function(e) {
+      failed <<- TRUE
+      NULL
+    }
   )
 
-  if (is.null(value)) {
+  # NULL with defer = TRUE is a deferred success, not a failure.
+  if (failed || (is.null(value) && !isTRUE(defer))) {
     return(NULL)
   }
 
@@ -980,25 +1007,7 @@
   list(value = value, backend = backend_name, resident_key = out_key)
 }
 
-#' Matrix multiplication
-#'
-#' Multiplies two matrices, routing to an accelerated backend when available.
-#' Plain numeric vectors supplied as \code{y} are promoted to a column matrix
-#' and the result is dropped back to a vector.
-#'
-#' @param x A matrix or \code{aMatrix} object.
-#' @param y A matrix, \code{aMatrix} object, or numeric vector.
-#'
-#' @return A matrix (or numeric vector when \code{y} was a vector) of
-#'   dimensions \code{nrow(x)} by \code{ncol(y)}.
-#'
-#' @examples
-#' A <- adgeMatrix(matrix(1:6, 2, 3))
-#' B <- adgeMatrix(matrix(1:6, 3, 2))
-#' am_matmul(A, B)
-#'
-#' @export
-am_matmul <- function(x, y) {
+.am_matmul_impl <- function(x, y) {
   x <- .amatrix_promote_arg(x)
   if (.amatrix_sparse_rhs_lowerable(x, y)) {
     return(.amatrix_lower_sparse_rhs_matmul(x, y))
@@ -1040,7 +1049,7 @@ am_matmul <- function(x, y) {
   )
 }
 
-am_crossprod <- function(x, y = NULL, ...) {
+.am_crossprod_impl <- function(x, y = NULL, ...) {
   if (.amatrix_sparse_rhs_lowerable(x, y)) {
     return(.amatrix_lower_sparse_rhs_crossprod(x, y, ...))
   }
@@ -1081,7 +1090,7 @@ am_crossprod <- function(x, y = NULL, ...) {
   )
 }
 
-am_tcrossprod <- function(x, y = NULL, ...) {
+.am_tcrossprod_impl <- function(x, y = NULL, ...) {
   if (.amatrix_sparse_rhs_lowerable(x, y)) {
     return(.amatrix_lower_sparse_rhs_tcrossprod(x, y, ...))
   }
@@ -3475,4 +3484,82 @@ am_kron <- function(A, B) {
 am_batch_crossprod <- function(A) {
   mats <- .am_batch_to_list(A, "A")
   lapply(mats, function(m) crossprod(m))
+}
+
+# ── Dimnames of products ─────────────────────────────────────────────────────
+#
+# base R and Matrix give a product the row names of its left operand and the
+# column names of its right one. Results computed on a device come back
+# without any, so the same code returned named results on the CPU and unnamed
+# ones on an accelerator. These thin wrappers restore the base behaviour for
+# every path (CPU, cold backend, resident and deferred) without touching data.
+
+.amatrix_operand_names <- function(v, margin) {
+  if (is.null(v)) return(NULL)
+  dn <- if (inherits(v, c("aMatrix", "Matrix"))) v@Dimnames else dimnames(v)
+  if (is.null(dn)) NULL else dn[[margin]]
+}
+
+.amatrix_with_product_dimnames <- function(result, row_names, col_names) {
+  if (is.null(row_names) && is.null(col_names)) return(result)
+  if (inherits(result, "aMatrix")) {
+    current <- result@Dimnames
+    if (is.null(current[[1L]]) && is.null(current[[2L]]) &&
+        (is.null(row_names) || length(row_names) == result@Dim[1L]) &&
+        (is.null(col_names) || length(col_names) == result@Dim[2L])) {
+      # Slot assignment: no data moves, so this is safe for deferred results.
+      result@Dimnames <- list(row_names, col_names)
+    }
+    return(result)
+  }
+  if (is.matrix(result) && is.null(dimnames(result)) &&
+      (is.null(row_names) || length(row_names) == nrow(result)) &&
+      (is.null(col_names) || length(col_names) == ncol(result))) {
+    dimnames(result) <- list(row_names, col_names)
+  }
+  result
+}
+
+#' Matrix multiplication
+#'
+#' Multiplies two matrices, routing to an accelerated backend when available.
+#' Plain numeric vectors supplied as \code{y} are promoted to a column matrix
+#' and the result is dropped back to a vector.
+#'
+#' @param x A matrix or \code{aMatrix} object.
+#' @param y A matrix, \code{aMatrix} object, or numeric vector.
+#'
+#' @return A matrix (or numeric vector when \code{y} was a vector) of
+#'   dimensions \code{nrow(x)} by \code{ncol(y)}.
+#'
+#' @examples
+#' A <- adgeMatrix(matrix(1:6, 2, 3))
+#' B <- adgeMatrix(matrix(1:6, 3, 2))
+#' am_matmul(A, B)
+#'
+#' @export
+am_matmul <- function(x, y) {
+  .amatrix_with_product_dimnames(
+    .am_matmul_impl(x, y),
+    .amatrix_operand_names(x, 1L),
+    if (is.null(dim(y))) NULL else .amatrix_operand_names(y, 2L)
+  )
+}
+
+am_crossprod <- function(x, y = NULL, ...) {
+  right <- if (is.null(y)) x else y
+  .amatrix_with_product_dimnames(
+    .am_crossprod_impl(x, y = y, ...),
+    .amatrix_operand_names(x, 2L),
+    if (is.null(dim(right))) NULL else .amatrix_operand_names(right, 2L)
+  )
+}
+
+am_tcrossprod <- function(x, y = NULL, ...) {
+  right <- if (is.null(y)) x else y
+  .amatrix_with_product_dimnames(
+    .am_tcrossprod_impl(x, y = y, ...),
+    .amatrix_operand_names(x, 1L),
+    if (is.null(dim(right))) NULL else .amatrix_operand_names(right, 1L)
+  )
 }

@@ -131,3 +131,120 @@ test_that("dim<- reshapes to a valid object with a new identity", {
   expect_equal(as.matrix(ds), ref, ignore_attr = TRUE)
   expect_error({ z <- A; dim(z) <- c(4L, 2L) }, "do not match")
 })
+
+test_that("uncalibrated accelerators keep small and transfer-bound cold work on the CPU", {
+  state <- amatrix:::.amatrix_state
+  old_calibration <- state$calibration
+  old_key <- state$calibration_absent_key
+  withr::local_envvar(R_USER_CACHE_DIR = withr::local_tempdir())
+  withr::local_options(amatrix.uncalibrated_min_elements = NULL)
+  on.exit({
+    state$calibration <- old_calibration
+    state$calibration_absent_key <- old_key
+  }, add = TRUE)
+  state$calibration <- NULL
+
+  ok <- amatrix:::.amatrix_calibration_ok
+  small <- adgeMatrix(matrix(0, 16, 16))
+  big <- adgeMatrix(matrix(0, 256, 256))
+  for (backend in c("mlx", "opencl", "arrayfire")) {
+    expect_false(ok(small, "matmul", backend, y = small), info = backend)
+    expect_true(ok(big, "matmul", backend, y = big), info = backend)
+    expect_true(ok(big, "crossprod", backend), info = backend)
+    # Memory-bound ops never pay for a round trip, whatever the size.
+    expect_false(ok(big, "ewise", backend), info = backend)
+    expect_false(ok(big, "rowSums", backend), info = backend)
+  }
+  # CPU, custom and test backends are not gated.
+  expect_true(ok(small, "matmul", "cpu", y = small))
+  expect_true(ok(small, "ewise", "amatrix_test"))
+  # The rule can be switched off.
+  withr::local_options(amatrix.uncalibrated_min_elements = 0)
+  expect_true(ok(small, "matmul", "mlx", y = small))
+  expect_true(ok(big, "ewise", "mlx"))
+})
+
+test_that("an explicit calibration overrides the uncalibrated rule", {
+  state <- amatrix:::.amatrix_state
+  old_calibration <- state$calibration
+  withr::local_options(amatrix.uncalibrated_min_elements = NULL)
+  on.exit(state$calibration <- old_calibration, add = TRUE)
+  state$calibration <- list(version = "2", thresholds = list(mlx = list(gemm = 10, ewise = 10)))
+  small <- adgeMatrix(matrix(0, 16, 16))
+  expect_true(amatrix:::.amatrix_calibration_ok(small, "matmul", "mlx", y = small))
+  expect_true(amatrix:::.amatrix_calibration_ok(small, "ewise", "mlx"))
+})
+
+test_that("deferred resident results are treated as success, not failure", {
+  # A backend whose resident kernels return NULL when defer = TRUE (the result
+  # stays on the device). The dense product must use the resident path, give a
+  # deferred object, and leave the backend healthy.
+  store <- new.env(parent = emptyenv())
+  calls <- new.env(parent = emptyenv())
+  cpu <- amatrix:::.amatrix_cpu_backend()
+  backend <- amatrix_test_backend()
+  backend$resident_has <- function(key) exists(key, envir = store, inherits = FALSE)
+  backend$resident_store <- function(key, x) { assign(key, as.matrix(x), envir = store); invisible(key) }
+  backend$resident_drop <- function(key) { if (exists(key, envir = store, inherits = FALSE)) rm(list = key, envir = store); invisible(TRUE) }
+  backend$resident_materialize <- function(key) get(key, envir = store, inherits = FALSE)
+  backend$matmul_resident <- function(x_key, y_key, out_key, defer = FALSE) {
+    calls$matmul_resident <- (if (is.null(calls$matmul_resident)) 0L else calls$matmul_resident) + 1L
+    value <- get(x_key, envir = store) %*% get(y_key, envir = store)
+    assign(out_key, value, envir = store)
+    if (isTRUE(defer)) NULL else value
+  }
+  backend$crossprod_resident <- function(x_key, y_key = NULL, out_key, defer = FALSE) {
+    xv <- get(x_key, envir = store)
+    value <- if (is.null(y_key)) crossprod(xv) else crossprod(xv, get(y_key, envir = store))
+    assign(out_key, value, envir = store)
+    if (isTRUE(defer)) NULL else value
+  }
+
+  m <- matrix(c(1, 2, 3, 4, 5, 6), 2, 3)
+  b <- matrix(c(1, 0, 2, 1, 0, 1, 3, 1, 1), 3, 3)
+  withr::local_options(amatrix.defer_host = TRUE)
+  out <- amatrix_with_test_backend({
+    x <- adgeMatrix(m, backend = "amatrix_test")
+    y <- adgeMatrix(b, backend = "amatrix_test")
+    z <- x %*% y
+    w <- crossprod(z)
+    list(
+      deferred = isTRUE(z@finalizer_env$host_deferred),
+      prod = as.matrix(z),
+      cp = as.matrix(w),
+      health = amatrix:::.amatrix_backend_health_get("amatrix_test")$status,
+      fallbacks = nrow(amatrix_fallback_log()[amatrix_fallback_log()$from_backend == "amatrix_test", ])
+    )
+  }, backend = backend)
+
+  expect_true(out$deferred)
+  expect_equal(out$prod, m %*% b, ignore_attr = TRUE)
+  expect_equal(out$cp, crossprod(m %*% b), ignore_attr = TRUE)
+  expect_identical(calls$matmul_resident, 1L)
+  expect_identical(out$health, "healthy")
+  expect_identical(out$fallbacks, 0L)
+})
+
+test_that("products keep base dimnames on backend and deferred paths", {
+  m <- matrix(c(1, 2, 3, 4, 5, 6), 2, 3, dimnames = list(c("r1", "r2"), c("a", "b", "c")))
+  b <- matrix(1:9 + 0, 3, 3, dimnames = list(NULL, c("x", "y", "z")))
+
+  # CPU reference behaviour.
+  A <- adgeMatrix(m)
+  expect_identical(dimnames(A %*% b), dimnames(m %*% b))
+  expect_identical(dimnames(crossprod(A)), dimnames(crossprod(m)))
+  expect_identical(dimnames(tcrossprod(A)), dimnames(tcrossprod(m)))
+  expect_identical(dimnames(crossprod(A, m)), dimnames(crossprod(m, m)))
+
+  # A backend that returns bare (unnamed) results, as device kernels do.
+  backend <- amatrix_test_backend()
+  strip <- function(f) { force(f); function(...) unname(as.matrix(f(...))) }
+  for (nm in c("matmul", "crossprod", "tcrossprod")) backend[[nm]] <- strip(backend[[nm]])
+  out <- amatrix_with_test_backend({
+    X <- adgeMatrix(m, backend = "amatrix_test")
+    list(mm = dimnames(X %*% b), cp = dimnames(crossprod(X)), tc = dimnames(tcrossprod(X)))
+  }, backend = backend)
+  expect_identical(out$mm, dimnames(m %*% b))
+  expect_identical(out$cp, dimnames(crossprod(m)))
+  expect_identical(out$tc, dimnames(tcrossprod(m)))
+})

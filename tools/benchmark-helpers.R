@@ -373,13 +373,26 @@ prime_backend <- function(obj, backend) {
   if (length(sha) == 0L || !nzchar(sha[[1L]])) "unknown" else sha[[1L]]
 }
 
+# Which BLAS R is linked to. CPU timings differ by one to two orders of
+# magnitude between R's reference BLAS and an optimized one (Accelerate,
+# OpenBLAS, MKL), so a speed-up "versus CPU" cannot be interpreted without it.
+.benchmark_blas_label <- function() {
+  blas <- tryCatch(unname(extSoftVersion()[["BLAS"]]), error = function(e) "")
+  if (!nzchar(blas)) {
+    blas <- tryCatch(La_library(), error = function(e) "")
+  }
+  if (!nzchar(blas)) "unknown" else basename(blas)
+}
+
 .benchmark_host_cpu <- function() {
   info <- tryCatch(benchmarkme::get_cpu(), error = function(e) NULL)
-  if (is.list(info) && !is.null(info$model_name)) {
-    return(info$model_name)
+  cpu <- if (is.list(info) && !is.null(info$model_name)) {
+    info$model_name
+  } else {
+    Sys.info()[["machine"]] %||% "unknown"
   }
-  sys <- Sys.info()
-  sys[["machine"]] %||% "unknown"
+  # Recorded in the existing host_cpu column so the history schema is unchanged.
+  sprintf("%s; BLAS=%s", cpu, .benchmark_blas_label())
 }
 
 append_benchmark_history <- function(df, path) {

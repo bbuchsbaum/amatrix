@@ -111,6 +111,13 @@ Initial public release.
   amatrix attached. `dim(x) <- value` returns a valid, freshly identified
   object.
 * Much lower per-operation overhead and fewer data copies on the CPU path.
+* Accelerator path: with `options(amatrix.defer_host = TRUE)` a successful
+  dense product, cross-product or element-wise result was mistaken for a
+  failure, which then marked the backend unhealthy and silently moved all
+  work to the CPU; device-resident chains now work. When uncalibrated, small
+  matrices and memory-bound operations on host data stay on the CPU instead
+  of paying for a device round trip. The planner no longer resolves the
+  calibration cache path on every operation.
 * For package authors: a new article, `vignette("package-authors")`; a
   testing kit (`amatrix_test_backend()`, `amatrix_with_test_backend()`,
   `amatrix_skip_if_no_accelerator()`, `amatrix_has_accelerator()`); and

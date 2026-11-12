@@ -564,26 +564,43 @@ static int amatrix_opencl_try_init(void) {
     return 0;
   }
 
-  for (cl_uint p = 0; p < num_platforms; ++p) {
-    cl_uint num_devices = 0;
-    err = clGetDeviceIDs(platforms[p], CL_DEVICE_TYPE_GPU, 0, NULL, &num_devices);
-    if (err != CL_SUCCESS || num_devices == 0) {
-      continue;
+  /* GPU devices are always preferred. A CPU OpenCL device (e.g. PoCL) is only
+   * accepted when AMATRIX_OPENCL_ALLOW_CPU_DEVICE=1 is set: it gives no speed
+   * benefit, but it lets the backend's correctness be exercised on machines
+   * and CI runners that have no GPU. */
+  cl_device_type wanted[2];
+  int n_wanted = 1;
+  wanted[0] = CL_DEVICE_TYPE_GPU;
+  {
+    const char *allow_cpu = getenv("AMATRIX_OPENCL_ALLOW_CPU_DEVICE");
+    if (allow_cpu != NULL && strcmp(allow_cpu, "1") == 0) {
+      wanted[1] = CL_DEVICE_TYPE_CPU;
+      n_wanted = 2;
     }
+  }
 
-    cl_device_id devices[16];
-    if (num_devices > (cl_uint)(sizeof(devices) / sizeof(devices[0]))) {
-      num_devices = (cl_uint)(sizeof(devices) / sizeof(devices[0]));
+  for (int w = 0; w < n_wanted && g_device == NULL; ++w) {
+    for (cl_uint p = 0; p < num_platforms; ++p) {
+      cl_uint num_devices = 0;
+      err = clGetDeviceIDs(platforms[p], wanted[w], 0, NULL, &num_devices);
+      if (err != CL_SUCCESS || num_devices == 0) {
+        continue;
+      }
+
+      cl_device_id devices[16];
+      if (num_devices > (cl_uint)(sizeof(devices) / sizeof(devices[0]))) {
+        num_devices = (cl_uint)(sizeof(devices) / sizeof(devices[0]));
+      }
+
+      err = clGetDeviceIDs(platforms[p], wanted[w], num_devices, devices, NULL);
+      if (err != CL_SUCCESS || num_devices == 0) {
+        continue;
+      }
+
+      g_platform = platforms[p];
+      g_device = devices[0];
+      break;
     }
-
-    err = clGetDeviceIDs(platforms[p], CL_DEVICE_TYPE_GPU, num_devices, devices, NULL);
-    if (err != CL_SUCCESS || num_devices == 0) {
-      continue;
-    }
-
-    g_platform = platforms[p];
-    g_device = devices[0];
-    break;
   }
 
   if (g_device == NULL) {

@@ -112,12 +112,35 @@ head(rep$calibration)
 
 ## When the GPU wins
 
-The table below is a recorded snapshot, not a promise. It shows the warm
-(steady-state) speed-up over the CPU backend for each harness operation, taken
-from `tools/benchmark-history.csv` in the source repository: the runs of
-2026-07-24 on one Apple Silicon machine (macOS, arm64), where the CPU
-reference is Apple's Accelerate BLAS. Values above 1 mean the backend was
-faster; bold marks a speed-up of at least 1.2x.
+The honest answer depends first on **which BLAS your R is linked to**. The
+recorded history in the source repository (`tools/benchmark-history.csv`, one
+Apple Silicon machine) contains two regimes. Between 2 July and 24 July 2026
+the CPU timings on that machine became roughly 100 times faster while the MLX
+timings barely moved, which is the signature of R being switched from its
+reference BLAS to an optimized one. The history did not record the BLAS at
+the time, so this is an inference; the harness now records it.
+
+| 4096 x 1024, warm | CPU before | CPU after | MLX | MLX vs before | MLX vs after |
+|---|---:|---:|---:|---:|---:|
+| `matmul` | 1230 ms | 21.5 ms | 14 to 22 ms | about 56x | 1.5x |
+| `crossprod` | 2360 ms | 12.7 ms | 6 to 9 ms | about 260x | 2.0x |
+| `chol` | 164 ms | 6.0 ms | 21 to 24 ms | about 7x | 0.3x |
+| `svd` | 9040 ms | 364 ms | 690 to 710 ms | about 13x | 0.5x |
+
+So:
+
+- **Against R's reference BLAS** (the default for the CRAN builds of R on
+  macOS and Windows), an accelerator backend is one to two orders of
+  magnitude faster for dense products and several times faster for
+  factorizations.
+- **Against an optimized BLAS** (Accelerate, OpenBLAS, MKL), the gain for a
+  single dense product is modest and dense factorizations are slower.
+  Switching BLAS gets most of the same benefit for these operations.
+
+Check yours with `extSoftVersion()[["BLAS"]]` and `La_library()`.
+
+The fuller table below is the 24 July snapshot, i.e. the optimized-BLAS
+regime: warm speed-up over the CPU backend, bold at 1.2x or more.
 
 | Operation | Size | CPU (ms) | MLX | OpenCL |
 |---|---|---:|---:|---:|
@@ -148,25 +171,25 @@ faster; bold marks a speed-up of at least 1.2x.
 | `svd_factor_subspace` | 1024 x 128 | 15.6 | 1.0x | 0.9x |
 | `svd_factor_subspace` | 4096 x 128 | 51.1 | **1.8x** | **1.6x** |
 
-What this snapshot says:
+What survives a fast CPU BLAS:
 
-- **Iterative, resident workloads gain the most.** Sinkhorn scaling reaches
-  13x (MLX) and 21x (OpenCL) at the largest size, and block Lanczos and the
-  subspace SVD gain 2x to 3x. These keep their data on the device across many
-  kernel launches.
-- **Single dense products only pay off at the largest size.** `matmul` and
-  `crossprod` are about half the CPU's speed at 1024 x 128 and 1.5x to 2x
-  faster at 4096 x 1024 on MLX.
-- **Dense factorizations were not faster.** `chol`, `svd`, `rsvd` and
-  `solve` were at or below CPU speed at every size measured. A tuned CPU
-  LAPACK is hard to beat at these dimensions.
-- **Small inputs lose.** Below about 1024 x 128 nearly every operation is
-  slower on a backend, which is why the dispatcher routes small work to the
-  CPU.
+- **Iterative, resident workloads.** Sinkhorn scaling reaches 13x (MLX) and
+  21x (OpenCL) at the largest size, and block Lanczos and the subspace SVD
+  gain 2x to 3x. These keep their data on the device across many kernel
+  launches.
+- **The largest dense products**, at 1.5x to 2x on MLX.
 
-Two limits on how far to read it: this is one machine with an unusually fast
-CPU BLAS, and the largest matrix is 4096 x 1024. On other hardware, and at
-larger sizes, the crossover points will differ. Measure your own:
+What does not: dense factorizations, and anything small. Below about
+1024 x 128 nearly every operation is slower on a backend.
+
+When no calibration has been run, amatrix therefore keeps two kinds of cold
+work on the CPU for the accelerator backends: matrices with fewer than 32768
+elements, and element-wise operations and row/column reductions on data that
+is not already on a device (they are memory-bound, so a round trip cannot
+win). Data that is already resident stays on the device. Run
+`amatrix_calibrate()` to replace this rule with thresholds measured on your
+machine, or set `options(amatrix.uncalibrated_min_elements = 0)` to switch it
+off.
 
 ```{r eval = FALSE}
 # Thresholds used for routing on this machine
@@ -175,6 +198,19 @@ amatrix_calibration_info()$thresholds
 
 # The full table, from a source checkout
 # Rscript tools/benchmark-regression.R --update
+```
+
+### Keeping results on the device
+
+By default each result is copied back to R as soon as it is computed. For a
+chain of operations that is wasted work: only the final result needs to come
+back.
+
+```{r eval = FALSE}
+options(amatrix.defer_host = TRUE)   # results stay on the device
+Z <- X %*% B                          # no download
+W <- crossprod(Z)                     # no upload, no download
+as.matrix(W)                          # one download, here
 ```
 
 ## When the CPU wins (and you should let it)

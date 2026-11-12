@@ -409,6 +409,15 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
 # when the sys_hash changes (hardware or R version).
 .amatrix_load_calibration <- function() {
   if (!is.null(.amatrix_state$calibration)) return(invisible(NULL))
+  # This runs on every dispatch. Resolving the cache path (tools::R_user_dir)
+  # and probing the file cost ~10% of a small operation, and a stale or
+  # malformed file was re-read each time. Remember, per cache location, that
+  # there is nothing usable to load.
+  location_key <- paste(Sys.getenv(c("R_USER_CACHE_DIR", "XDG_CACHE_HOME", "HOME")), collapse = "\r")
+  if (identical(.amatrix_state$calibration_absent_key, location_key)) {
+    return(invisible(NULL))
+  }
+  .amatrix_state$calibration_absent_key <- location_key
   path <- .amatrix_calibration_path()
   if (!file.exists(path)) return(invisible(NULL))
   cal <- tryCatch(readRDS(path), error = function(e) NULL)
@@ -441,7 +450,7 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
   if (backend_name == "cpu") return(TRUE)
   .amatrix_load_calibration()
   cal <- .amatrix_state$calibration
-  if (is.null(cal)) return(TRUE)
+  if (is.null(cal)) return(.amatrix_uncalibrated_ok(x, op, backend_name))
 
   op_key <- .amatrix_dispatch_signature(x, op, y = y)
   thresh <- cal$thresholds[[backend_name]][[op_key]]
@@ -452,6 +461,43 @@ amatrix_benchmark_report <- function(baseline_path = file.path("tools", "baselin
   if (!is.finite(workload) || workload == 0) return(TRUE)
 
   workload >= thresh
+}
+
+# Routing rule for the accelerator backends when the user has not run
+# amatrix_calibrate(). Without it every operation, however small, was sent to
+# the device. Two cases lose on any hardware and are kept on the CPU:
+#
+#   * small inputs, where the fixed cost of a device round trip exceeds the
+#     work (the recorded benchmarks lose at 256 x 32 against both a slow and a
+#     fast CPU BLAS);
+#   * element-wise operations and row/column reductions on data that is not
+#     already on the device: they are memory-bound, so uploading n values and
+#     downloading the result cannot beat one pass over host memory.
+#
+# This gates the cold path only; operands already resident on a device stay
+# there. It applies to the optional accelerator backends by name, so custom
+# and test backends are unaffected. options(amatrix.uncalibrated_min_elements
+# = 0) switches the rule off.
+.amatrix_transfer_bound_ops <- c("ewise", "broadcast_ewise", "rowSums", "colSums", "diag")
+.amatrix_accelerator_backend_names <- c("mlx", "opencl", "arrayfire", "metal")
+
+.amatrix_uncalibrated_ok <- function(x, op, backend_name) {
+  if (!(backend_name %in% .amatrix_accelerator_backend_names)) {
+    return(TRUE)
+  }
+  min_elements <- getOption("amatrix.uncalibrated_min_elements", 32768)
+  if (!is.numeric(min_elements) || length(min_elements) != 1L || is.na(min_elements) ||
+      min_elements <= 0) {
+    return(TRUE)
+  }
+  # Sparse products are gated by the backends' own nnz thresholds.
+  if (!inherits(x, "adgeMatrix")) {
+    return(TRUE)
+  }
+  if (op %in% .amatrix_transfer_bound_ops) {
+    return(FALSE)
+  }
+  as.numeric(nrow(x)) * as.numeric(ncol(x)) >= min_elements
 }
 
 # Benchmark one (backend, op, size) cell. Returns a one-row list.

@@ -15,4 +15,9 @@
 # -ldl provides dlopen()/dlsym() on Linux with glibc < 2.34; it is a harmless
 # no-op on macOS and on newer glibc where these symbols live in libc/libSystem.
 PKG_CPPFLAGS = -I. -DHAVE_OPENCL -DHAVE_CLBLAST -DCL_TARGET_OPENCL_VERSION=120
-PKG_LIBS = -ldl
+#
+# The BDC SVD bridges (dgebrd/dorgbr/dbdsdc) call R's LAPACK directly, so the
+# LAPACK/BLAS libraries must be linked. macOS tolerates the missing link
+# (-undefined dynamic_lookup); Linux does not, and without these the shared
+# object fails to load there with "undefined symbol: dgebrd_".
+PKG_LIBS = -ldl $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
