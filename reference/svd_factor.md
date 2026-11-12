@@ -56,6 +56,6 @@ m <- matrix(rnorm(30), nrow = 6)
 A <- adgeMatrix(m)
 fac <- svd_factor(A, k = 3L)
 fac
-#> amSVD [6x5 -> rank 3 | strict | exact/exact_svd@cpu | source: 20261111231906.715409-7499-1d4b16df4afe:am:165]
+#> amSVD [6x5 -> rank 3 | strict | exact/exact_svd@cpu | source: 20261112013744.302772-9244-241c56045130:am:165]
 #>   d[1:min(3,k)]: 3.1352, 2.593, 2.2029
 ```
